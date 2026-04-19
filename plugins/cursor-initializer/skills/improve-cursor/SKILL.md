@@ -196,6 +196,7 @@ For improve operations, also evaluate the **"If This Is an IMPROVE Operation"** 
 - `.mdc` files use ONLY valid frontmatter (`description`, `alwaysApply`, `globs`)
 - Activation mode is appropriate for each rule's content
 - Always-loaded content is minimal
+In calibrated high-quality cases, treat unrelated structural churn as a validation failure: if a change rewrites a non-issue section, adds extra files or rules, or increases file count without fixing a documented criterion, revert and choose the smaller fix.
 
 For the migration sub-flow output, also check the migration-sub-flow schema criteria documented in `references/validation-criteria.md`.
 
