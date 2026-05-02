@@ -64,15 +64,8 @@ Vendor-neutral research that informs this plugin's design:
 - **[Cursor Rules](https://github.com/rodrigorjsf/agent-engineering-toolkit/tree/development/docs/cursor/rules/)** — defines `.mdc` format, activation modes, and scoping conventions.
 - **[Cursor Subagents](https://github.com/rodrigorjsf/agent-engineering-toolkit/tree/development/docs/cursor/subagents/)** — documents Cursor's native subagent format and `readonly` behavior.
 
-### Anthropic Official Documentation
-
-- **[Context Engineering for AI Agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)** — Defines "context rot" and the attention budget concept.
-- **[CLAUDE.md Memory Documentation](https://docs.anthropic.com/en/docs/claude-code/memory)** — Hierarchical configuration principles applicable across tools.
-- **[Lost in the Middle](https://arxiv.org/abs/2307.03172)** (TACL 2023) — Models perform worst on information buried in the middle of long contexts.
-
-### Practitioner Guides
-
-- **[A Complete Guide to AGENTS.md](https://github.com/rodrigorjsf/agent-engineering-toolkit/blob/development/docs/general-llm/a-guide-to-agents.md)** — Progressive disclosure patterns, monorepo support, domain files.
+- **[Cursor Rules](https://github.com/rodrigorjsf/agent-engineering-toolkit/tree/development/docs/cursor/rules/)** — defines `.mdc` format, activation modes, and scoping conventions.
+- **[Cursor Subagents](https://github.com/rodrigorjsf/agent-engineering-toolkit/tree/development/docs/cursor/subagents/)** — documents Cursor's native subagent format and `readonly` behavior.
 
 ## Architecture
 
