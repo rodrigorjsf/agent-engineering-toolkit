@@ -107,10 +107,7 @@ If non-standard domain patterns detected, read `${CLAUDE_SKILL_DIR}/assets/templ
 
 ### Phase 4: Self-Validation
 
-Read `${CLAUDE_SKILL_DIR}/references/validation-criteria.md` and execute its **Validation Loop Instructions** against every generated file.
-
-Check both general criteria AND the CLAUDE.md-specific structural checks (path-scoping, minimal always-loaded content). Maximum 3 iterations.
-For init flows, treat output-size targets as required validation gates: the root file MUST finish within 15-40 lines and each scoped file MUST finish within 10-30 lines. If a monorepo root exceeds target, move scope-specific detail into subdirectory CLAUDE.md, rules, or domain files and rerun the validation loop.
+Read `${CLAUDE_SKILL_DIR}/references/validation-criteria.md` and execute its **Validation Loop Instructions** against every generated file. Check general criteria AND CLAUDE.md-specific structural checks (path-scoping, minimal always-loaded content). For init flows, treat the Hard Rules size targets (root 15-40 lines, scoped 10-30 lines) as required validation gates — if a monorepo root exceeds target, move scope-specific detail into subdirectory CLAUDE.md, rules, or domain files and rerun. Maximum 3 iterations.
 
 ### Phase 5: Present and Write
 
