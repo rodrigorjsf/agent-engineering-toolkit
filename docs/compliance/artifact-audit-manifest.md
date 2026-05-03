@@ -334,7 +334,7 @@ Type taxonomy and validator code legend used in all inventory tables.
 | Path (relative to base) | Type | Validators | Copy Group | Ph.7? |
 |-------------------------|------|------------|------------|-------|
 | `.cursor-plugin/plugin.json` | plugin-manifest | `i:pc` | — | no |
-| `CLAUDE.md` | config-file | `i:pc` | — | no |
+| `CONVENTIONS.md` | config-file | `i:pc` | — | no |
 | `README.md` | readme | `r:rm`, `i:rm` | — | no |
 | `docs-drift-manifest.md` | drift-manifest | — | — | no |
 | `agents/artifact-analyzer.md` | agent | `r:ca`, `i:ad` | — | no |
