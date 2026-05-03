@@ -17,56 +17,19 @@ Source: skills/skill-authoring-best-practices.md, skills/extend-claude-with-skil
 
 ## Core Principles
 
-**Conciseness is the primary principle.** The context window is a shared resource. At startup, only `name` + `description` are loaded for all skills. SKILL.md loads when triggered; supporting files load only on demand.
+**Conciseness is the primary principle.** The context window is a shared resource. At startup, only `name` + `description` load for all skills; SKILL.md loads when triggered; supporting files load only on demand. Challenge every piece of content with the deletion test (see `skill-evaluation-criteria.md`): would removing this cause mistakes? If not, cut it. "Claude is already very smart — only add context it doesn't have." (skill-authoring-best-practices.md)
 
-Challenge each piece of content:
+**Behavioral discipline** and **safe persuasion** patterns — see `behavioral-guidelines.md`.
 
-- "Does Claude really need this explanation?"
-- "Can I assume Claude knows this already?"
-- "Does this paragraph justify its token cost?"
+**Degrees of freedom** — match specificity to task fragility. High freedom (text instructions) when multiple approaches are valid; medium (pseudocode or parameterized scripts) when a preferred pattern exists; low (exact scripts, no parameters) when operations are fragile and consistency is critical. Analogy: a robot on a narrow bridge vs. an open field.
 
-> "Claude is already very smart — only add context it doesn't have."
-> — skill-authoring-best-practices.md
-
-**Behavioral discipline** — every skill should make assumptions explicit, prefer the simplest complete path, keep changes surgical, and define clear validation targets before concluding.
-
-**Safe persuasion** — use warm-up phases, curated references, explicit limits, and cited standards to improve compliance with legitimate work. Never use persuasion framing to bypass safeguards, refusals, or scope boundaries.
-
-**Degrees of freedom** — match specificity to task fragility:
-
-| Degree | Use When | Format |
-|--------|----------|--------|
-| High | Multiple valid approaches; decisions depend on context | Text instructions |
-| Medium | A preferred pattern exists; variation acceptable | Pseudocode or parameterized scripts |
-| Low | Operations are fragile; consistency critical | Exact scripts, no parameters |
-
-Analogy: Claude as a robot on a path — narrow bridge (low freedom) vs. open field (high freedom).
-
-**Test with all models you plan to use:**
-
-| Model | Testing Consideration |
-|-------|----------------------|
-| Haiku | Provide enough guidance? (may need more detail) |
-| Sonnet | Clear and efficient? (balanced) |
-| Opus | Avoid over-explaining? (may need less) |
+**Test with all models you plan to use** — Haiku may need more detail, Sonnet should run cleanly, Opus may need less to avoid over-explanation.
 
 *Source: skills/skill-authoring-best-practices.md lines 11-145*
 
 ---
 
 ## Skill Structure and Frontmatter
-
-Every skill is a directory with `SKILL.md` as the entry point:
-
-```
-my-skill/
-├── SKILL.md           # Main instructions (required)
-├── references/        # Reference docs loaded on demand
-├── assets/templates/  # Output templates
-└── scripts/           # Scripts Claude can execute
-```
-
-**Frontmatter fields:**
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -82,21 +45,17 @@ my-skill/
 | `hooks` | No | Hooks scoped to this skill's lifecycle |
 | `argument-hint` | No | Autocomplete hint, e.g. `[issue-number]` |
 
+Directory layout (`SKILL.md` + `references/`, `assets/templates/`, `scripts/`) and platform extensions detail live in `skill-format-reference.md`.
+
 *Source: skills/extend-claude-with-skills.md lines 169-199*
 
 ---
 
 ## Naming and Descriptions
 
-**Naming** — prefer gerund form (`processing-pdfs`, `analyzing-data`). Avoid: `helper`, `utils`, `tools`, `data`, `files`.
+**Naming** — prefer gerund form (`processing-pdfs`, `analyzing-data`). Avoid generic names (`helper`, `utils`, `tools`, `data`, `files`).
 
-**Descriptions** — always write in third person (injected into system prompt):
-
-- Good: "Processes Excel files and generates reports"
-- Bad: "I can help you process Excel files"
-- Bad: "You can use this to process Excel files"
-
-Include: (1) what it does, (2) when to use it, (3) specific trigger terms for matching.
+**Descriptions** — write in third person ("Processes Excel files...", not "I can help you..." or "You can use this..."). Include (1) what it does, (2) when to use it, (3) specific trigger terms for matching.
 
 *Source: skills/skill-authoring-best-practices.md lines 168-250*
 
@@ -104,19 +63,7 @@ Include: (1) what it does, (2) when to use it, (3) specific trigger terms for ma
 
 ## Progressive Disclosure Patterns
 
-SKILL.md is the index; detailed content lives in supporting files loaded on demand.
-
-**Pattern 1 — High-level guide with references:**
-
-```markdown
-## Phase 1: Analyze
-Read the bundled reference material for detailed context.
-```
-
-**Pattern 2 — Phased loading:**
-Load only the references needed for each phase, not all at once.
-
-Keep SKILL.md under 500 lines. Move detailed reference material to separate files. Reference supporting files explicitly so Claude knows what they contain.
+SKILL.md is the index; detailed content lives in supporting files loaded on demand. Apply two patterns: (1) reference the bundled guide material from each phase rather than inlining its content, and (2) load only the references needed for the current phase, not all at once. Loading-model levels are tabulated in `skill-format-reference.md` § Progressive Disclosure Loading Model.
 
 *Source: skills/skill-authoring-best-practices.md lines 251-300; skills/extend-claude-with-skills.md lines 223-246*
 
@@ -124,13 +71,7 @@ Keep SKILL.md under 500 lines. Move detailed reference material to separate file
 
 ## Invocation Control
 
-| Frontmatter | User can invoke | Claude can invoke | Description in context |
-|-------------|----------------|-------------------|----------------------|
-| (default) | Yes | Yes | Always loaded |
-| `disable-model-invocation: true` | Yes | No | Not loaded (manual only) |
-| `user-invocable: false` | No | Yes | Always loaded |
-
-Use `disable-model-invocation: true` for workflows with side effects (commit, deploy, send-message). Use `user-invocable: false` for background knowledge Claude should apply but users shouldn't invoke directly.
+Default: both user and Claude can invoke; description always loaded. `disable-model-invocation: true` makes the skill user-only and removes the description from context — use it for side-effect workflows (commit, deploy, send-message). `user-invocable: false` hides the skill from `/` while keeping it available to Claude — use it for background knowledge.
 
 *Source: skills/extend-claude-with-skills.md lines 248-283*
 
@@ -138,13 +79,6 @@ Use `disable-model-invocation: true` for workflows with side effects (commit, de
 
 ## Anti-Patterns
 
-| Anti-Pattern | Problem | Fix |
-|-------------|---------|-----|
-| Explaining what Claude already knows | Wastes tokens; dilutes attention | Delete it |
-| Generic descriptions ("helps with data") | Poor skill discovery | Be specific about what + when |
-| Inlining all reference content in SKILL.md | Context bloat on every invocation | Move to `references/` subdirectory |
-| Hardcoded file paths | Goes stale | Use `${CLAUDE_SKILL_DIR}` for bundled files |
-| Over-explaining for Opus | Patronizing + token waste | Trust the model; provide minimal scaffolding |
-| Contradictions between phases | Claude picks one arbitrarily | Review all phases for consistency |
+Avoid generic descriptions ("helps with data" — be specific about what + when), inlining all reference content in SKILL.md (move to `references/`), and hardcoded file paths (use `${CLAUDE_SKILL_DIR}` for bundled files). General prompting anti-patterns (vague instructions, contradictions, lost-in-the-middle) live in `prompt-engineering-strategies.md`.
 
 *Source: skills/skill-authoring-best-practices.md lines 800-1100*

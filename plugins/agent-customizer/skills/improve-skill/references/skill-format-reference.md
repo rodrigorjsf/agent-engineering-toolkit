@@ -19,33 +19,7 @@ Source: skills/research-claude-code-skills-format.md, skills/extend-claude-with-
 
 ## Frontmatter Fields
 
-### Agent Skills Open Standard (portable across AI tools)
-
-| Field | Required | Constraints |
-|-------|----------|-------------|
-| `name` | Recommended* | Max 64 chars; lowercase letters, numbers, hyphens only |
-| `description` | Recommended* | Max 1024 chars; what it does + when to use it |
-| `license` | No | License name or path to LICENSE file |
-| `compatibility` | No | Max 500 chars; environment requirements |
-| `metadata` | No | Arbitrary key-value map (author, version, etc.) |
-| `allowed-tools` | No | Space-delimited list of pre-approved tools (experimental) |
-
-*In Claude Code: if `name` omitted, uses directory name; if `description` omitted, uses first paragraph.
-
-### Claude Code Extensions (platform-specific)
-
-| Field | Description |
-|-------|-------------|
-| `argument-hint` | Hint shown in autocomplete, e.g. `[issue-number]` or `[filename] [format]` |
-| `disable-model-invocation` | `true` = user-only invocation; description removed from context |
-| `user-invocable` | `false` = hidden from `/` menu; Claude invokes automatically only |
-| `model` | Model override when skill is active |
-| `effort` | Effort level: `low`, `medium`, `high`, `max` (Opus 4.6 only for `max`) |
-| `context` | `fork` = run in isolated subagent with separate context |
-| `agent` | Subagent type when `context: fork` (e.g., `Explore`, `Plan`, `general-purpose`) |
-| `hooks` | Hooks scoped to this skill's lifecycle (see hooks documentation) |
-
-*Source: skills/research-claude-code-skills-format.md lines 90-130; skills/extend-claude-with-skills.md lines 183-198*
+The Agent Skills open-standard fields and Claude Code platform extensions are tabulated in `skill-authoring-guide.md`. This file specifies the deeper format constraints (name validation, substitutions, directory layout, loading model, locations).
 
 ---
 
@@ -63,26 +37,7 @@ Source: skills/research-claude-code-skills-format.md, skills/extend-claude-with-
 
 ## String Substitutions
 
-Use these variables inside SKILL.md content:
-
-| Variable | Description |
-|----------|-------------|
-| `$ARGUMENTS` | All arguments passed when invoking the skill |
-| `$ARGUMENTS[N]` or `$N` | Specific argument by 0-based index |
-| `${CLAUDE_SESSION_ID}` | Current session ID (for logging, session-specific files) |
-| `${CLAUDE_SKILL_DIR}` | Directory containing SKILL.md (use for bundled scripts/files) |
-
-**Critical**: Always use `${CLAUDE_SKILL_DIR}` to reference bundled files, not hardcoded paths:
-
-```
-Read the bundled guide material for detailed context.
-```
-
-Dynamic context injection with `!` prefix runs shell commands before skill loads:
-
-```
-- Current branch: !`git branch --show-current`
-```
+Skill body variables: `$ARGUMENTS` (all invocation args), `$ARGUMENTS[N]` / `$N` (specific arg by 0-based index), `${CLAUDE_SESSION_ID}` (for logging), `${CLAUDE_SKILL_DIR}` (skill directory — always use this for bundled file references, never hardcoded paths). Dynamic context with the `!` prefix runs shell commands at load time, e.g. `- Current branch: !` + `` `git branch --show-current` ``.
 
 *Source: skills/extend-claude-with-skills.md lines 201-210; skills/research-claude-code-skills-format.md lines 126-149*
 
@@ -90,24 +45,7 @@ Dynamic context injection with `!` prefix runs shell commands before skill loads
 
 ## Directory Structure
 
-```
-my-skill/
-├── SKILL.md                # Required: metadata + instructions (entry point)
-├── references/             # Optional: reference docs loaded on demand
-│   └── guide.md
-├── assets/
-│   └── templates/          # Optional: output templates
-│       └── template.md
-├── examples.md             # Optional: usage examples
-└── scripts/                # Optional: executable scripts (not loaded, executed)
-    └── helper.py
-```
-
-**Loading behavior:**
-
-- `SKILL.md` loads when skill activates
-- `references/` files load only when skill phases explicitly read them
-- `scripts/` files are executed, not loaded into context
+A skill directory contains `SKILL.md` (required entry point), `references/` for on-demand reference docs, `assets/templates/` for output templates, optional `examples.md`, and optional `scripts/` for executables (executed, not loaded into context). `references/` files load only when skill phases explicitly read them.
 
 *Source: skills/research-claude-code-skills-format.md lines 153-186; skills/extend-claude-with-skills.md lines 100-115*
 

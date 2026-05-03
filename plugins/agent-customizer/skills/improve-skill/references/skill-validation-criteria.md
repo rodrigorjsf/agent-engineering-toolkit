@@ -7,39 +7,25 @@ Source: skills/skill-authoring-best-practices.md, skills/extend-claude-with-skil
 
 ## Hard Limits (Auto-fail if violated)
 
-Any skill violating these criteria must be fixed before proceeding:
+Apply the canonical Hard Limits Table from `skill-evaluation-criteria.md` (body length, reference length, TOC requirement, frontmatter `description`/`name`, phase-structure thresholds), plus this validation-only addition:
 
 | Criterion | Threshold | Source |
 |-----------|-----------|--------|
-| SKILL.md body length | ≤ 500 lines | Anthropic: "Keep SKILL.md under 500 lines" |
-| Reference files | ≤ 200 lines each | `.claude/rules/reference-files.md` — hard limit |
-| Reference files >100 lines | Must include a `## Contents` TOC | skill-authoring-best-practices.md line 403 |
-| `description` field | Present; non-empty; ≤ 1024 chars; no XML tags | Agent Skills specification |
-| `name` field format | Present; non-empty; lowercase letters, numbers, hyphens only; max 64 chars | Agent Skills specification |
 | Contradictions between phases | 0 | Claude picks arbitrarily when contradictions exist |
-
-*Source: skills/skill-authoring-best-practices.md lines 259; skills/extend-claude-with-skills.md lines 183-199; `.claude/rules/reference-files.md`*
 
 ---
 
 ## Quality Checks (All must pass)
 
-- [ ] Has a self-validation phase that reads the skill's `references/*validation-criteria.md`
-- [ ] `${CLAUDE_SKILL_DIR}` used for all bundled file references (not hardcoded paths)
-- [ ] `description` written in third person ("Processes..." not "I process..." or "You can use...")
-- [ ] `description` includes what the skill does AND when to use it
-- [ ] Progressive disclosure applied: references loaded per phase, not all upfront
-- [ ] No reference content inlined in SKILL.md body (should be in `references/` subdirectory)
-- [ ] Each phase instruction is concise (≤10 lines); depth lives in reference files
-- [ ] Reference files cited explicitly so Claude knows what to load and when
-- [ ] `disable-model-invocation: true` set for side-effect workflows (commit, deploy, send)
-- [ ] Prompt engineering strategy applied: skill follows relevant strategy from prompt-engineering-strategies.md (role prompting for skills, progressive disclosure for phases)
-- [ ] Behavioral guidelines applied: the skill surfaces assumptions before acting, prefers the simplest adequate path, keeps changes surgical, and defines explicit validation targets
-- [ ] Persuasion cues, if present, stay inside the ethical constraint: they improve compliance with legitimate work only and never weaken safeguards, refusals, or scope boundaries
-- [ ] Phase instructions are specific and actionable — no vague directives like "ensure quality" or "review for completeness"
-- [ ] Plugin skill body contains no inline bash analysis commands — analysis must be delegated to registered agents (applies to skills in `plugins/*/skills/`)
-- [ ] Standalone skill body includes explicit bash commands for each analysis step (applies to skills in `skills/`)
-- [ ] Evidence citations present: key decisions reference source docs (e.g., "per skill-authoring-best-practices.md")
+**Structure**: self-validation phase reads `references/*validation-criteria.md`; `${CLAUDE_SKILL_DIR}` used for all bundled refs (no hardcoded paths); progressive disclosure applied (references loaded per phase, not upfront); no reference content inlined in SKILL.md body; each phase ≤10 lines with depth in references; reference files cited explicitly.
+
+**Frontmatter**: `description` in third person, includes both what + when to use; `disable-model-invocation: true` set for side-effect workflows (commit, deploy, send).
+
+**Discipline**: behavioral guidelines applied (surface assumptions, simplest path, surgical, validation targets); persuasion cues stay inside the ethical constraint; phase instructions specific and actionable (no "ensure quality").
+
+**Distribution-specific**: plugin skills (`plugins/*/skills/`) delegate analysis to registered agents — no inline bash; standalone skills (`skills/`) include explicit bash commands per analysis step.
+
+**Prompting**: relevant strategy from `prompt-engineering-strategies.md` applied (role prompting for skills, progressive disclosure for phases); evidence citations present for key decisions.
 
 ---
 
