@@ -119,8 +119,8 @@ When multiple sources could apply to an artifact, use this precedence order:
 | `rule:cursor-agent-files` | `.claude/rules/cursor-agent-files.md` | Cursor agent definitions |
 | `rule:reference-files` | `.claude/rules/reference-files.md` | All reference files |
 | `rule:readme-files` | `.claude/rules/readme-files.md` | All README files |
-| `rule:rag-mcp-server` | `.claude/rules/rag-mcp-server.md` | RAG MCP server implementation |
-| `rule:rag-storage-search` | `.claude/rules/rag-storage-and-search.md` | RAG storage and search |
+
+<!-- RAG rules and reindex hook removed per ADR-0004. -->
 
 ### Review Instructions (Normative — review-time enforcement)
 

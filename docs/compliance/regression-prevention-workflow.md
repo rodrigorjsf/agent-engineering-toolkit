@@ -31,7 +31,7 @@ compliance scope consults this document to identify the correct gate before merg
 | Plugin artifact modified (skills, agents, references, templates) in `plugins/agents-initializer/` or `skills/` | agents-initializer, standalone | `quality-gate` | §5 below |
 | Plugin artifact modified in `plugins/agent-customizer/` | agent-customizer | `agent-customizer-quality-gate` | §5 below |
 | Plugin artifact modified in `plugins/cursor-initializer/` | cursor-initializer | `cursor-initializer-quality-gate` | §5 below |
-| Rule, hook, instruction, or root config modified (`.claude/rules/`, `.claude/hooks/`, `.github/instructions/`, `CLAUDE.md`, `rag/`) | repository-global | `docs/compliance/repository-global-validation-protocol.md` | §5 below |
+| Rule, hook, instruction, or root config modified (`.claude/rules/`, `.claude/hooks/`, `.github/instructions/`, `CLAUDE.md`) | repository-global | `docs/compliance/repository-global-validation-protocol.md` | §5 below |
 | New shared reference copy added | all containing scopes | Run parity phase of gate for each affected scope | Compare copy manually against all siblings |
 | Drift manifest updated (`**/docs-drift-manifest.md`) | scope of manifest | Re-run drift detection phase of the scope's quality gate | Manual source doc comparison |
 | Compliance doc modified (`docs/compliance/`) | repository-global | `docs/compliance/repository-global-validation-protocol.md` | §5 below |

@@ -72,7 +72,7 @@ Defines the reproducible filesystem scan rules for verifying manifest completene
 | `next-steps.md` | Personal session tracking — excluded source |
 | `.github/skills/` | Internal PRP workflow infrastructure — not auditable artifacts |
 | `.github/hooks/` | GitHub Actions (not Claude hooks) |
-| `node_modules/`, `.git/`, `.rag/`, `.specs/`, `rag/` | Build / infra / search infrastructure |
+| `node_modules/`, `.git/`, `.specs/` | Build / infra / excluded source |
 
 ---
 
@@ -459,8 +459,6 @@ Type taxonomy and validator code legend used in all inventory tables.
 | `.claude/rules/cursor-agent-files.md` | rule | `i:rl` | — | 6 | no |
 | `.claude/rules/cursor-plugin-skills.md` | rule | `i:rl` | — | 6 | no |
 | `.claude/rules/plugin-skills.md` | rule | `i:rl` | — | 4 | no |
-| `.claude/rules/rag-mcp-server.md` | rule | `i:rl` | — | 9 | no |
-| `.claude/rules/rag-storage-and-search.md` | rule | `i:rl` | — | 9 | no |
 | `.claude/rules/readme-files.md` | rule | `i:rl` | — | 4,5,6 | no |
 | `.claude/rules/reference-files.md` | rule | `i:rl` | — | 4,5,6 | no |
 | `.claude/rules/standalone-skills.md` | rule | `i:rl` | — | 5 | no |
@@ -474,7 +472,6 @@ Type taxonomy and validator code legend used in all inventory tables.
 | `.github/instructions/skill-files.instructions.md` | instruction | — | — | 4,5,6 | no |
 | `.github/instructions/template-files.instructions.md` | instruction | — | — | 4,5,6 | no |
 | `.claude/hooks/check-docs-sync.sh` | hook | — | — | 9 | no |
-| `.claude/hooks/check-rag-reindex.sh` | hook | — | — | 9 | no |
 | `.claude/skills/quality-gate/SKILL.md` | quality-gate-skill | — | — | 9 | no |
 | `.claude/skills/quality-gate/README.md` | quality-gate-skill | — | — | 9 | no |
 | `.claude/skills/quality-gate/agents/artifact-inspector.md` | quality-gate-agent | — | — | 9 | no |

@@ -3,7 +3,7 @@
 > **Scope**: Repository-global artifacts — files that span all plugin distributions and are not
 > owned by any single plugin quality gate.
 > **Use when**: Making changes to `.claude/rules/`, `.claude/hooks/`, `.github/instructions/`,
-> root `CLAUDE.md`, `DESIGN-GUIDELINES.md`, `rag/`, or `docs/compliance/`.
+> root `CLAUDE.md`, `DESIGN-GUIDELINES.md`, or `docs/compliance/`.
 > **Automation level**: Manual — no dedicated automated gate exists for this scope.
 
 ## Contents
@@ -12,7 +12,7 @@
 2. [Rules and Hooks Checklist](#2-rules-and-hooks-checklist)
 3. [Review Instructions Checklist](#3-review-instructions-checklist)
 4. [CLAUDE.md and DESIGN-GUIDELINES.md Checklist](#4-claudemd-and-design-guidelinesmd-checklist)
-5. [RAG and Compliance Docs Checklist](#5-rag-and-compliance-docs-checklist)
+5. [Compliance Docs Checklist](#5-compliance-docs-checklist)
 6. [Cross-Scope Impact Triage](#6-cross-scope-impact-triage)
 
 ---
@@ -26,7 +26,6 @@
 | GitHub review instructions | `.github/instructions/*.instructions.md` | repository-global |
 | Root CLAUDE.md | `CLAUDE.md` | repository-global |
 | Design guidelines | `DESIGN-GUIDELINES.md` | repository-global |
-| RAG config and docs | `rag/`, `docs/` | repository-global |
 | Compliance docs | `docs/compliance/` | repository-global |
 | Wiki knowledge pages | `wiki/knowledge/` | repository-global |
 
@@ -85,13 +84,9 @@ For `DESIGN-GUIDELINES.md` changes:
 
 ---
 
-## 5. RAG and Compliance Docs Checklist
+<!-- RAG rules and reindex hook removed per ADR-0004. -->
 
-For `rag/` changes:
-
-- [ ] **`rag.config.yaml` is valid YAML** — `python3 -c "import yaml; yaml.safe_load(open('rag.config.yaml'))"` exits 0
-- [ ] **Paths in config exist** — every `source_path` in `rag.config.yaml` resolves to an actual file/directory
-- [ ] **Reindex scheduled** — if source docs changed, note that RAG must be reindexed before next gate run
+## 5. Compliance Docs Checklist
 
 For `docs/compliance/` changes:
 
