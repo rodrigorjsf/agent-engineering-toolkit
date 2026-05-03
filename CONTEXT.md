@@ -21,7 +21,7 @@ The pair of plugins targeting the Claude Code platform — `agents-initializer` 
 _Avoid_: Claude flavor, Anthropic plugins
 
 **Cursor distribution**:
-The pair of plugins targeting Cursor — `cursor-initializer` (initializer) + `cursor-customizer` (customizer, planned). Generated artifacts target `.cursor/`.
+The pair of plugins targeting Cursor — `cursor-initializer` (initializer) + `cursor-customizer` (customizer). Generated artifacts target `.cursor/`.
 _Avoid_: Cursor flavor, IDE plugins
 
 **Standalone distribution**:
