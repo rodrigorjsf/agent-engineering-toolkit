@@ -1,7 +1,7 @@
 # What NOT to Include
 
 Evidence-based exclusion table for AGENTS.md and `.cursor/rules/*.mdc` content.
-Sources: ETH Zurich paper (Evaluating AGENTS.md), Anthropic Best Practices, a-guide-to-agents.md, hooks/automate-workflow-with-hooks.md
+Sources: Industry Research (ETH "Evaluating context files", a-guide-to-agents.md, hooks/automate-workflow-with-hooks.md)
 
 ---
 
@@ -9,21 +9,21 @@ Sources: ETH Zurich paper (Evaluating AGENTS.md), Anthropic Best Practices, a-gu
 
 | Content Type | Why to Exclude | Evidence Quote | Source |
 |-------------|----------------|---------------|--------|
-| Directory/file structure listings | Agents use grep/glob to navigate; static lists become stale instantly | "Not effective at providing repository overview" | ETH Zurich: Evaluating AGENTS.md |
-| Standard language conventions | Agent training data already includes these | Agent "already knows these from training data" | Anthropic Best Practices |
-| Codebase overview paragraphs | Increases exploration steps without improving navigation success | "Increases steps without improving navigation" | ETH Zurich: Evaluating AGENTS.md |
-| Vague guidance ("write clean code") | Cannot be acted on; wastes attention budget without guiding behavior | "Not actionable, wastes attention budget" | a-guide-to-agents.md |
-| File path references | Paths change constantly; stale paths actively mislead the agent | "File paths change constantly... actively poisons context" | a-guide-to-agents.md |
-| Everything in one file (all topics) | Exceeds ~150-200 instruction attention budget; creates ball-of-mud | "Ball of mud problem, exceeds attention budget" | a-guide-to-agents.md |
-| Obvious tooling ("use git for version control") | Agent already knows standard tooling from training | Agent already does this correctly without extra instruction | Anthropic Best Practices |
-| Duplicated information across files | Consumes tokens on every request; creates contradiction risk | "Wastes tokens on every request" | research-context-engineering-comprehensive.md |
-| Version numbers and release names | High-churn content; stale immediately after updates | "Information that changes frequently" (explicit ❌ Exclude) | Anthropic Best Practices |
-| Long explanations and tutorials | Context is for instructions, not education | Listed in explicit ❌ Exclude column | Anthropic Best Practices |
-| Detailed API documentation | Link to external docs instead of inlining | Listed in explicit ❌ Exclude column | Anthropic Best Practices |
-| Anything the agent can infer from code | Agent reads code directly; redundant instructions waste tokens | Anything the agent can infer by reading code should stay out of configuration files | Anthropic Best Practices |
-| Hook-enforced behaviors (formatting, file blocking, notifications) | Hooks handle these deterministically; config file instructions are redundant and may conflict with hook execution. **Migrate** to hook configuration for zero context cost | Hooks provide deterministic control over agent behavior instead of repeated context instructions | Anthropic Hooks Guide |
+| Directory/file structure listings | Agents use grep/glob to navigate; static lists become stale instantly | "Not effective at providing repository overview" | Industry Research (ETH) |
+| Standard language conventions | Agent training data already includes these | Agent "already knows these from training data" | Industry Research |
+| Codebase overview paragraphs | Increases exploration steps without improving navigation success | "Increases steps without improving navigation" | Industry Research (ETH) |
+| Vague guidance ("write clean code") | Cannot be acted on; wastes attention budget without guiding behavior | "Not actionable, wastes attention budget" | Industry Research (a-guide-to-agents.md) |
+| File path references | Paths change constantly; stale paths actively mislead the agent | "File paths change constantly... actively poisons context" | Industry Research |
+| Everything in one file (all topics) | Exceeds ~150-200 instruction attention budget; creates ball-of-mud | "Ball of mud problem, exceeds attention budget" | Industry Research |
+| Obvious tooling ("use git for version control") | Agent already knows standard tooling from training | Agent already does this correctly without extra instruction | Industry Research |
+| Duplicated information across files | Consumes tokens on every request; creates contradiction risk | "Wastes tokens on every request" | Industry Research |
+| Version numbers and release names | High-churn content; stale immediately after updates | "Information that changes frequently" (explicit ❌ Exclude) | Industry Research |
+| Long explanations and tutorials | Context is for instructions, not education | Listed in explicit ❌ Exclude column | Industry Research |
+| Detailed API documentation | Link to external docs instead of inlining | Listed in explicit ❌ Exclude column | Industry Research |
+| Anything the agent can infer from code | Agent reads code directly; redundant instructions waste tokens | Anything the agent can infer by reading code should stay out of configuration files | Industry Research |
+| Hook-enforced behaviors (formatting, file blocking, notifications) | Hooks handle these deterministically; config file instructions are redundant and may conflict with hook execution. **Migrate** to hook configuration for zero context cost | Hooks provide deterministic control over agent behavior instead of repeated context instructions | Industry Research (Hooks Guide) |
 
-*Source: plugins/agents-initializer/skills/init-agents/SKILL.md:106-116 expanded; research-context-engineering-comprehensive.md:113-121; Evaluating-AGENTS-paper.md abstract*
+*Source: Industry Research — research-context-engineering-comprehensive.md:113-121; ETH Evaluating-AGENTS-paper.md abstract*
 
 ### Exclusion Actions
 
@@ -44,7 +44,7 @@ Not all excluded content should be deleted — some should migrate to on-demand 
 Apply this test to each line before including it:
 
 > **"Would removing this cause the agent to make mistakes? If not, cut it."**
-> — Anthropic Best Practices
+> — Industry Research
 
 If the instruction passes this test, include it. If it fails (agent would do the right thing anyway), delete it.
 

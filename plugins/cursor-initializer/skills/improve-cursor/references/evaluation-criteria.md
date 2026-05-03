@@ -22,9 +22,9 @@ Used by IMPROVE skills only. Source: file-evaluator.md, research-context-enginee
 
 | Criterion | Threshold | Source |
 |-----------|-----------|--------|
-| File length | ≤ 200 lines | Anthropic Docs: 200-line target for configuration files in this toolkit |
+| File length | ≤ 200 lines | Industry Research: 200-line target for configuration files in this toolkit |
 | Instruction count | ≤ 150-200 | HumanLayer: "Frontier LLMs can follow ~150-200 instructions" |
-| Contradictions | 0 | Anthropic: conflicting instructions make the model choose inconsistently |
+| Contradictions | 0 | Industry Research: conflicting instructions make the model choose inconsistently |
 
 A file violating any hard limit is flagged **OVER LIMIT** regardless of content quality.
 
@@ -36,12 +36,12 @@ Check each line of the file against these indicators:
 
 | Indicator | Why It's Bloat | Source |
 |-----------|---------------|--------|
-| Directory/file structure listings | "Not effective at providing repository overview" | ETH Zurich: Evaluating AGENTS.md |
-| Standard language conventions | Agent already knows from training data | Anthropic Best Practices |
-| Vague instructions ("write clean code") | Not actionable; wastes attention budget | a-guide-to-agents.md |
-| Codebase overview paragraphs | Increases steps without improving navigation | ETH Zurich: Evaluating AGENTS.md |
-| Obvious tool usage ("use git for version control") | Agent already knows this | Anthropic Best Practices |
-| Duplicated content across files | Wastes tokens on every request | research-context-engineering-comprehensive.md |
+| Directory/file structure listings | "Not effective at providing repository overview" | Industry Research (ETH) |
+| Standard language conventions | Agent already knows from training data | Industry Research |
+| Vague instructions ("write clean code") | Not actionable; wastes attention budget | Industry Research (a-guide-to-agents.md) |
+| Codebase overview paragraphs | Increases steps without improving navigation | Industry Research (ETH) |
+| Obvious tool usage ("use git for version control") | Agent already knows this | Industry Research |
+| Duplicated content across files | Wastes tokens on every request | Industry Research |
 
 *Source: file-evaluator.md lines 30-41*
 

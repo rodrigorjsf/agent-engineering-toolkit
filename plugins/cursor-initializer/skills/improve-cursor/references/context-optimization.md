@@ -1,7 +1,7 @@
 # Context Optimization
 
 Evidence-based instructions for managing token budgets and attention in agent configuration files.
-Source: research-context-engineering-comprehensive.md
+Source: Industry Research — research-context-engineering-comprehensive.md
 
 ---
 
@@ -21,15 +21,15 @@ Source: research-context-engineering-comprehensive.md
 
 | Limit | Value | Source |
 |-------|-------|--------|
-| Lines per configuration file | ≤ 200 | Anthropic Docs: 200-line target for configuration files in this toolkit |
-| Instructions per file | ≤ 150-200 | HumanLayer: "Frontier LLMs can follow ~150-200 instructions with reasonable consistency." |
-| Contradictions between files | 0 | Anthropic: conflicting instructions make the model choose inconsistently. |
+| Lines per configuration file | ≤ 200 | Industry Research: 200-line target for configuration files in this toolkit |
+| Instructions per file | ≤ 150-200 | Industry Research: "Frontier LLMs can follow ~150-200 instructions with reasonable consistency." |
+| Contradictions between files | 0 | Industry Research: conflicting instructions make the model choose inconsistently. |
 
-> Anthropic's warning generalizes here: bloated configuration files cause the model to miss important instructions.
-> — Anthropic Best Practices
+> Industry Research generalizes here: bloated configuration files cause the model to miss important instructions.
+> — Industry Research
 
-> Anthropic's warning generalizes here: if a configuration file keeps growing, the model may ignore an instruction even when it is present.
-> — Anthropic Best Practices
+> Industry Research generalizes here: if a configuration file keeps growing, the model may ignore an instruction even when it is present.
+> — Industry Research
 
 ---
 
@@ -38,13 +38,13 @@ Source: research-context-engineering-comprehensive.md
 Context is a **finite resource with diminishing marginal returns**. Do not treat it as unlimited.
 
 > "LLMs have an 'attention budget' that they draw on when parsing large volumes of context. Every new token introduced depletes this budget by some amount."
-> — Anthropic Engineering: Effective Context Engineering
+> — Industry Research, Effective Context Engineering
 
 Architectural reason: Transformers create **n² pairwise relationships** for n tokens — attention gets stretched thin as context grows. Models trained on shorter sequences have fewer parameters for long-range dependencies.
 
-**Key principle**: *"Good context engineering means finding the smallest possible set of high-signal tokens that maximize the likelihood of some desired outcome."* — Anthropic
+**Key principle**: *"Good context engineering means finding the smallest possible set of high-signal tokens that maximize the likelihood of some desired outcome."* — Industry Research
 
-> Context rot: "As the number of tokens in the context window increases, the model's ability to accurately recall information from that context decreases." — Anthropic
+> Context rot: "As the number of tokens in the context window increases, the model's ability to accurately recall information from that context decreases." — Industry Research
 
 ---
 
@@ -62,7 +62,7 @@ Critical instructions must be at the **start or end** of files, not buried in th
 ## Quality Over Quantity Checklist
 
 For each instruction line, ask: **"Would removing this cause the agent to make mistakes? If not, cut it."**
-— Anthropic Best Practices
+— Industry Research
 
 | ✅ Include | ❌ Exclude |
 |-----------|-----------|
@@ -79,7 +79,7 @@ For each instruction line, ask: **"Would removing this cause the agent to make m
 - ✅ "Run `npm test` before committing" vs. ❌ "Test your changes"
 - ✅ "API handlers live in `src/api/handlers/`" vs. ❌ "Keep files organized"
 
-*Source: research-context-engineering-comprehensive.md lines 113-134*
+*Source: Industry Research — research-context-engineering-comprehensive.md lines 113-134*
 
 ---
 
@@ -95,9 +95,9 @@ Detect and remove these before generating or improving configuration files:
 | Failed approach accumulation | Look for rules added defensively after incidents | Remove rules that shouldn't be needed |
 | High-churn information | Look for version numbers, file counts, team names | Remove or move to a pointer |
 
-> Treat configuration files like code: review them when things go wrong, prune them regularly. — Adapted from Anthropic Best Practices
+> Treat configuration files like code: review them when things go wrong, prune them regularly. — Industry Research
 
-*Source: research-context-engineering-comprehensive.md lines 213-253*
+*Source: Industry Research — research-context-engineering-comprehensive.md lines 213-253*
 
 ---
 
@@ -114,9 +114,9 @@ Use these patterns to move content from always-consumed to on-demand locations:
 | Domain docs (e.g., `docs/TESTING.md`) | Agent navigates when relevant | On-demand |
 
 > "Rather than pre-processing all relevant data up front, agents maintain lightweight identifiers and use these references to dynamically load data into context at runtime."
-> — Anthropic Engineering: Effective Context Engineering
+> — Industry Research, Effective Context Engineering
 
-*Source: research-context-engineering-comprehensive.md lines 138-208, 451-461*
+*Source: Industry Research — research-context-engineering-comprehensive.md lines 138-208, 451-461*
 
 ---
 
@@ -124,9 +124,9 @@ Use these patterns to move content from always-consumed to on-demand locations:
 
 | Claim | Source |
 |-------|--------|
-| ≤200 lines per file | Agent Skills Standard |
-| ~150-200 instruction limit | HumanLayer (Kyle) via a-guide-to-agents.md |
-| n² attention constraint / context rot | Anthropic Engineering Blog |
-| Lost-in-the-middle effect | Liu et al., arXiv:2307.03172 |
-| Quality over quantity heuristic | Anthropic Best Practices |
-| JIT documentation strategy | Anthropic Engineering: Effective Context Engineering |
+| ≤200 lines per file | Industry Research (Agent Skills Standard) |
+| ~150-200 instruction limit | Industry Research (HumanLayer) |
+| n² attention constraint / context rot | Industry Research (Effective Context Engineering) |
+| Lost-in-the-middle effect | Industry Research, Liu et al., arXiv:2307.03172 |
+| Quality over quantity heuristic | Industry Research |
+| JIT documentation strategy | Industry Research, Effective Context Engineering |

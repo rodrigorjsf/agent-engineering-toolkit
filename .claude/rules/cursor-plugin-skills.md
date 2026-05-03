@@ -21,3 +21,6 @@ paths:
 - SKILL.md `name` field: ≤64 chars, lowercase letters/numbers/hyphens only, no XML tags
 - SKILL.md `description` field: non-empty, ≤1024 chars, third person, no XML tags
 - SKILL.md body: under 500 lines
+- In `cursor-initializer`: `rule-domain-detector` agent walks a four-tier heuristic (tooling-non-obvious → file-pattern → monorepo-scope → on-demand cross-cutting / domain); empty list is the canonical passing output for trivial single-package projects
+- In `cursor-initializer`: `file-evaluator` agent has dual responsibility — per-rule `.mdc` quality assessment, and (when AGENTS.md is present) block-by-block classification of AGENTS.md content by destination activation mode
+- `validation-criteria.md` intentionally diverges between `init-cursor` and `improve-cursor` — `improve-cursor` adds preservation, calibration, and migration-sub-flow-schema rules; these files are NOT a parity family

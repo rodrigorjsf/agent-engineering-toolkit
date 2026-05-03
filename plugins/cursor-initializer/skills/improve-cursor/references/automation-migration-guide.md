@@ -68,7 +68,7 @@ Use these signals to identify instructions that should migrate from always-loade
 | Instructions duplicated across files | Consolidation candidate | Same content in 2+ files → single source of truth |
 | Version numbers, team names, release info | DELETE or pointer | High-churn content → remove or use memory |
 
-*Source: analysis-evaluating-agents-paper.md lines 36-52, Anthropic Best Practices*
+*Source: Industry Research — analysis-evaluating-agents-paper.md lines 36-52*
 
 ---
 
