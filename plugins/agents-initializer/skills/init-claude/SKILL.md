@@ -76,34 +76,31 @@ Require the parsed output to state explicitly when a simple single-package proje
 
 ### Phase 3: Generate Files
 
-Before generating, read these reference documents:
+#### Phase 3a: Hierarchy Decisions
+
+Drop Phases 1–2 references. Read:
 
 - `${CLAUDE_SKILL_DIR}/references/progressive-disclosure-guide.md` — hierarchy decisions and loading tiers
 - `${CLAUDE_SKILL_DIR}/references/what-not-to-include.md` — content exclusion criteria
+
+Decide which file types to generate and what content belongs in each tier.
+
+#### Phase 3b: Generate Files
+
+Drop Phase 3a references. Read:
+
 - `${CLAUDE_SKILL_DIR}/references/context-optimization.md` — token budget guidelines
 - `${CLAUDE_SKILL_DIR}/references/claude-rules-system.md` — .claude/rules/ conventions and path-scoping
 
-Using ONLY the information from Phase 1 and Phase 2, generate the file hierarchy:
+Generate the file hierarchy:
 
-#### Root CLAUDE.md
+**Root CLAUDE.md** — Read `${CLAUDE_SKILL_DIR}/assets/templates/root-claude-md.md`. Fill placeholders. Remove empty sections. Target: 15-40 lines.
 
-Read `${CLAUDE_SKILL_DIR}/assets/templates/root-claude-md.md`. Fill placeholders. Remove empty sections. Target: 15-40 lines.
+**Subdirectory CLAUDE.md (per detected scope)** — If scopes detected, read `${CLAUDE_SKILL_DIR}/assets/templates/scoped-claude-md.md`. Only scope-specific content differing from root.
 
-#### Subdirectory CLAUDE.md (per detected scope)
+**`.claude/rules/` Files (Path-Scoped Rules)** — If file-pattern-specific rules detected, read `${CLAUDE_SKILL_DIR}/assets/templates/claude-rule.md`. Consult `claude-rules-system.md` (already loaded) for when to create rules files vs using CLAUDE.md, path-scoping conventions, and convention vs domain-critical rule categories.
 
-If scopes detected, read `${CLAUDE_SKILL_DIR}/assets/templates/scoped-claude-md.md`. Only scope-specific content differing from root.
-
-#### .claude/rules/ Files (Path-Scoped Rules)
-
-If file-pattern-specific rules detected, read `${CLAUDE_SKILL_DIR}/assets/templates/claude-rule.md`. Consult `${CLAUDE_SKILL_DIR}/references/claude-rules-system.md` for:
-
-- When to create rules files vs using CLAUDE.md
-- Path-scoping conventions and glob patterns
-- Convention rules vs domain-critical rules categories
-
-#### Domain Files
-
-If non-standard domain patterns detected, read `${CLAUDE_SKILL_DIR}/assets/templates/domain-doc.md`.
+**Domain Files** — If non-standard domain patterns detected, read `${CLAUDE_SKILL_DIR}/assets/templates/domain-doc.md`.
 
 ### Phase 4: Self-Validation
 

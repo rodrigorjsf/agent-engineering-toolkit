@@ -49,19 +49,31 @@ Wait for it and parse the structured output.
 
 ### Phase 3: Generate Improvement Plan
 
-Read these references:
+#### Phase 3a: Content Decisions
+
+Drop any references from Phases 1–2. Read these references:
 
 - `${CLAUDE_SKILL_DIR}/references/progressive-disclosure-guide.md` — hierarchy decisions
 - `${CLAUDE_SKILL_DIR}/references/what-not-to-include.md` — exclusion criteria + Deletion Test wording
+
+Identify all **Removals** (bloat / stale / duplicates / contradictions) and **Redundancy Eliminations** (apply the Deletion Test to each instruction; document content removed and the cited evidence source).
+
+#### Phase 3b: Budget and Additions
+
+Drop Phase 3a references. Read this reference:
+
 - `${CLAUDE_SKILL_DIR}/references/context-optimization.md` — token budget guidelines
+
+Plan **Refactoring** (scope extraction / domain extraction / consolidation) and **Additions** (only when genuinely missing). Use templates: `root-agents-md.md`, `scoped-agents-md.md`, `domain-doc.md`, `claude-rule.md`, `skill.md`, `hook-config.md` (all under `${CLAUDE_SKILL_DIR}/assets/templates/`). In calibrated mode (overall score ≥ 7, no hard-limit violations), keep suggestions proportional to confirmed issues — no speculative restructure or new files.
+
+#### Phase 3c: Automation Migration
+
+Drop Phase 3b references. Read these references:
+
 - `${CLAUDE_SKILL_DIR}/references/automation-mechanism-comparison.md` — mechanism selection (always)
 - `${CLAUDE_SKILL_DIR}/references/automation-token-impact.md` — only when Phase 1 returned automation candidates
 
-Categorize actions per the references (do not restate their categories here): **Removals** (bloat / stale / duplicates / contradictions); **Refactoring** (scope extraction / domain extraction / consolidation / automation migration via the decision flowchart in `automation-mechanism-comparison.md`); **Redundancy Eliminations** (apply the Deletion Test to each instruction; document content removed and the cited evidence source); **Additions** (only when genuinely missing).
-
-In calibrated mode (overall score ≥ 7, no hard-limit violations), keep suggestions proportional to confirmed issues — no speculative restructure or new files.
-
-When generating or restructuring files, use the templates: `root-agents-md.md`, `scoped-agents-md.md`, `domain-doc.md`, `claude-rule.md`, `skill.md`, `hook-config.md` (all under `${CLAUDE_SKILL_DIR}/assets/templates/`).
+Apply the decision flowchart in `automation-mechanism-comparison.md` to each flagged candidate. Merge into the Refactoring category. Skip `automation-token-impact.md` if Phase 1 returned no automation candidates.
 
 ### Phase 4: Self-Validation
 

@@ -52,20 +52,32 @@ Wait and parse output.
 
 ### Phase 3: Generate Improvement Plan
 
-Read these references:
+#### Phase 3a: Content Decisions
+
+Drop Phases 1–2 references. Read:
 
 - `${CLAUDE_SKILL_DIR}/references/progressive-disclosure-guide.md` — hierarchy decisions
 - `${CLAUDE_SKILL_DIR}/references/what-not-to-include.md` — exclusion criteria + Deletion Test
+
+Identify **Removals** and **Redundancy Eliminations** (Deletion Test; cite evidence). Do not plan refactoring yet.
+
+#### Phase 3b: Rules and Budget
+
+Drop Phase 3a references. Read:
+
 - `${CLAUDE_SKILL_DIR}/references/context-optimization.md` — token budget guidelines
 - `${CLAUDE_SKILL_DIR}/references/claude-rules-system.md` — `.claude/rules/` conventions and path-scoping
+
+Plan **Refactoring** (scope/rule/domain extraction, consolidation, path-scoping — prefer path-scoped rule over hook for file-pattern formatting unless deterministic enforcement is required) and **Additions** (only when genuinely missing). Templates under `${CLAUDE_SKILL_DIR}/assets/templates/`: `root-claude-md.md`, `scoped-claude-md.md`, `claude-rule.md`, `domain-doc.md`, `skill.md`, `hook-config.md`.
+
+#### Phase 3c: Automation Migration
+
+Drop Phase 3b references. Read:
+
 - `${CLAUDE_SKILL_DIR}/references/automation-mechanism-comparison.md` — mechanism selection (always)
 - `${CLAUDE_SKILL_DIR}/references/automation-token-impact.md` — only when Phase 1 flagged automation candidates
 
-Categorize per references: **Removals** (bloat / stale / duplicates / contradictions); **Refactoring** (scope/rule/domain extraction / consolidation / add path-scoping where lacking / automation migration via `automation-mechanism-comparison.md` flowchart — prefer path-scoped rule over hook for concise file-pattern formatting in a high-quality file unless deterministic enforcement is required); **Redundancy Eliminations** (Deletion Test; cite evidence per deletion); **Additions** (only when genuinely missing — scope files including library/shared packages; non-standard tooling; convention/domain-critical rules path-scoped).
-
-In calibrated mode (score ≥ 7, no hard-limit violations), keep suggestions proportional to confirmed issues.
-
-Templates under `${CLAUDE_SKILL_DIR}/assets/templates/`: `root-claude-md.md`, `scoped-claude-md.md`, `claude-rule.md`, `domain-doc.md`, `skill.md`, `hook-config.md`.
+Apply the decision flowchart to each flagged candidate; merge into Refactoring. In calibrated mode (score ≥ 7, no hard-limit violations), keep suggestions proportional to confirmed issues.
 
 ### Phase 4: Self-Validation
 
