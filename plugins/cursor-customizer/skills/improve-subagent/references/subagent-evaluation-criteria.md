@@ -33,6 +33,14 @@ A subagent violating any hard limit is flagged **INVALID** regardless of other q
 
 ---
 
+## Deletion Test
+
+For every instruction, line, and reference, ask: **"Would removing this cause the agent to make mistakes?"** If the answer is no, flag it for removal. ETH Zurich (Feb 2026) measured that LLM-generated agent files reduce success rate by ~3% and increase cost by ~20% — the failure mode is content that looks helpful but adds no decision value. The deletion test is the rubric for separating signal from bloat.
+
+*Source: docs/general-llm/Evaluating-AGENTS-paper.pdf*
+
+---
+
 ## Bloat Indicators Table
 
 | Indicator | Why It's Bloat |
