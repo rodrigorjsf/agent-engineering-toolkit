@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-05-02 — Ingest: pi-context-zone (Smart/Warm/Dumb zone framework)
+
+**Page added (1):** `pi-context-zone.md` — 99 lines.
+
+**Source compiled:** `docs/context-engineering/pi-context-zone-github.md` (Dex Horthy's HumanLayer Smart/Warm/Dumb zone framework, 40%/70% thresholds, MRCR v2 model-by-model resilience data).
+
+**Why:** Q1/Q2 of the 2026-05-02 alignment-audit grilling round established the smart-zone framework as one of five doctrinal anchors for the audit. The framework was previously embedded only inside `[[context-engineering]] § Dumb Zone` and `[[harness-engineering]] § The Dumb Zone`; promoting it to a dedicated page provides a stable, citable wiki anchor for audit findings and prevents drift across the two embedding pages.
+
+**Cross-references:** Page links into `[[context-engineering]]`, `[[context-rot]]`, `[[harness-engineering]]`, `[[progressive-disclosure]]`, `[[long-context-lost-in-middle]]`, `[[rpi-workflow]]`, `[[claude-code-subagents]]`. Index updated under "Foundational Concepts" between `[[context-rot]]` and `[[progressive-disclosure]]`. Total wiki pages: 38 → 39.
+
+---
+
 ## 2026-05-02 — RAG → Wiki migration (ADR-0004)
 
 **Pages updated (4):** `compliance-routing.md`, `validation-routing-claude.md`, `validation-routing-cursor.md`, `validation-routing-standalone.md`.

@@ -1,6 +1,6 @@
 # Wiki Index
 
-Total pages: **38**
+Total pages: **39**
 
 ---
 
@@ -10,6 +10,7 @@ Total pages: **38**
 | -------------------------- | ------------------------------------------------------------------------- |
 | [[context-engineering]]    | Token budget management, position effects, four context strategies        |
 | [[context-rot]]            | Empirical degradation from 0.92→0.68 accuracy, three architectural causes |
+| [[pi-context-zone]]        | Smart/Warm/Dumb zone framework — 40%/70% thresholds, model-by-model resilience |
 | [[progressive-disclosure]] | Tiered loading (always/on-demand/invoked), ETH Zurich evidence            |
 | [[prompt-engineering]]     | Paradigm inversion for reasoning models, CoT/ToT/ReAct techniques         |
 
