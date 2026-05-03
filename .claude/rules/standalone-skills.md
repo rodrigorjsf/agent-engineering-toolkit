@@ -12,6 +12,7 @@ paths:
 - Reference docs in `references/` are "follow these instructions" content — not executable scripts
 - `references/` directory MUST exist alongside SKILL.md and contain evidence-based guidance files
 - `assets/templates/` directory MUST exist alongside SKILL.md and contain output templates; validator-type or report-only standalone skills that do not generate templated artifacts MAY omit it
+- Templates in `assets/templates/` MAY embed platform-specific format only if the skill's `name` declares that platform target. The skill's `name` field is the canonical platform-target declaration — aliasing to escape this scoping is itself a violation.
 - Standalone skills MUST encode behavioral discipline: surface assumptions first, prefer the simplest complete path, keep changes surgical, and define explicit validation targets
 - If standalone skills use persuasion patterns, they MUST state the ethical constraint that those patterns support legitimate work only and never bypass safeguards or refusals
 - Self-validation phase MUST read `references/validation-criteria.md` and loop until all checks pass

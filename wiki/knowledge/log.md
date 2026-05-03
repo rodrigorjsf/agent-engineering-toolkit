@@ -2,6 +2,19 @@
 
 ---
 
+## 2026-05-03 — Update: validation-routing-standalone (ADR-0005 follow-ups)
+
+**Page updated (1):** `validation-routing-standalone.md`
+
+**Changes:**
+- Added `## Layered scope` section after "Source Authority", documenting the two-layer split from ADR-0005: skill body layer (SKILL.md prose + references) must be platform-agnostic (`SHARED-*`/`GENERAL-*` only); template layer (`assets/templates/`) MAY embed platform-specific format if the skill `name` declares that target. The `name` field is canonical — aliasing to escape scoping is itself a violation.
+- Rewrote contamination signal list to scope `${CLAUDE_SKILL_DIR}`, `paths:`, `globs:` bullets to "skill body or neutral-skill templates" rather than blanket-forbidding everywhere.
+- Qualified the "Common Validation Mistakes" bullet about `.claude/rules/` references: applies to skill prose and neutral-skill templates only; Claude-targeted-skill templates (`init-claude`/`improve-claude`) MAY reference `.claude/rules/` per ADR-0005.
+
+**Why:** CF-GOV-001 and CF-GOV-004 mandated follow-ups from ADR-0005 (issues #98 / XC-1).
+
+---
+
 ## 2026-05-02 — Ingest: pi-context-zone (Smart/Warm/Dumb zone framework)
 
 **Page added (1):** `pi-context-zone.md` — 99 lines.

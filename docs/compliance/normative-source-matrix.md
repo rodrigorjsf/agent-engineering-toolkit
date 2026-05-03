@@ -199,7 +199,7 @@ When multiple sources could apply to an artifact, use this precedence order:
 |----------|----------------|-------------------|---------------|-------------------|
 | `skill` | `SHARED-SKILLS-STD` | `SHARED-AUTHORING`, `PROJECT-DESIGN-GUIDELINES` | `rule:standalone-skills`, `instr:skill-files` | `CLAUDE-*`, `CURSOR-*`, agent delegation, Task tool |
 | `reference` | `SHARED-AUTHORING` | `PROJECT-DESIGN-GUIDELINES`, `GENERAL-AGENTS-GUIDE` | `rule:reference-files`, `instr:reference-files` | `CLAUDE-HOOKS`, `CURSOR-HOOKS` (hook/subagent guidance) |
-| `template` | `SHARED-SKILLS-STD` | `PROJECT-DESIGN-GUIDELINES` | `instr:template-files` | `.mdc` templates, hook-config templates, `paths:`/`globs:` |
+| `template` | `SHARED-SKILLS-STD` | `PROJECT-DESIGN-GUIDELINES` | `instr:template-files` | `.mdc` templates, hook-config templates, `paths:`/`globs:` forbidden in neutral-skill templates; allowed in platform-targeted-skill templates per ADR-0005 |
 | `readme` | `SHARED-SKILLS-STD` | `PROJECT-DESIGN-GUIDELINES` | `rule:readme-files`, `instr:readme-files` | Cursor-only skills (init-cursor, improve-cursor), plugin content |
 
 ### repository-global (Governance Artifacts)
@@ -288,6 +288,7 @@ For `standalone` scope:
 - **Project**: `rule:standalone-skills`, `rule:reference-files`, `rule:readme-files`, `instr:skill-files`, `instr:reference-files`, `instr:template-files`, `instr:readme-files`
 - **Supporting**: `GENERAL-AGENTS-PAPER`, `GENERAL-CONTEXT`
 - **Forbidden**: All `CLAUDE-*` sources, all `CURSOR-*` sources, hook/subagent-specific guidance
+- **Two-layer split (ADR-0005)**: Skill body (SKILL.md prose, `references/`) must source only `SHARED-*` and `GENERAL-*` IDs; templates (`assets/templates/`) MAY use platform-specific source IDs if and only if the skill's `name` field declares that platform target.
 
 ### `agent-customizer-bundle`
 
