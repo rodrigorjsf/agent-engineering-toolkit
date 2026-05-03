@@ -143,13 +143,13 @@ When multiple sources could apply to an artifact, use this precedence order:
 
 | Artifact Type | File Pattern | Present In |
 |---------------|-------------|------------|
-| `skill` | `*/SKILL.md` | All 5 scopes |
-| `agent` | `agents/*.md` | agents-initializer, cursor-initializer, agent-customizer |
-| `reference` | `references/*.md` | All 4 distribution scopes |
-| `template` | `assets/templates/*.md`, `*.mdc` | All 4 distribution scopes |
-| `plugin-manifest` | `plugin.json`, `marketplace.json` | agents-initializer, cursor-initializer, agent-customizer |
-| `config-file` | `CLAUDE.md`, `AGENTS.md` | All 5 scopes |
-| `readme` | `README.md` | All 5 scopes |
+| `skill` | `*/SKILL.md` | All 6 scopes |
+| `agent` | `agents/*.md` | agents-initializer, cursor-initializer, cursor-customizer, agent-customizer |
+| `reference` | `references/*.md` | All 5 distribution scopes |
+| `template` | `assets/templates/*.md`, `*.mdc` | All 5 distribution scopes |
+| `plugin-manifest` | `plugin.json`, `marketplace.json` | agents-initializer, cursor-initializer, cursor-customizer, agent-customizer |
+| `config-file` | `CLAUDE.md`, `AGENTS.md` | All 6 scopes |
+| `readme` | `README.md` | All 6 scopes |
 | `rule` | `.claude/rules/*.md` | repository-global |
 | `instruction` | `.github/instructions/*.md` | repository-global |
 | `docs` | `docs/**/*.md` | repository-global |
