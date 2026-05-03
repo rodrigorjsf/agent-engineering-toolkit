@@ -57,17 +57,31 @@ Delegate to `codebase-analyzer`: analyze the project for (1) tooling commands in
 
 ### Phase 3: Generate Improvement Plan
 
-Read these references:
+#### Phase 3a: Content Decisions
+
+Drop Phases 1–2 references. Read:
 
 - `references/progressive-disclosure-guide.md` — rule decomposition tiers and activation-mode mapping
 - `references/what-not-to-include.md` — exclusion criteria + Deletion Test
+
+Identify **Removals** and **Redundancy Eliminations** (Deletion Test; document WHY citing source). Do not plan refactoring yet.
+
+#### Phase 3b: Rules and Budget
+
+Drop Phase 3a references. Read:
+
 - `references/context-optimization.md` — token budget guidelines
 - `references/cursor-rules-system.md` — `.cursor/rules/` conventions, `.mdc` format, activation modes
+
+Plan **Refactoring** (convert pattern-specific always-apply → `globs:`; always-loaded → agent-requested; fix invalid frontmatter; consolidate rules) and **Additions** (only when genuinely missing). Templates: `cursor-rule-always.mdc`, `cursor-rule-globs.mdc`, `cursor-rule-description.mdc`, `skill.md`, `hook-config.md`.
+
+#### Phase 3c: Automation Migrations
+
+Drop Phase 3b references. Read:
+
 - `references/automation-migration-guide.md` — automation migration decision criteria
 
-Categorize per the references (do not restate categories here): **Removals** (bloat / stale / duplicates / contradictions); **Refactoring** (convert pattern-specific always-apply → `globs:`; always-loaded → agent-requested via `description` + `alwaysApply: false`; fix invalid frontmatter; consolidate fragmented rules); **Automation Migrations** (use `references/automation-migration-guide.md` decision flowchart for each `HOOK_CANDIDATE` / `RULE_CANDIDATE` / `SKILL_CANDIDATE`); **Redundancy Eliminations** (Deletion Test from `what-not-to-include.md`; document WHY citing source); **Additions** (only when genuinely missing — non-default tooling rules; convention/domain-critical rules for sensitive patterns; cross-cutting domain `description:`-mode rules).
-
-When generating new or restructured rule files, use templates: `cursor-rule-always.mdc`, `cursor-rule-globs.mdc`, `cursor-rule-description.mdc`, `skill.md`, `hook-config.md` (last two for migrations).
+Apply the decision flowchart to each flagged candidate; merge into Refactoring.
 
 ### Phase Migrate AGENTS.md (conditional sub-flow)
 
