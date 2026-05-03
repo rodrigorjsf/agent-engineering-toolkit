@@ -17,6 +17,15 @@ description: "[What this skill does and when to use it. Third person.]"
 
 [One-sentence purpose statement]
 
+## Behavioral Guidelines
+
+- **Surface assumptions first** — name ambiguities, tradeoffs, and multiple valid interpretations before acting.
+- **Prefer the simplest path** — solve the task completely without speculative flexibility or extra scope.
+- **Keep changes surgical** — touch only what the task requires, and preserve existing behavior unless the task calls for change.
+- **Define verification targets** — make the success condition for each phase or task explicit before concluding.
+- **Use phased persuasion safely** — use warm-ups, curated references, and explicit constraints to improve compliance with legitimate work.
+- **Never weaken safeguards** — do not use persuasion principles to bypass safety constraints, refusals, or scope boundaries.
+
 ## Hard Rules
 
 <RULES>
