@@ -151,6 +151,12 @@ Type taxonomy and validator code legend used in all inventory tables.
 | `ac:R` | agent-customizer-qg Phase 3, checks R1–R5 |
 | `ac:X` | agent-customizer-qg Phase 4, checks X1–X14 |
 | `ac:D` | agent-customizer-qg Phase 3, Drift D1–D3 |
+| `cc:P` | cursor-customizer-qg Phase 1, SKILL.md checks P1–P12 |
+| `cc:A` | cursor-customizer-qg Phase 1, Cursor Subagent checks A1–A8 |
+| `cc:R` | cursor-customizer-qg Phase 1, Reference checks R1–R5 |
+| `cc:T` | cursor-customizer-qg Phase 1, Template checks T1–T7 |
+| `cc:X` | cursor-customizer-qg Phase 2, Intra-Plugin Parity X1–X19 |
+| `cc:D` | cursor-customizer-qg Phase 3, Docs Drift D1–D4 |
 
 ---
 
@@ -714,11 +720,11 @@ Enforcement status per (scope × artifact type). Cells show active rule/instruct
 | cursor-initializer | agent | `r:ca` | `i:ad` | `ci:A` (A1–A5) | — | no |
 | cursor-initializer | reference | `r:rf` | `i:rf` | `ci:R` (R1–R5), `ci:X` (X1–X2) | — | no |
 | cursor-initializer | template | — | `i:tf` | `ci:T` (T1–T4), `ci:X` | — | no |
-| cursor-customizer | skill | `r:cp` | `i:sf` | `cc:P` (P1–P12) | `cc:D` (D1–D3) | no |
-| cursor-customizer | agent | `r:ca` | `i:ad` | `cc:A` (A1–A6) | `cc:D` | no |
-| cursor-customizer | reference | `r:rf` | `i:rf` | `cc:R` (R1–R5), `cc:X` (X1–X19) | `cc:D` | no |
-| cursor-customizer | template | — | `i:tf` | `cc:X` | — | no |
-| cursor-customizer | drift-manifest | — | — | `cc:D` | — | no |
+| cursor-customizer | skill | `r:cp` | `i:sf` | `cc:P` (P1–P12) | `cc:D` (D1–D4) | no |
+| cursor-customizer | agent | `r:ca` | `i:ad` | `cc:A` (A1–A8) | `cc:D` (D1–D4) | no |
+| cursor-customizer | reference | `r:rf` | `i:rf` | `cc:R` (R1–R5), `cc:X` (X1–X19) | `cc:D` (D1–D4) | no |
+| cursor-customizer | template | — | `i:tf` | `cc:T` (T1–T7), `cc:X` | — | no |
+| cursor-customizer | drift-manifest | — | — | `cc:D` (D1–D4) | — | no |
 | cursor-customizer | plugin-manifest | — | `i:pc` | — | — | **yes** (no gate) |
 | cursor-customizer | config-file/readme | `r:rm` | `i:pc`, `i:rm` | — | — | **yes** (no gate) |
 | standalone | skill | `r:ss` | `i:sf` | `q:S` (S1–S11) | — | no |
@@ -739,7 +745,7 @@ Enforcement status per (scope × artifact type). Cells show active rule/instruct
 | agents-initializer | `.claude/skills/quality-gate/` | ✅ P1–P12, A1–A6, R1–R5 | ✅ X1–X2, T1–T2 | ✅ (Phase 3, via manifest) | ✅ G1–G4 | No cursor-initializer drift |
 | agent-customizer | `.claude/skills/agent-customizer-quality-gate/` | ✅ P1–P12, A1–A6, R1–R5 | ✅ X1–X14, T1–T3 | ✅ D1–D3 | ✅ G1–G4 | Full coverage |
 | cursor-initializer | `.claude/skills/cursor-initializer-quality-gate/` | ✅ P1–P10, A1–A5, R1–R5 | ✅ X1–X2, T1–T4 | ❌ none | ✅ G1–G4 | No drift detection |
-| cursor-customizer | `.claude/skills/cursor-customizer-quality-gate/` | ✅ P1–P12, A1–A6, R1–R5 | ✅ X1–X19 | ✅ D1–D3 | ✅ G1–G4 | Full coverage |
+| cursor-customizer | `.claude/skills/cursor-customizer-quality-gate/` | ✅ P1–P12, A1–A8, R1–R5 | ✅ T1–T7, X1–X19 | ✅ D1–D4 | ✅ G1–G4 | Full coverage |
 | standalone | `.claude/skills/quality-gate/` (shared) | ✅ S1–S11, R1–R5 | ✅ X1–X2, T1–T2 | ✅ (Phase 3, via manifest) | ✅ G1–G4 | No cursor-initializer drift |
 | repository-global | **No quality gate** | ❌ | ❌ | ❌ | ❌ | **All coverage manual** |
 
