@@ -8,6 +8,7 @@ Source: docs/cursor/subagents/subagents-guide.md, docs/adr/0002-product-strict-r
 ## Contents
 
 - Hard limits table (frontmatter validity, required fields)
+- Deletion test (ETH Zurich evidence: −3% success / +20% cost)
 - Bloat indicators table
 - Staleness indicators table
 - Quality assessment

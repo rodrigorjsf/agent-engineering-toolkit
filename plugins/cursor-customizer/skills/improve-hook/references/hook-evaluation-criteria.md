@@ -8,6 +8,7 @@ Source: docs/cursor/hooks/hooks-guide.md
 ## Contents
 
 - Hard limits table (JSON validity, recognized events, valid matchers)
+- Deletion test (ETH Zurich evidence: −3% success / +20% cost)
 - Bloat indicators table (overly broad matchers, redundant hooks)
 - Staleness indicators table (deprecated event names, invalid tools)
 - Quality assessment (event selection, error handling, security)

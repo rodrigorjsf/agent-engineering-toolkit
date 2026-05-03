@@ -8,6 +8,7 @@ Source: subagents/research-subagent-best-practices.md, subagents/creating-custom
 ## Contents
 
 - Hard limits table (frontmatter validity, required fields)
+- Deletion test (ETH Zurich evidence: −3% success / +20% cost)
 - Bloat indicators table (excessive turns, broad tools, vague prompts)
 - Staleness indicators table (deprecated model IDs, removed tools)
 - Quality assessment (task specificity, tool restriction, context isolation)

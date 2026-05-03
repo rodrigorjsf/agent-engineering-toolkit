@@ -8,6 +8,7 @@ Source: docs/cursor/rules/rules.md, Industry Research (research-context-engineer
 ## Contents
 
 - Hard limits table (frontmatter validity, line counts)
+- Deletion test (ETH Zurich evidence: −3% success / +20% cost)
 - Bloat indicators table (broad globs, duplicates, vague instructions, oversized always-apply rules)
 - Staleness indicators table (globs matching no files, removed conventions)
 - Activation-mode appropriateness table

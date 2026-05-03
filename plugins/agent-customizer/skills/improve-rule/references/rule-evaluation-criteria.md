@@ -8,6 +8,7 @@ Source: memory/how-claude-remembers-a-project.md
 ## Contents
 
 - Hard limits table (frontmatter validity, line counts)
+- Deletion test (ETH Zurich evidence: −3% success / +20% cost)
 - Bloat indicators table (broad globs, duplicates, vague instructions)
 - Staleness indicators table (paths matching no files, removed conventions)
 - Quality assessment (path specificity, actionability, scope separation)

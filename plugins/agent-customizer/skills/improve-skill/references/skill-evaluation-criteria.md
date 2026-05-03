@@ -8,6 +8,7 @@ Source: skills/skill-authoring-best-practices.md, Evaluating-AGENTS-paper.md
 ## Contents
 
 - Hard limits table (file length, frontmatter, phases)
+- Deletion test (ETH Zurich evidence: −3% success / +20% cost)
 - Bloat indicators table (inlined content, over-specification)
 - Staleness indicators table (deprecated fields, outdated paths)
 - Progressive disclosure assessment (phases, reference loading)

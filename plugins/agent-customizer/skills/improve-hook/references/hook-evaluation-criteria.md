@@ -8,6 +8,7 @@ Source: hooks/claude-hook-reference-doc.md, hooks/automate-workflow-with-hooks.m
 ## Contents
 
 - Hard limits table (JSON validity, recognized events, valid matchers)
+- Deletion test (ETH Zurich evidence: −3% success / +20% cost)
 - Bloat indicators table (overly broad matchers, redundant hooks)
 - Staleness indicators table (deprecated events, invalid tools)
 - Quality assessment (event selection, error handling, security)
