@@ -4,7 +4,7 @@ Complete checklist of expected results, the known-accepted exceptions, and the f
 template for the `cursor-customizer-quality-gate` meta-skill.
 
 Source: `.claude/rules/cursor-plugin-skills.md`, `.claude/rules/reference-files.md`,
-`plugins/cursor-customizer/CLAUDE.md`, `docs/adr/0001-cursor-distribution-rules-first.md`,
+`plugins/cursor-customizer/CONVENTIONS.md`, `docs/adr/0001-cursor-distribution-rules-first.md`,
 `docs/adr/0002-product-strict-research-foundation.md`,
 `docs/adr/0003-cursor-skills-default-path.md`.
 

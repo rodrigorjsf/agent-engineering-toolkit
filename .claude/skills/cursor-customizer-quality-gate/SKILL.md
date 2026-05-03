@@ -15,7 +15,7 @@ whether all 8 skills are structurally capable of passing all test scenarios.
 
 **Convention sources:**
 `.claude/rules/cursor-plugin-skills.md`, `.claude/rules/reference-files.md`,
-`plugins/cursor-customizer/CLAUDE.md`, `docs/adr/0001-cursor-distribution-rules-first.md`,
+`plugins/cursor-customizer/CONVENTIONS.md`, `docs/adr/0001-cursor-distribution-rules-first.md`,
 `docs/adr/0002-product-strict-research-foundation.md`,
 `docs/adr/0003-cursor-skills-default-path.md`.
 

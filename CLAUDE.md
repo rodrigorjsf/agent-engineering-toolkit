@@ -30,7 +30,7 @@ Each skill directory contains:
 - Rules and review instructions describe **current** patterns — user `*.prd.md`/`*.plan.md` files may extend or override conventions for new scope. When new scope is adopted, update affected rules and instructions to reflect the evolved patterns.
 
 See `plugins/agents-initializer/CLAUDE.md` for plugin-specific conventions.
-See `plugins/cursor-customizer/CLAUDE.md` for cursor-customizer plugin conventions.
+See `plugins/cursor-customizer/CONVENTIONS.md` for cursor-customizer plugin conventions.
 See `plugins/agent-customizer/CLAUDE.md` for agent-customizer plugin conventions.
 
 ## Knowledge Lookup
