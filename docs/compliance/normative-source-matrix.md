@@ -120,6 +120,9 @@ When multiple sources could apply to an artifact, use this precedence order:
 | `rule:cursor-agent-files` | `.claude/rules/cursor-agent-files.md` | Cursor agent definitions |
 | `rule:reference-files` | `.claude/rules/reference-files.md` | All reference files |
 | `rule:readme-files` | `.claude/rules/readme-files.md` | All README files |
+| `rule:wiki-routing` | `.claude/rules/wiki-routing.md` | Wiki-first knowledge lookup contract |
+| `rule:compliance-maintenance` | `.claude/rules/compliance-maintenance.md` | Compliance docs, drift manifests, parity |
+| `rule:plugin-versioning` | `.claude/rules/plugin-versioning.md` | Plugin and marketplace manifest SemVer |
 
 <!-- RAG rules and reindex hook removed per ADR-0004. -->
 
@@ -221,6 +224,7 @@ When multiple sources could apply to an artifact, use this precedence order:
 |----------|----------------|-------------------|---------------|-------------------|
 | `rule` | `CLAUDE-MEMORY` | `PROJECT-DESIGN-GUIDELINES` | `instr:rules` | — |
 | `instruction` | `PROJECT-DESIGN-GUIDELINES` | `SHARED-AUTHORING` | — | — |
+| `skill` | `SHARED-SKILLS-STD`, `SHARED-AUTHORING`, `PROJECT-DESIGN-GUIDELINES` | `GENERAL-AGENTS-GUIDE` | `instr:skill-files` | `CLAUDE-*`-only Primary, `CURSOR-*`-only Primary, end-user platform-target source bundles |
 | `config-file` (root) | `CLAUDE-MEMORY`, `PROJECT-DESIGN-GUIDELINES` | `GENERAL-AGENTS-GUIDE` | `instr:plugin-config` | — |
 | `docs` | Per-subdirectory scope (see catalog) | `PROJECT-DESIGN-GUIDELINES` | `instr:documentation` | Completed PRPs, historical plans |
 | `readme` (root) | `PROJECT-DESIGN-GUIDELINES` | — | `rule:readme-files`, `instr:readme-files` | Per-plugin detail |
