@@ -4,19 +4,15 @@ Reference for generating and evaluating `.cursor/rules/` files. Source: [cursor.
 
 ## File Format
 
-Cursor rules are markdown files in `.cursor/rules/` with optional `.mdc` extension for frontmatter support. Both `.md` and `.mdc` extensions are supported.
+Cursor rules are markdown files in `.cursor/rules/` with optional `.mdc` extension for frontmatter support. Both `.md` and `.mdc` are supported.
 
-### Frontmatter Fields (ONLY these three are valid)
+### Frontmatter Fields (only these three valid)
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `description` | string | Tells the agent what this rule is about — used for "Apply Intelligently" mode |
-| `alwaysApply` | boolean | When `true`, rule loads on every conversation. When `false`, agent decides based on description |
-| `globs` | string or array | File patterns that trigger auto-attachment (e.g., `"**/*.test.ts"` or `["*.py", "*.pyi"]`) |
+- `description` (string) — what the rule is about; used for "Apply Intelligently" mode
+- `alwaysApply` (boolean) — `true` loads on every conversation; `false` lets agent decide based on description
+- `globs` (string or array) — file patterns that trigger auto-attachment (e.g., `"**/*.test.ts"` or `["*.py", "*.pyi"]`)
 
-### The Four Activation Modes
-
-Rules behave differently based on which frontmatter fields are set:
+### Four Activation Modes
 
 | Mode | `alwaysApply` | `globs` | `description` | When it loads |
 |------|:---:|:---:|:---:|:---|
@@ -27,30 +23,17 @@ Rules behave differently based on which frontmatter fields are set:
 
 ### Best Practices
 
-- Cursor generally allows larger rules, but this toolkit enforces a stricter ≤200-line limit per file
-- Split anything approaching 200 lines into multiple composable rules
+- This toolkit enforces ≤200-line limit per file (Cursor allows more); split larger rules into composable ones
 - Provide concrete examples or reference files
 - Write rules like clear internal docs — avoid vague guidance
 - Reference files instead of copying their contents
 - Start simple — add rules only when the agent makes the same mistake repeatedly
 
-### What NOT to Put in Rules
+### Rules vs AGENTS.md
 
-- Entire style guides (use a linter instead)
-- Every possible command (the agent knows common tools)
-- Instructions for edge cases that rarely apply
-- Content that duplicates what's in your codebase
+Use `.cursor/rules/` when you need metadata-controlled activation (globs, description), auto-attachment based on file patterns, different activation modes per content, or folder-organized rules. Use `AGENTS.md` for simple, portable, always-loaded instructions that other tools also consume.
 
-### When to Use Rules vs AGENTS.md
-
-| Use `.cursor/rules/` when... | Use `AGENTS.md` when... |
-|-------------------------------|-------------------------|
-| You need metadata-controlled activation (globs, description) | You want simple, portable, readable instructions |
-| You want auto-attachment based on file patterns | The project also needs AGENTS.md for other tools |
-| You need different activation modes for different content | All instructions should always load |
-| You want to organize rules in folders | You prefer a single-file approach |
-
-### File Example
+### Example
 
 ```
 ---
