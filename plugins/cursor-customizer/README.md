@@ -9,8 +9,8 @@ The plugin will cover all four Cursor artifact types through eight skills: `crea
 This plugin analyzes your entire codebase and evaluates artifacts against the documentation corpus before generating or improving them.
 Execution cost scales with project size and the number of artifacts — a large project with many existing skills, hooks, and rules can be expensive to run.
 
-**Recommended model:** Claude Opus delivers the best analysis quality for this workload.
-**Viable alternative:** Claude Sonnet with High effort produces decent results at lower cost.
+**Recommended model:** a frontier reasoning model delivers the best analysis quality for this workload.
+**Viable alternative:** a frontier balanced model with high effort produces decent results at lower cost.
 
 **Usage pattern:** run each skill once per artifact, or when the artifact or its source documentation has changed significantly.
 Not on every session.
