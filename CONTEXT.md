@@ -72,6 +72,10 @@ _Avoid_: wiki-only (the `docs/` fallback still exists for uncovered topics)
 Branding rule for Cursor distribution artifacts: zero textual references to Claude Code, `.claude/`, `CLAUDE.md`, `tools:` whitelists, `maxTurns:`, `paths:` frontmatter, or any other Claude Code-specific construct. Vendor-neutral research (ETH study, "Lost in the Middle", "Effective Context Engineering") may be cited as "Industry Research" without product branding.
 _Avoid_: claude-free, vendor-pure (these miss the product-vs-research distinction)
 
+**Two-layer standalone scope (Standalone distribution stance)**:
+Compliance split for standalone-bundle artifacts (see ADR-0005). The **skill body** (SKILL.md prose, references) must remain platform-agnostic and source only from `SHARED-*` and `GENERAL-*` IDs. The **templates** (`assets/templates/`) MAY embed platform-specific format only if the skill's `name` declares that platform target — e.g. `init-claude` is allowed `CLAUDE-*` template content, a platform-neutral skill is not. The skill's `name` field is the canonical platform-target declaration.
+_Avoid_: layered scope (too generic), output exception (misses that the split is name-keyed, not blanket)
+
 ## Relationships
 
 - A **Distribution** owns at most one **Initializer** and at most one **Customizer**.
