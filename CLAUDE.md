@@ -35,13 +35,7 @@ See `plugins/agent-customizer/CLAUDE.md` for agent-customizer plugin conventions
 
 ## Knowledge Lookup
 
-This repo follows a wiki-first lookup contract (see ADR-0004 and `.claude/rules/wiki-routing.md`):
-
-1. **Wiki index** — read `wiki/knowledge/index.md` first to find candidate pages.
-2. **Wiki page** — read the specific `wiki/knowledge/<slug>.md` and follow `[[wiki-link]]` cross-references.
-3. **Source documents** — fall through to `docs/` only when the wiki lacks coverage. Treat `docs/` as immutable raw input.
-
-Page format and citation rules live in `wiki/CLAUDE.md`. Ingest and lint workflows live in their own skills (`/wiki-ingest`, `/wiki-lint`). When the wiki lacks coverage, prefer ingesting the relevant `docs/` source via `/wiki-ingest` over instructing agents to re-read raw documents repeatedly.
+Wiki-first lookup — see `.claude/rules/wiki-routing.md` and ADR-0004 for the lookup contract; format/citation rules in `wiki/CLAUDE.md`.
 
 ## Documentation
 
