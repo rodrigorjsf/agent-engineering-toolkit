@@ -49,7 +49,7 @@ When multiple sources could apply to an artifact, use this precedence order:
 | `cursor-initializer` | Cursor IDE plugin | `plugins/cursor-initializer/` | Cursor | `.cursor-plugin` |
 | `cursor-customizer` | Cursor IDE plugin | `plugins/cursor-customizer/` | Cursor | `.cursor-plugin` |
 | `standalone` | Portable skills | `skills/` | Any AI tool | None |
-| `repository-global` | Governance artifacts | Root, `.claude/rules/`, `.github/instructions/`, `docs/` | All | N/A |
+| `repository-global` | Governance artifacts | Root, `.claude/rules/`, `.claude/skills/`, `.github/instructions/`, `docs/` | All | N/A |
 
 ---
 
