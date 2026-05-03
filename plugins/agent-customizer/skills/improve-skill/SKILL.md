@@ -81,7 +81,7 @@ Drop Phase 3a references. Read:
 - `${CLAUDE_SKILL_DIR}/references/behavioral-guidelines.md` — Karpathy-aligned behavior and safe persuasion patterns for skills
 - `${CLAUDE_SKILL_DIR}/references/prompt-engineering-strategies.md` — skill-specific prompting strategies
 
-Create improvement plan: **Removals** (bloat: inlined content, over-specified instructions; stale: broken agent refs; duplicates); **Refactoring** (progressive disclosure, phase consolidation, reference paths); **Additions** (missing sections — suggest Hard Rules/Preflight only for user-facing skills, not analysis-only). If all categories yield zero items, conclude "No improvements needed" and proceed to Phase 5.
+Create improvement plan: **Removals** (bloat: inlined content, over-specified instructions; stale: broken agent refs, removed tools; duplicates); **Refactoring** (progressive disclosure, phase consolidation, reference paths); **Additions** (missing sections — suggest Hard Rules/Preflight only for user-facing skills, not analysis-only). If all categories yield zero items, conclude "No improvements needed" and proceed to Phase 5.
 
 ### Phase 4: Self-Validation
 
