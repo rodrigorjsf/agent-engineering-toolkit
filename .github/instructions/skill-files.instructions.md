@@ -16,7 +16,7 @@ Flag any SKILL.md missing frontmatter or violating these constraints.
 
 - Body must be under 500 lines total
 - Must define a clear phase-based workflow (Phase 1, Phase 2, etc.)
-- Must encode behavioral discipline equivalent to the Karpathy guidelines: surface assumptions, prefer the simplest complete path, keep changes surgical, and define explicit validation targets
+- Skills MUST encode the behavioral discipline defined in `.github/instructions/karpathy-guidelines.instructions.md` (assumptions-first, simplest path, surgical changes, validation targets).
 - If persuasion patterns are used, they must be framed only as support for legitimate, beneficial, well-scoped work — never to bypass safeguards or refusals
 - Must include a self-validation phase that reads the relevant `references/*validation-criteria.md` file for that skill
 - Reference files must be loaded conditionally using the platform-appropriate skill-root path convention

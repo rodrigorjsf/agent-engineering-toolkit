@@ -9,6 +9,7 @@ paths:
 - Never add inline bash analysis here — subagent delegation keeps the orchestrator context clean
 - Reference agents by registered name (e.g., "Delegate to the `artifact-analyzer` agent with this task:")
 - `references/` directory MUST exist alongside SKILL.md and contain evidence-based guidance files
+- Skills MUST encode the behavioral discipline defined in `.github/instructions/karpathy-guidelines.instructions.md` (assumptions-first, simplest path, surgical changes, validation targets).
 - `assets/templates/` directory MUST exist alongside SKILL.md and contain output templates
 - Bundled files in Cursor SKILL.md files MUST be referenced with relative paths from the skill root (`references/...`, `assets/templates/...`), not `${CLAUDE_SKILL_DIR}`
 - Self-validation phase MUST read `references/validation-criteria.md` and loop until all checks pass
