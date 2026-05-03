@@ -3,21 +3,15 @@
 Token-budget and attention guidance for AGENTS.md / CLAUDE.md files.
 Source: research-context-engineering-comprehensive.md.
 
-Hard limits live in `validation-criteria.md`. Bloated files cause Claude to ignore actual instructions: if Claude keeps doing something despite a rule against it, the file is probably too long. (Anthropic Best Practices)
-
----
+Hard limits live in `validation-criteria.md`. Bloated files cause Claude to ignore actual instructions. (Anthropic Best Practices)
 
 ## Attention Budget
 
-Context is finite with diminishing returns; every new token depletes the attention budget. Transformers form n² pairwise relationships, so attention stretches as context grows. Goal: smallest set of high-signal tokens that maximize the desired outcome. As context grows, recall accuracy decreases ("context rot"). (Anthropic Engineering: Effective Context Engineering)
-
----
+Context is finite with diminishing returns. Transformers form n² pairwise relationships, so attention stretches as context grows. Goal: smallest set of high-signal tokens that maximize the desired outcome. Recall accuracy decreases as context grows ("context rot"). (Anthropic Engineering: Effective Context Engineering)
 
 ## Lost in the Middle
 
 Place the most important instructions in the first 20% and last 20% of each file. Performance is highest at start and end; degrades for information buried in the middle. (Liu et al., arXiv:2307.03172)
-
----
 
 ## Quality Over Quantity
 
@@ -25,15 +19,11 @@ Apply the deletion test: "Would removing this cause the agent to make mistakes? 
 
 *Source: research-context-engineering-comprehensive.md lines 113-134*
 
----
-
 ## Context Poisoning Vectors
 
-Detect and remove: stale file paths (check existence; remove or update); contradictions (drop the weaker rule); over-specification (rules already followed; delete or convert to hook); failed-approach accumulation (defensive rules added after incidents); high-churn data (versions, file counts, team names — remove or replace with a pointer). Treat CLAUDE.md like code: review when things go wrong, prune regularly. (Anthropic Best Practices)
+Detect and remove: stale file paths; contradictions (drop the weaker rule); over-specification (rules already followed; delete or convert to hook); failed-approach accumulation (defensive rules added after incidents); high-churn data (versions, file counts, team names). Treat CLAUDE.md like code: review when things go wrong, prune regularly. (Anthropic Best Practices)
 
 *Source: research-context-engineering-comprehensive.md lines 213-253*
-
----
 
 ## JIT Documentation
 
