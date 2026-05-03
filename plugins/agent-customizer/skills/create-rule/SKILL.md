@@ -55,7 +55,7 @@ The agent runs on Sonnet with read-only tools (Read, Grep, Glob, Bash) in an iso
 
 ### Phase 2: Generate Rule
 
-Before generating, read these reference documents:
+Drop any references from Phase 1. Read these reference documents:
 
 - `${CLAUDE_SKILL_DIR}/references/rule-authoring-guide.md` — when to use rules, path-scoping, glob syntax, and anti-patterns
 - `${CLAUDE_SKILL_DIR}/references/prompt-engineering-strategies.md` — rule-specific prompting (zero-shot, no examples in rules)

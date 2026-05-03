@@ -67,13 +67,22 @@ Wait for it to complete and parse its structured output.
 
 ### Phase 3: Generate Improvement Plan
 
-Read these reference documents:
+#### Phase 3a: Diagnose
+
+Drop any references from Phases 1–2. Read these references:
 
 - `${CLAUDE_SKILL_DIR}/references/rule-authoring-guide.md` — when to use rules, path-scoping, glob syntax, anti-patterns
 - `${CLAUDE_SKILL_DIR}/references/rule-evaluation-criteria.md` — bloat/staleness indicators, quality rubric
+
+Identify all issues from both agent reports: bloat, stale patterns, missing path-scoping, contradictions. Do not yet write the full improvement plan.
+
+#### Phase 3b: Plan
+
+Drop Phase 3a references. Read this reference:
+
 - `${CLAUDE_SKILL_DIR}/references/prompt-engineering-strategies.md` — rule-specific prompting (zero-shot only)
 
-Based on both agent reports, create improvement plan with categories:
+Based on Phase 3a findings, create improvement plan with categories:
 
 1. **Removals** — bloat (instructions Claude already knows), stale patterns (globs matching no files), duplicates with other rules
 2. **Refactoring** — split oversized files, add path-scoping frontmatter, tighten glob patterns, resolve contradictions

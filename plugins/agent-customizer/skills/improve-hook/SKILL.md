@@ -69,14 +69,23 @@ Wait for it to complete and parse its structured output.
 
 ### Phase 3: Generate Improvement Plan
 
-Read these reference documents:
+#### Phase 3a: Diagnose
+
+Drop any references from Phases 1–2. Read these references:
 
 - `${CLAUDE_SKILL_DIR}/references/hook-authoring-guide.md` — when to use hooks, 4 handler types, exit codes, security
 - `${CLAUDE_SKILL_DIR}/references/hook-evaluation-criteria.md` — bloat/staleness indicators, quality rubric
+
+Identify all issues from both agent reports: invalid events, redundant hooks, exit code misuse, security problems. Do not yet write the full improvement plan.
+
+#### Phase 3b: Plan
+
+Drop Phase 3a references. Read these references:
+
 - `${CLAUDE_SKILL_DIR}/references/hook-events-reference.md` — all 22 events, matchers, JSON schema
 - `${CLAUDE_SKILL_DIR}/references/prompt-engineering-strategies.md` — hook-specific prompting
 
-Based on both agent reports, create improvement plan with categories:
+Based on Phase 3a findings, create improvement plan with categories:
 
 1. **Removals** — invalid events, redundant hooks, observation-only hooks replaceable by rules
 2. **Refactoring** — tighten overly broad matchers, fix exit code misuse, correct script paths

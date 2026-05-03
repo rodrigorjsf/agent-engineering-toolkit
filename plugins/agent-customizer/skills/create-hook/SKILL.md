@@ -57,27 +57,28 @@ The agent runs on Sonnet with read-only tools (Read, Grep, Glob, Bash) in an iso
 
 ### Phase 2: Generate Hook
 
-Before generating, read these reference documents:
+#### Phase 2a: Load Context
+
+Drop any references from Phase 1. Read these references:
 
 - `${CLAUDE_SKILL_DIR}/references/hook-authoring-guide.md` — when to use hooks, 4 handler types, exit code semantics, blocking vs non-blocking behavior
 - `${CLAUDE_SKILL_DIR}/references/hook-events-reference.md` — all 22 valid events, matcher fields per event, full JSON schema
+
+Verify the selected event supports the requested handler type using the handler support matrix. If unsupported, stop and ask the user to change the event or handler choice. Determine target location (`.claude/settings.json`, `.claude/settings.local.json`, or `hooks/hooks.json`) and hook script paths.
+
+#### Phase 2b: Apply Patterns
+
+Drop Phase 2a references. Read this reference:
+
 - `${CLAUDE_SKILL_DIR}/references/prompt-engineering-strategies.md` — hook-specific prompting (zero-shot only for hooks)
 
 Read `${CLAUDE_SKILL_DIR}/assets/templates/hook-config.md` and fill its placeholders using:
 
 - User requirements for the new hook (event, purpose, handler type)
 - Phase 1 analysis output (existing hooks, coverage gaps)
-- Evidence from the reference files above
+- Decisions from Phase 2a (event validation, target location, handler type)
 
 For blocking pre-write hooks, translate the user intent into an explicit write-tool matcher instead of a wildcard or omitted matcher. Use a concrete matcher pattern for write-capable tools in the target environment (for example `Write|Edit|Create`) and keep it specific to the operations that should block.
-
-Before choosing the handler, verify in `hook-events-reference.md` that the selected event supports it. If the selected event only supports `command`, do not generate `http`, `prompt`, or `agent` guidance for that hook. If the requested handler is unsupported, stop and ask the user to change the event or handler choice.
-
-Choose the target location based on the requested scope:
-
-- `.claude/settings.json` — committed project hook
-- `.claude/settings.local.json` — local-only hook
-- `hooks/hooks.json` — plugin-bundled hook
 
 In a monorepo with multiple service packages, hook script paths must be workspace-relative (e.g., `packages/api/scripts/validate.sh`, not just `scripts/validate.sh`). Confirm the correct path from the Phase 1 analysis before writing.
 
