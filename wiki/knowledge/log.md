@@ -2,6 +2,17 @@
 
 ---
 
+## 2026-05-03 — Update: compliance-routing (register cursor-customizer scope)
+
+**Page updated (1):** `compliance-routing.md`
+
+**Changes:**
+- Updated Routing Decision Table row for Cursor IDE plugins: expanded from `cursor-initializer` only to `cursor-initializer`, `cursor-customizer`, and updated the label to plural "Cursor IDE plugins". Both Cursor plugins now route to `cursor-plugin-bundle`.
+
+**Why:** CF-GOV-005 (issue #106 / XC-9) — `cursor-customizer` shipped but was absent from all scope-tracking artifacts.
+
+---
+
 ## 2026-05-03 — Update: validation-routing-standalone (ADR-0005 follow-ups)
 
 **Page updated (1):** `validation-routing-standalone.md`

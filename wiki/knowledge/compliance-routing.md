@@ -17,7 +17,7 @@ Before loading any platform-specific conventions, identify your validation scope
 | Scope | Named Bundle | Primary Source Dirs | Forbidden Sources |
 |-------|-------------|---------------------|-------------------|
 | Claude Code plugins (`agents-initializer`, `agent-customizer`) | `claude-plugin-bundle` | `docs/claude-code/`, `docs/general-llm/`, `docs/shared/` | All `docs/cursor/**`, all `CURSOR-*` sources |
-| Cursor IDE plugin (`cursor-initializer`) | `cursor-plugin-bundle` | `docs/cursor/`, `docs/general-llm/`, `docs/shared/` | All `docs/claude-code/**`, all `CLAUDE-*` sources |
+| Cursor IDE plugins (`cursor-initializer`, `cursor-customizer`) | `cursor-plugin-bundle` | `docs/cursor/`, `docs/general-llm/`, `docs/shared/` | All `docs/claude-code/**`, all `CLAUDE-*` sources |
 | Standalone skills (`skills/`) | `standalone-bundle` | `docs/shared/`, `docs/general-llm/`, `skills/` | All `docs/claude-code/**`, all `docs/cursor/**`, all `CLAUDE-*`, all `CURSOR-*`, hook/subagent-specific guidance |
 | Repository governance | `governance-bundle` | `DESIGN-GUIDELINES.md`, `docs/claude-code/memory/`, `docs/general-llm/` | Completed PRPs, historical plans, `next-steps.md` |
 | Claude Code plugins (agent-customizer only) | `agent-customizer-bundle` (extends `claude-plugin-bundle`) | All `claude-plugin-bundle` sources + `docs/claude-code/hooks/`, `.github/instructions/rules.instructions.md` | All `docs/cursor/**` |
