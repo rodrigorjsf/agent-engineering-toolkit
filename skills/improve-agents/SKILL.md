@@ -118,10 +118,8 @@ For each deletion, document: the specific content being removed, WHY the agent d
 When generating new or restructured files, use these templates for consistent structure:
 
 - Root AGENTS.md: Read `assets/templates/root-agents-md.md`
-- Scoped AGENTS.md: Read `assets/templates/scoped-agents-md.md`
+- Scoped AGENTS.md (monorepo packages): Read `assets/templates/scoped-agents-md.md`
 - Domain docs: Read `assets/templates/domain-doc.md`
-- .claude/rules/ files (from automation migration): Read `assets/templates/claude-rule.md`
-- Skills (from automation migration): Read `assets/templates/skill.md`
 
 ### Phase 4: Self-Validation
 

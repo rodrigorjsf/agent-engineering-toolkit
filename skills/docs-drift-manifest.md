@@ -2,7 +2,7 @@
 
 Centralized registry of all reference file → source doc mappings for drift detection
 across all skills in the `skills/` standalone distribution.
-Updated: 2026-04-20
+Updated: 2026-05-03
 
 ## Contents
 
@@ -36,14 +36,14 @@ or manually.
 | `init-claude/references/scope-detector.md` | `plugins/agents-initializer/agents/scope-detector.md` | baseline |
 | `init-claude/references/validation-criteria.md` | `plugins/agents-initializer/agents/file-evaluator.md` (lines 23-59) | baseline |
 | `init-claude/references/what-not-to-include.md` | `docs/general-llm/research-context-engineering-comprehensive.md` (lines 112-121), `docs/general-llm/Evaluating-AGENTS-paper.md` (abstract) | baseline |
-| `improve-agents/references/automation-migration-guide.md` | `.claude/PRPs/prds/completed/context-aware-improve-optimization.prd.md`, `docs/analysis/analysis-automate-workflow-with-hooks.md`, `docs/analysis/analysis-skill-authoring-best-practices.md`, `docs/analysis/analysis-how-claude-remembers-a-project.md` | baseline |
+| `improve-agents/references/automation-migration-guide.md` | `.claude/PRPs/prds/completed/context-aware-improve-optimization.prd.md`, `docs/analysis/analysis-skill-authoring-best-practices.md`, `docs/analysis/analysis-how-claude-remembers-a-project.md`, `docs/general-llm/research-context-engineering-comprehensive.md` | diverged — cross-platform AGENTS.md only; hook/subagent rows removed; see `improve-claude` for Claude-aware version |
 | `improve-agents/references/codebase-analyzer.md` | `plugins/agents-initializer/agents/codebase-analyzer.md` | baseline |
 | `improve-agents/references/context-optimization.md` | `docs/general-llm/research-context-engineering-comprehensive.md` | baseline |
-| `improve-agents/references/evaluation-criteria.md` | `plugins/agents-initializer/agents/file-evaluator.md`, `docs/general-llm/research-context-engineering-comprehensive.md` | baseline |
-| `improve-agents/references/file-evaluator.md` | `plugins/agents-initializer/agents/file-evaluator.md` | baseline |
+| `improve-agents/references/evaluation-criteria.md` | `plugins/agents-initializer/agents/file-evaluator.md`, `docs/general-llm/research-context-engineering-comprehensive.md` | diverged — AGENTS.md-only automation signals; hook/subagent candidates replaced with subdirectory AGENTS.md; see `improve-claude` for Claude-aware version |
+| `improve-agents/references/file-evaluator.md` | `plugins/agents-initializer/agents/file-evaluator.md` | diverged — AGENTS.md-only: removes `.claude/rules/` from file search, replaces hook/subagent automation indicators with subdirectory AGENTS.md; see `improve-claude` for Claude-aware version |
 | `improve-agents/references/progressive-disclosure-guide.md` | `docs/general-llm/a-guide-to-agents.md`, `docs/general-llm/research-context-engineering-comprehensive.md` (inline citations) | baseline |
-| `improve-agents/references/validation-criteria.md` | `plugins/agents-initializer/agents/file-evaluator.md` (lines 23-59) | baseline |
-| `improve-agents/references/what-not-to-include.md` | `docs/general-llm/research-context-engineering-comprehensive.md` (lines 112-121), `docs/general-llm/Evaluating-AGENTS-paper.md` (abstract) | baseline |
+| `improve-agents/references/validation-criteria.md` | `plugins/agents-initializer/agents/file-evaluator.md` (lines 23-59) | diverged — CLAUDE.md-specific structural checks replaced with AGENTS.md-only checks (subdirectory AGENTS.md, domain docs); see `improve-claude` for Claude-aware version |
+| `improve-agents/references/what-not-to-include.md` | `docs/general-llm/research-context-engineering-comprehensive.md` (lines 112-121), `docs/general-llm/Evaluating-AGENTS-paper.md` (abstract) | diverged — hook-enforced behaviors row replaced with tooling-enforced; exclusion actions table de-duplicated and updated for AGENTS.md mechanisms; see `improve-claude` for Claude-aware version |
 | `improve-claude/references/automation-migration-guide.md` | `.claude/PRPs/prds/completed/context-aware-improve-optimization.prd.md`, `docs/analysis/analysis-automate-workflow-with-hooks.md`, `docs/analysis/analysis-skill-authoring-best-practices.md`, `docs/analysis/analysis-how-claude-remembers-a-project.md` | baseline |
 | `improve-claude/references/claude-rules-system.md` | `docs/claude-code/memory/how-claude-remembers-a-project.md`, `docs/general-llm/research-context-engineering-comprehensive.md` (inline citations) | baseline |
 | `improve-claude/references/codebase-analyzer.md` | `plugins/agents-initializer/agents/codebase-analyzer.md` | baseline |

@@ -76,9 +76,7 @@ Flag instructions that are candidates for migration to on-demand mechanisms:
 
 | Indicator | Migration Type | Flag As |
 |-----------|---------------|---------|
-| Instructions with specific file patterns (globs) | Path-scoped rule | `RULE_CANDIDATE` |
-| Formatting/blocking/notification enforcement | Hook | `HOOK_CANDIDATE` |
-| "Always"/"never" deterministic enforcement semantics | Hook | `HOOK_CANDIDATE` |
+| Instructions specific to one package or scope | Subdirectory AGENTS.md | `RULE_CANDIDATE` |
 | Domain knowledge or workflow blocks >50 lines | Skill | `SKILL_CANDIDATE` |
 | Content agents can infer from code | Deletion | `DELETE_CANDIDATE` |
 | Instructions duplicated across multiple files | Consolidation | `CONSOLIDATE` |
@@ -86,7 +84,6 @@ Flag instructions that are candidates for migration to on-demand mechanisms:
 | Standard default commands (e.g., `npm test`, `cargo build`, `go test ./...`) | Agent knows platform defaults from training | `DELETE_CANDIDATE` |
 
 *Source: automation-migration-guide.md lines 58-72*
-**Standalone Distribution Note**: This evaluation runs in the standalone distribution where hooks and subagents are not available. Continue flagging `HOOK_CANDIDATE` items — the signal identifies enforcement-like instructions that should migrate. The improve skill's Phase 3 will reclassify these to `RULE_CANDIDATE` (path-specific enforcement under 50 lines) or `SKILL_CANDIDATE` (workflow-based enforcement) before presenting suggestions.
 
 ---
 
@@ -98,8 +95,7 @@ Search for:
 
 - `AGENTS.md` files at any depth
 - `CLAUDE.md` files at any depth
-- `.claude/rules/*.md` files (Claude Code path-scoped rules)
-- `.claude/CLAUDE.md` (project-level Claude Code config)
+- Subdirectory configuration files (scope-specific AGENTS.md for monorepos)
 
 ### 2. Per-File Analysis
 

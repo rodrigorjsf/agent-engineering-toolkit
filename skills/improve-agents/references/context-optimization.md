@@ -91,7 +91,7 @@ Detect and remove these before generating or improving configuration files:
 |---------------|-----------|-----|
 | Stale file paths | Check if referenced paths actually exist | Remove or update |
 | Contradictions | Compare instructions across all files | Remove the weaker/older rule |
-| Over-specification | Count lines; check if agent already follows rule | Delete or convert to hook |
+| Over-specification | Count lines; check if agent already follows rule | Delete or move to subdirectory AGENTS.md |
 | Failed approach accumulation | Look for rules added defensively after incidents | Remove rules that shouldn't be needed |
 | High-churn information | Look for version numbers, file counts, team names | Remove or move to a pointer |
 
