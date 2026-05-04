@@ -39,7 +39,6 @@ A skill violating any hard limit is flagged **OVER LIMIT** regardless of content
 |-----------|---------------|
 | Detailed reference content inlined in SKILL.md | Should be in `references/` subdirectory; loaded on demand |
 | All references loaded in phase 1 (not progressive) | Wastes context budget; load references only in relevant phase |
-| Inline bash analysis commands in plugin skill body | Plugin skills MUST delegate to registered agents; inline bash is a convention violation |
 | Redundant phase instructions (same guidance repeated) | Dilutes attention; each phase should add distinct value |
 | Over-specified tool restrictions for simple tasks | Correct tool access should be inferred from task type |
 | Explaining standard practices Claude already knows | "Claude is already very smart — add only novel context" |

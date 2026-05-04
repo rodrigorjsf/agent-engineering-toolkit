@@ -39,7 +39,7 @@ description: "[What this skill does and when to use it. Third person.]"
 <!-- CONDITIONAL: Check if artifact exists — redirect to improve if so -->
 
 ### Phase 1: [Analysis Phase Name]
-<!-- Delegate to appropriate subagent; if monorepo, record the target service/workspace -->
+<!-- Inline analysis steps go here -->
 
 ### Phase 2: [Generation Phase Name]
 <!-- Read references, apply templates, and use project-relative paths/globs for the detected service/workspace -->
