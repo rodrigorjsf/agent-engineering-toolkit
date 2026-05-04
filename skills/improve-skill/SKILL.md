@@ -55,7 +55,7 @@ Read `references/skill-evaluator.md` and follow its evaluation instructions to e
 
 Read `references/artifact-analyzer.md` and follow its analysis instructions.
 
-Focus on: which agents the skill delegates to and whether those agents still exist, naming conventions for similar skills, any other skills that overlap in purpose, and the plugin structure.
+Focus on: naming conventions for similar skills and any other skills that overlap in purpose.
 
 ### Phase 3: Generate Improvement Plan
 

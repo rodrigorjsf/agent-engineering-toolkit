@@ -736,13 +736,6 @@ Enforcement status per (scope × artifact type). Cells show active rule/instruct
 | cursor-initializer | agent | `r:ca` | `i:ad` | `ci:A` (A1–A5) | — | no |
 | cursor-initializer | reference | `r:rf` | `i:rf` | `ci:R` (R1–R5), `ci:X` (X1–X2) | — | no |
 | cursor-initializer | template | — | `i:tf` | `ci:T` (T1–T4), `ci:X` | — | no |
-| cursor-customizer | skill | `r:cp` | `i:sf` | `cc:P` (P1–P12) | `cc:D` (D1–D4) | no |
-| cursor-customizer | agent | `r:ca` | `i:ad` | `cc:A` (A1–A8) | `cc:D` (D1–D4) | no |
-| cursor-customizer | reference | `r:rf` | `i:rf` | `cc:R` (R1–R5), `cc:X` (X1–X19) | `cc:D` (D1–D4) | no |
-| cursor-customizer | template | — | `i:tf` | `cc:T` (T1–T7), `cc:X` | — | no |
-| cursor-customizer | drift-manifest | — | — | `cc:D` (D1–D4) | — | no |
-| cursor-customizer | plugin-manifest | — | `i:pc` | — | — | **yes** (no gate) |
-| cursor-customizer | config-file/readme | `r:rm` | `i:pc`, `i:rm` | — | — | **yes** (no gate) |
 | standalone | skill | `r:ss` | `i:sf` | `q:S` (S1–S11) | — | no |
 | standalone | reference | `r:rf` | `i:rf` | `q:R` (R1–R5), `q:X` (X1–X2) | — | no |
 | standalone | template | — | `i:tf` | `q:T` (T1–T2), `q:X` | — | no |
@@ -762,7 +755,6 @@ Enforcement status per (scope × artifact type). Cells show active rule/instruct
 | agent-customizer | `.claude/skills/agent-customizer-quality-gate/` | ✅ P1–P12, A1–A6, R1–R5, M1–M3 | ✅ X1–X14, T1–T3 | ✅ D1–D3 | ✅ G1–G4 | Full coverage |
 | cursor-customizer | `.claude/skills/cursor-customizer-quality-gate/` | ✅ P1–P12, A1–A8, R1–R5, T1–T7, M1–M3, DM1–DM3, S1 | ✅ X1–X19 | ✅ D1–D4 | ✅ G1–G4 | Full coverage |
 | cursor-initializer | `.claude/skills/cursor-initializer-quality-gate/` | ✅ P1–P10, A1–A5, R1–R5 | ✅ X1–X2, T1–T4 | ❌ none | ✅ G1–G4 | No drift detection |
-| cursor-customizer | `.claude/skills/cursor-customizer-quality-gate/` | ✅ P1–P12, A1–A8, R1–R5 | ✅ T1–T7, X1–X19 | ✅ D1–D4 | ✅ G1–G4 | Full coverage |
 | standalone | `.claude/skills/quality-gate/` (shared) | ✅ S1–S11, R1–R5 | ✅ X1–X2, T1–T2 | ✅ (Phase 3, via manifest) | ✅ G1–G4 | No cursor-initializer drift |
 | repository-global | **No quality gate** | ❌ | ❌ | ❌ | ❌ | **All coverage manual** |
 

@@ -108,9 +108,7 @@ Use these patterns to move content from always-consumed to on-demand locations:
 | Pattern | How it works | Token impact |
 |---------|-------------|-------------|
 | Skills | Description loaded at start; full body loaded on invocation | On-demand |
-| Path-scoped rules | Trigger only when matching files are read | On-demand |
-| Subdirectory config files | Load when working in that directory | On-demand |
-| `@path/to/import` | Expands when parent file loads | Controlled |
+| Subdirectory AGENTS.md | Loads when working under that subdirectory | On-demand |
 | Domain docs (e.g., `docs/TESTING.md`) | Agent navigates when relevant | On-demand |
 
 > "Rather than pre-processing all relevant data up front, agents maintain lightweight identifiers and use these references to dynamically load data into context at runtime."

@@ -157,9 +157,8 @@ Return your analysis in exactly this format:
 - Line 67: "Follow best practices for error handling" — not actionable
 
 **Automation Opportunity Issues:**
-- Lines 45-60: Formatting enforcement (HOOK_CANDIDATE — deterministic behavior)
+- Lines 45-60: Scope-specific content (RULE_CANDIDATE — move to subdirectory AGENTS.md)
 - Lines 102-130: Testing domain block, 28 lines (SKILL_CANDIDATE — domain knowledge)
-- Lines 200-210: Glob-based rule "*.test.ts" (RULE_CANDIDATE — path-specific)
 
 ### Cross-File Issues
 - [List any cross-file contradictions or duplications]

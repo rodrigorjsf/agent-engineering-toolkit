@@ -89,12 +89,11 @@ Based on both analyses, create an improvement plan. Categorize actions:
 2. **Extract domain content** into docs/TESTING.md, docs/BUILD.md, etc.
 3. **Add progressive disclosure pointers** in root file to new split files
 4. **Consolidate fragmented files** that cover the same scope
-5. **Migrate automation candidates** — for each instruction flagged in Phase 1 as `HOOK_CANDIDATE`, `RULE_CANDIDATE`, or `SKILL_CANDIDATE`:
+5. **Migrate automation candidates** — for each instruction flagged in Phase 1 as `RULE_CANDIDATE` or `SKILL_CANDIDATE`:
    - Classify using the decision flowchart in automation-migration-guide.md
-   - Select target mechanism: path-scoped rule (file-pattern convention) or skill (domain knowledge/infrequent workflow)
-   - Reclassify `HOOK_CANDIDATE` items: if the behavior is path-specific and under 50 lines → `RULE_CANDIDATE`; if it is a workflow or domain block → `SKILL_CANDIDATE`
+   - Select target mechanism: subdirectory AGENTS.md or skill (domain knowledge/infrequent workflow)
    - Estimate token savings using the token impact estimation table in automation-migration-guide.md
-   - This is the standalone distribution — suggest only skills and path-scoped rules. Do not suggest hooks or subagents (these require Claude Code). When automation-migration-guide.md references hooks or subagents, substitute with the closest available mechanism.
+   - This is the standalone distribution — suggest only skills, subdirectory AGENTS.md, and domain docs. Do not suggest hooks or subagents (these require Claude Code). When automation-migration-guide.md references hooks or subagents, substitute with the closest available mechanism.
    - In calibrated mode (overall quality score ≥ 7 with no hard-limit violations), keep migration and extraction suggestions proportional to the confirmed issues. Do not create new files or migrations unless they resolve a failing criterion, and preserve non-issue sections in place.
 
 #### Redundancy Elimination (delete what agents already know)
