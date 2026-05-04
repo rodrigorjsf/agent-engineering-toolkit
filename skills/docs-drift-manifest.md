@@ -24,11 +24,11 @@ or manually.
 | Reference File | Source Docs | Status |
 |----------------|-------------|--------|
 | `init-agents/references/codebase-analyzer.md` | `plugins/agents-initializer/agents/codebase-analyzer.md` | baseline |
-| `init-agents/references/context-optimization.md` | `docs/general-llm/research-context-engineering-comprehensive.md` | baseline |
-| `init-agents/references/progressive-disclosure-guide.md` | `docs/general-llm/a-guide-to-agents.md`, `docs/general-llm/research-context-engineering-comprehensive.md` (inline citations) | baseline |
+| `init-agents/references/context-optimization.md` | `docs/general-llm/research-context-engineering-comprehensive.md` | diverged-from-init-claude — hook phrasing replaced with "rely on tooling enforcement" (XC-11/#115) |
+| `init-agents/references/progressive-disclosure-guide.md` | `docs/general-llm/a-guide-to-agents.md`, `docs/general-llm/research-context-engineering-comprehensive.md` (inline citations) | diverged-from-init-claude — CLAUDE.md-specific hierarchy section removed, claudeMdExcludes block removed, .claude/rules/ row removed from hierarchy table (XC-11/#115) |
 | `init-agents/references/scope-detector.md` | `plugins/agents-initializer/agents/scope-detector.md` | baseline |
-| `init-agents/references/validation-criteria.md` | `plugins/agents-initializer/agents/file-evaluator.md` (lines 23-59) | baseline |
-| `init-agents/references/what-not-to-include.md` | `docs/general-llm/research-context-engineering-comprehensive.md` (lines 112-121), `docs/general-llm/Evaluating-AGENTS-paper.md` (abstract) | baseline |
+| `init-agents/references/validation-criteria.md` | `plugins/agents-initializer/agents/file-evaluator.md` (lines 23-59) | diverged-from-init-claude — CLAUDE.md-specific rows deleted, hook phrasing replaced with "rely on tooling enforcement", improve-claude source ref removed (XC-11/#115) |
+| `init-agents/references/what-not-to-include.md` | `docs/general-llm/research-context-engineering-comprehensive.md` (lines 112-121), `docs/general-llm/Evaluating-AGENTS-paper.md` (abstract) | diverged-from-init-claude — Hook row removed from exclusion table, migration table rewritten to AGENTS.md-only targets (subdirectory AGENTS.md, docs/), hooks/automate-workflow-with-hooks.md source removed (XC-11/#115) |
 | `init-claude/references/claude-rules-system.md` | `docs/claude-code/memory/how-claude-remembers-a-project.md`, `docs/general-llm/research-context-engineering-comprehensive.md` (inline citations) | baseline |
 | `init-claude/references/codebase-analyzer.md` | `plugins/agents-initializer/agents/codebase-analyzer.md` | baseline |
 | `init-claude/references/context-optimization.md` | `docs/general-llm/research-context-engineering-comprehensive.md` | baseline |

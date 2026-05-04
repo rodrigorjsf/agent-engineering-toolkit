@@ -1,7 +1,7 @@
 # Progressive Disclosure Guide
 
-Evidence-based instructions for structuring AGENTS.md and CLAUDE.md hierarchies.
-Sources: a-guide-to-agents.md, research-context-engineering-comprehensive.md, memory/how-claude-remembers-a-project.md
+Evidence-based instructions for structuring AGENTS.md hierarchies.
+Sources: a-guide-to-agents.md, research-context-engineering-comprehensive.md
 
 ---
 
@@ -9,10 +9,9 @@ Sources: a-guide-to-agents.md, research-context-engineering-comprehensive.md, me
 
 - File hierarchy decision table (where to place content)
 - Root file requirements (minimal elements only)
-- Monorepo: what goes where (root vs package level, claudeMdExcludes)
+- Monorepo: what goes where (root vs package level)
 - Progressive disclosure patterns (domain files, nested docs, skills)
-- CLAUDE.md-specific hierarchy (5 scopes, @import, load order)
-- AGENTS.md-specific notes (open standard, symlinks, merging)
+- AGENTS.md-specific notes (open standard, merging)
 - Anti-patterns to detect and remove
 - Validation checklist
 
@@ -24,10 +23,9 @@ When deciding where to place content, use this table:
 
 | Location | Use when content is... | Load timing |
 |----------|------------------------|-------------|
-| Root AGENTS.md / CLAUDE.md | Relevant to **every single task** in the repo | Always (every request) |
+| Root AGENTS.md | Relevant to **every single task** in the repo | Always (every request) |
 | Separate domain file | Relevant to one domain (TypeScript, testing, API design) | On-demand |
-| Subdirectory AGENTS.md / CLAUDE.md | Specific to one package or area | On-demand when working there |
-| `.claude/rules/` (path-scoped) | Specific to certain file patterns | On-demand when files match |
+| Subdirectory AGENTS.md | Specific to one package or area | On-demand when working there |
 | Skill | A workflow the agent should invoke explicitly | On-demand when invoked |
 
 *Source: a-guide-to-agents.md lines 228-233; research-context-engineering-comprehensive.md lines 257-305*
@@ -66,16 +64,6 @@ See each package's AGENTS.md for specific guidelines.
 > "Don't overload any level. The agent sees all merged files in its context."
 > — a-guide-to-agents.md lines 164-193
 
-**`claudeMdExcludes`**: In large monorepos, skip irrelevant ancestor CLAUDE.md files via `.claude/settings.local.json`:
-
-```json
-{ "claudeMdExcludes": ["**/other-team/CLAUDE.md", "**/other-team/.claude/rules/**"] }
-```
-
-Patterns match absolute paths with glob syntax. Arrays merge across settings layers. Managed policy CLAUDE.md files cannot be excluded.
-
-*Source: memory/how-claude-remembers-a-project.md lines 243-260*
-
 ---
 
 ## Progressive Disclosure Patterns
@@ -109,32 +97,11 @@ docs/
 
 ---
 
-## CLAUDE.md-Specific Hierarchy
-
-| Scope | Location | Loads when |
-|-------|----------|------------|
-| Org-wide | Managed policy (MDM) | Always |
-| Project | `./CLAUDE.md` or `./.claude/CLAUDE.md` | Session start (always) |
-| Personal | `~/.claude/CLAUDE.md` | Session start (always) |
-| Subdirectory | `./subdir/CLAUDE.md` | When reading files in that dir |
-| Path-scoped rules | `.claude/rules/*.md` with `paths:` | When matching files are read |
-
-**Priority rule**: Minimize content in always-loaded locations. Move to on-demand locations wherever possible.
-
-**@import syntax**: CLAUDE.md files can import additional files with `@path/to/file`. Imports expand at launch alongside the importing CLAUDE.md. Relative paths resolve relative to the importing file, not CWD. Max recursion depth: 5 hops. Requires one-time user approval per project.
-
-**Load order**: Claude Code walks up the directory tree from CWD, loading every ancestor CLAUDE.md at session start. Subdirectory CLAUDE.md files load on-demand only when Claude reads files in that directory — not at launch.
-
-*Source: research-context-engineering-comprehensive.md lines 181-208, 257-305*
-
----
-
 ## AGENTS.md-Specific Notes
 
-- AGENTS.md is an **open standard** supported by most agent frameworks (not Claude Code)
-- Claude Code uses CLAUDE.md; create a symlink for cross-tool compatibility: `ln -s AGENTS.md CLAUDE.md`
-- AGENTS.md has **no `.claude/rules/` equivalent** — use subdirectory AGENTS.md files for scoped rules
+- AGENTS.md is an **open standard** supported by most agent frameworks
 - Subdirectory AGENTS.md files **merge with root** (not replace)
+- Use subdirectory AGENTS.md files for scoped, package-level rules
 
 ---
 
