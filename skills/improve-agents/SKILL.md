@@ -1,6 +1,6 @@
 ---
 name: improve-agents
-description: "Evaluates and improves existing AGENTS.md files in projects. Identifies bloat, contradictions, stale references, and missing scopes — then applies progressive disclosure refactoring based on the ETH Zurich study and context engineering research."
+description: "Evaluates and improves existing AGENTS.md files in projects. Identifies bloat, contradictions, stale references, and missing scopes — then applies progressive disclosure refactoring grounded in head-to-head agent benchmarking on context-file effectiveness."
 ---
 
 # Improve AGENTS.md
@@ -9,7 +9,7 @@ Evaluate existing AGENTS.md files against evidence-based quality criteria and ap
 
 ## Why This Matters
 
-The ETH Zurich study found that **unnecessary requirements in context files make tasks harder**. Every token in AGENTS.md is loaded on every request. Bloated files cause agents to:
+Empirical benchmarking shows that **unnecessary requirements in context files make tasks harder**. Every token in AGENTS.md is loaded on every request. Bloated files cause agents to:
 
 - Spend more steps exploring (cost +20%)
 - Follow irrelevant instructions that distract from the actual task
