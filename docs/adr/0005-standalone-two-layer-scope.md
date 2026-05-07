@@ -2,6 +2,8 @@
 
 The standalone distribution (`skills/`) hosts skills like `init-claude` and `improve-claude` whose explicit purpose is to generate Claude Code-format artifacts (`.claude/rules/*.md` with `paths:` frontmatter, `CLAUDE.md` hierarchy). The previous wording in `wiki/knowledge/validation-routing-standalone.md` listed `paths:` in any generated rule file and references to platform-specific files as forbidden contamination signals — under a literal reading those skills failed compliance by definition, contradicting the explicit catalog in `skills/README.md`. We resolve the contradiction by formally splitting the standalone-bundle into two compliance layers: the **skill body** (SKILL.md prose, references) must remain platform-agnostic and source only from `SHARED-*` and `GENERAL-*` IDs; the **templates** (`assets/templates/`) MAY embed platform-specific format **iff** the skill's `name` declares the target platform (e.g. `init-claude` is allowed `CLAUDE-*` template content, `init-agents` is allowed cross-platform AGENTS.md format, a hypothetical platform-neutral skill must keep its templates platform-neutral too).
 
+**Status: superseded by ADR-0006 (2026-05-04)**
+
 ## Why two layers, not one
 
 We considered three readings:
@@ -42,3 +44,13 @@ The contradiction was latent until the Q1 grilling round of the May 2026 alignme
 **Rationale for the split.** Reframing is only faithful when the underlying concept survives stripping platform-specific mechanics. Rules pass this test; hooks and subagents do not. Deprecating the latter preserves the override doctrine (no rename) while avoiding hollow content.
 
 **Execution.** The per-skill SKILL.md changes (reframe prose for rule skills; add deprecation notes for hook and subagent skills) are deferred to a future Slice 5 issue. This follow-up records only the decision. Full discussion: issue #113. Parent context: issue #108.
+
+## Supersession (2026-05-04)
+
+The two-layer split recorded in this ADR was an attempt to preserve `init-claude` and `improve-claude` in the standalone bundle. By naming the template layer separately from the skill body, the ADR allowed those two skills to source `CLAUDE-*` platform documentation for their templates while keeping their prose platform-agnostic. This preservation was pragmatic — it resolved the immediate compliance contradiction without removing user-facing skills.
+
+ADR-0006 identifies why that preservation is itself a problem. `init-claude` and `improve-claude` generate platform-attached output forms — `CLAUDE.md` hierarchy and `.claude/rules/` with `paths:` frontmatter — which are not in the cross-platform standard that defines the standalone bundle's content sources. The two-layer split allowed the template layer to import platform knowledge that the standalone bundle's source constraint excludes. Naming the import as "template-layer authority" did not change what was being imported.
+
+The per-family disposition in § Follow-up — rules → reframe, hooks/subagents → deprecate — was derived by applying the two-layer logic to each skill family. ADR-0006 replaces that per-family analysis with a single principle-level test: does the skill's output form require platform-attached knowledge? All six skills named in § Follow-up fail this test, as do `init-claude` and `improve-claude`. The boundary applies uniformly; no template-layer exception survives it.
+
+See ADR-0006 for the new boundary and its full consequences.
