@@ -268,10 +268,9 @@ When multiple sources could apply to an artifact, use this precedence order:
 
 | Skill | Output Artifacts |
 |-------|-----------------|
-| `init-claude`, `improve-claude` | `.claude/rules/*.md`, `CLAUDE.md` |
 | `init-cursor`, `improve-cursor` | `.cursor/rules/*.mdc`, `AGENTS.md` |
 | `init-agents`, `improve-agents` | `AGENTS.md` only (portable) |
-| Standalone create/improve | Platform-appropriate artifacts |
+| Standalone `create-skill`, `improve-skill` | SKILL.md packages (platform-agnostic, per ADR-0006) |
 
 ---
 

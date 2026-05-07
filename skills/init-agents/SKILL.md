@@ -1,6 +1,6 @@
 ---
 name: init-agents
-description: "Initializes optimized AGENTS.md hierarchy for projects. Generates minimal, scoped files following progressive disclosure — based on the ETH Zurich 'Evaluating AGENTS.md' study showing that minimal developer-style files outperform comprehensive auto-generated ones."
+description: "Initializes optimized AGENTS.md hierarchy for projects. Generates minimal, scoped files following progressive disclosure: minimal developer-written files outperform comprehensive auto-generated ones in head-to-head agent benchmarking."
 ---
 
 # Initialize AGENTS.md
@@ -9,7 +9,7 @@ Generate an evidence-based AGENTS.md file hierarchy for this project. Instead of
 
 ## Why This Approach
 
-Research shows that auto-generated comprehensive AGENTS.md files **reduce** agent task success by ~3% while **increasing cost by 20%+** (Evaluating AGENTS.md, ETH Zurich, 2026). Developer-written **minimal** files improve success by ~4%. This skill generates files that mimic what an experienced developer would write: only non-obvious tooling and conventions.
+Auto-generated comprehensive AGENTS.md files **reduce** agent task success by ~3% while **increasing cost by 20%+**. Developer-written **minimal** files improve success by ~4%. This skill generates files that mimic what an experienced developer would write: only non-obvious tooling and conventions.
 
 ## Behavioral Guidelines
 
@@ -26,7 +26,7 @@ Research shows that auto-generated comprehensive AGENTS.md files **reduce** agen
 - **NEVER** generate a single file with everything — use hierarchical progressive disclosure
 - **NEVER** include directory/file structure listings (research proves these don't help agents navigate)
 - **NEVER** include obvious language conventions the model already knows
-- **NEVER** exceed 200 lines per file (Anthropic recommendation)
+- **NEVER** exceed 200 lines per file (hard limit — bloat degrades performance and inflates cost)
 - **EVERY** instruction must pass: "Would removing this cause the agent to make mistakes?" If no, cut it.
 - Root file target: **15-40 lines**
 - Scope files target: **10-30 lines**
