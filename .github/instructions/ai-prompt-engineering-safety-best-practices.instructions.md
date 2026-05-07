@@ -38,6 +38,7 @@ description: "Comprehensive best practices for AI prompt engineering, safety fra
 - Document prompt intent, scope, limitations, and assumptions.
 - Inform users when AI is being used; provide opt-out where appropriate.
 - Avoid including personal information in prompts; apply data minimization.
+- Set data retention limits: expire stored prompts, outputs, and logs after the period required by policy or regulation.
 - Maintain audit trails for compliance (GDPR, HIPAA, and applicable regulations).
 - Align with applicable AI principles frameworks (Microsoft, Google, OpenAI usage policies).
 - Follow ISO/IEC 42001:2023 and NIST AI Risk Management Framework where relevant.
