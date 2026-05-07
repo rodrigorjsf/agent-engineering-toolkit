@@ -1,0 +1,96 @@
+name: Claude Code Review (Manual)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Why this workflow exists
+# ──────────────────────────────────────────────────────────────────────────────
+# Companion to `claude-code-review.yml`. The auto-trigger workflow only fires
+# on `pull_request.opened` against `main`. When the auto-trigger misses a PR
+# (transient webhook glitch, base ref edited after creation, draft created
+# before being marked ready) there is no recovery path baked into the auto
+# workflow. This file is the manual escape hatch.
+#
+# Why a separate file instead of adding `workflow_dispatch` to the existing
+# workflow: GitHub's OIDC validator compares the workflow file in the PR's
+# checked-out tree against the version on the default branch. Any PR that
+# modifies a workflow file fails OIDC token exchange with a 401 — including
+# the very PR that adds `workflow_dispatch` to the existing file. By adding
+# a brand-new file instead, the existing `claude-code-review.yml` stays
+# byte-identical to `main`'s version, the auto-trigger run on the PR adding
+# this file is unaffected, and after merge both workflows coexist.
+#
+# Run from CLI:
+#   gh workflow run claude-code-review-manual.yml -f pr_number=<N>
+# Or use "Run workflow" in the Actions UI and supply the PR number.
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Trigger strategy
+# ──────────────────────────────────────────────────────────────────────────────
+# Manual-only. No auto-trigger here on purpose — the auto path is in
+# `claude-code-review.yml`. Keep the two surfaces separate so neither workflow
+# accidentally fires the other and so token-cost gating stays in one place.
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Pull request number to review'
+        required: true
+        type: number
+
+# Same concurrency family as the auto workflow so a manual run while an auto
+# run is queued for the same PR cancels the older one. Keys on `pr_number`
+# (the only PR identifier available on `workflow_dispatch`).
+concurrency:
+  group: claude-code-review-${{ inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+
+    # Permissions match the auto workflow exactly: read-only on the repo,
+    # write on `id-token` for OIDC token exchange.
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # `workflow_dispatch` only carries the PR number. Look up the base SHA
+      # at runtime so the skill receives the same `base:<sha>` arg shape the
+      # auto workflow passes from the event payload.
+      - name: Resolve PR base SHA
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_BASE_SHA=$(gh pr view "${{ inputs.pr_number }}" \
+            --repo "${{ github.repository }}" \
+            --json baseRefOid \
+            --jq .baseRefOid)
+          if [ -z "$PR_BASE_SHA" ]; then
+            echo "Failed to resolve base SHA for PR #${{ inputs.pr_number }}" >&2
+            exit 1
+          fi
+          echo "pr_base_sha=$PR_BASE_SHA" >> "$GITHUB_OUTPUT"
+
+      # Identical action invocation to the auto workflow — same plugins, same
+      # marketplace, same model pin, same prompt body, same second-opinion
+      # gate. Only the source of `base:<sha>` and `pull/<num>` differs.
+      - name: Run ce-code-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: 'https://github.com/EveryInc/compound-engineering-plugin.git'
+          plugins: 'compound-engineering@compound-engineering-plugin'
+          claude_args: '--model claude-sonnet-4-6 --max-turns 10'
+          prompt: |
+            /compound-engineering:ce-code-review mode:report-only base:${{ steps.pr.outputs.pr_base_sha }} ${{ github.repository }}/pull/${{ inputs.pr_number }}
+
+            Second-opinion gate: if synthesis confidence is low, reviewer findings conflict, or the diff touches auth, payments, public APIs, or data migrations, run one additional synthesis pass before publishing the final review. Otherwise publish directly.
+          # Reference: https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
