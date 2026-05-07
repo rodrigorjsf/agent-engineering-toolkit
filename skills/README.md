@@ -44,7 +44,7 @@ These skills generate files that mimic what an experienced developer would write
 3. **Domain files** (`docs/TESTING.md`, `docs/BUILD.md`) — only when non-standard patterns are detected
 4. **Hard limit: 200 lines per file** — per Anthropic's recommendation
 
-> **Scope note:** This distribution includes `init-agents`, `init-claude`, `improve-agents`, `improve-claude`, plus `create-skill` and `improve-skill`. Path-scoped rule, hook, and subagent authoring are platform-specific and live exclusively in the matching plugin distributions (`agent-customizer` for Claude, `cursor-customizer` for Cursor) — see ADR-0006.
+> **Scope note:** This distribution includes `init-agents`, `improve-agents`, plus `create-skill` and `improve-skill`. CLAUDE.md hierarchy authoring, path-scoped rules, hooks, and subagents are platform-attached output forms and live exclusively in the matching plugin distributions (`agent-customizer` for Claude Code, `cursor-customizer` for Cursor) — see ADR-0006.
 
 ## Documentation Base
 
@@ -97,18 +97,6 @@ Initialize an optimized AGENTS.md file hierarchy for your project.
 - Subdirectory `AGENTS.md` files — one per detected scope
 - Domain files (`docs/TESTING.md`, `docs/BUILD.md`) — only when non-standard patterns exist
 
-### `init-claude`
-
-Initialize an optimized CLAUDE.md hierarchy with `.claude/rules/` for your project.
-
-**Same as `init-agents` but also:**
-
-- Generates `.claude/rules/*.md` path-scoped rules for file-pattern-specific conventions
-- Leverages Claude Code's on-demand loading for subdirectory CLAUDE.md files
-- Maximizes on-demand loading, minimizes always-loaded content
-
-**Preflight check:** If `CLAUDE.md` already exists, redirects to `improve-claude`.
-
 ### `improve-agents`
 
 Evaluate and improve existing AGENTS.md files.
@@ -120,16 +108,6 @@ Evaluate and improve existing AGENTS.md files.
 - Stale references (paths that don't exist, commands not in package.json)
 - Contradictions between files
 - Missing scope-specific files and progressive disclosure opportunities
-
-### `improve-claude`
-
-Evaluate and improve existing CLAUDE.md files and `.claude/rules/`.
-
-**Same as `improve-agents` but also:**
-
-- Evaluates `.claude/rules/` files for missing path-scoping
-- Converts pattern-specific rules from CLAUDE.md to path-scoped `.claude/rules/`
-- Reports always-loaded vs on-demand token distribution
 
 ## Installation
 
@@ -146,7 +124,7 @@ npx skills add rodrigorjsf/agent-engineering-toolkit
 npx skills add rodrigorjsf/agent-engineering-toolkit --agent cursor copilot
 
 # Install only specific skills
-npx skills add rodrigorjsf/agent-engineering-toolkit --skill init-claude improve-claude
+npx skills add rodrigorjsf/agent-engineering-toolkit --skill init-agents improve-agents
 
 # List available skills before installing
 npx skills add rodrigorjsf/agent-engineering-toolkit --list
@@ -180,9 +158,9 @@ For the native Claude Code and Cursor plugin distributions, use the plugin insta
 ```bash
 # Without namespace (user-scope install or manual copy)
 /init-agents          # Initialize AGENTS.md hierarchy
-/init-claude          # Initialize CLAUDE.md + .claude/rules/ hierarchy
 /improve-agents       # Improve existing AGENTS.md files
-/improve-claude       # Improve existing CLAUDE.md + rules
+/create-skill         # Author a new SKILL.md package
+/improve-skill        # Improve an existing SKILL.md package
 ```
 
 ## Anti-Patterns This Plugin Avoids
@@ -204,20 +182,18 @@ skills/
 │   ├── SKILL.md             # Inline analysis, no subagent delegation
 │   ├── references/          # Evidence-based guidance files
 │   └── assets/templates/    # Output templates
-├── init-claude/
-│   ├── SKILL.md
-│   ├── references/
-│   └── assets/templates/
 ├── improve-agents/
 │   ├── SKILL.md
 │   ├── references/
 │   └── assets/templates/
-├── improve-claude/
+├── create-skill/            # Standalone SKILL.md package author
 │   ├── SKILL.md
 │   ├── references/
 │   └── assets/templates/
-├── create-skill/            # Agent-customizer standalone variant
-└── improve-skill/
+└── improve-skill/           # Standalone SKILL.md package improver
+    ├── SKILL.md
+    ├── references/
+    └── assets/templates/
 ```
 
 ## License
