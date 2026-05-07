@@ -20,8 +20,7 @@ paths:
 - Each skill bundles its own copies of shared references — no symlinks, no cross-directory references
 - Standalone bundled-file references MUST use relative `references/...` and `assets/templates/...` paths — NEVER `${CLAUDE_SKILL_DIR}`
 - When an intentionally shared reference is updated, update all intended copies in sync
-- Standalone improve skills MUST suggest only skills and path-scoped rules as migration targets — NEVER hooks or subagents (these require Claude Code plugin architecture)
-- When shared references mention hooks or subagents, standalone SKILL.md MUST instruct to substitute with the closest available mechanism (rule or skill)
+- Standalone skills MUST NOT author hooks, subagents, path-scoped rules, or CLAUDE.md hierarchy. The standalone bundle authors only **skills** (SKILL.md packages) and **AGENTS.md**. See ADR-0006.
 - SKILL.md `name` field: ≤64 chars, lowercase letters/numbers/hyphens only, no XML tags
 - SKILL.md `description` field: non-empty, ≤1024 chars, third person, no XML tags
 - SKILL.md body: under 500 lines
