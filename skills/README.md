@@ -44,7 +44,7 @@ These skills generate files that mimic what an experienced developer would write
 3. **Domain files** (`docs/TESTING.md`, `docs/BUILD.md`) — only when non-standard patterns are detected
 4. **Hard limit: 200 lines per file** — per Anthropic's recommendation
 
-> **Scope note:** This distribution includes `init-agents`, `init-claude`, `improve-agents`, and `improve-claude`. The Cursor-specific skills (`init-cursor`, `improve-cursor`) are plugin-only and require the `cursor-initializer` native Cursor plugin. The Claude Code artifact skills (`create-skill`, `create-hook`, etc.) from `agent-customizer` are also available here as standalone versions. The standalone `create-skill` and `improve-skill` variants now propagate the same behavioral guidelines: assumptions first, simplest path, surgical scope, explicit validation, and safe-only persuasion.
+> **Scope note:** This distribution includes `init-agents`, `init-claude`, `improve-agents`, `improve-claude`, plus `create-skill` and `improve-skill`. Path-scoped rule, hook, and subagent authoring are platform-specific and live exclusively in the matching plugin distributions (`agent-customizer` for Claude, `cursor-customizer` for Cursor) — see ADR-0006.
 
 ## Documentation Base
 
@@ -216,14 +216,8 @@ skills/
 │   ├── SKILL.md
 │   ├── references/
 │   └── assets/templates/
-├── create-skill/            # Agent-customizer standalone variants
-├── create-hook/
-├── create-rule/
-├── create-subagent/
-├── improve-skill/
-├── improve-hook/
-├── improve-rule/
-└── improve-subagent/
+├── create-skill/            # Agent-customizer standalone variant
+└── improve-skill/
 ```
 
 ## License
