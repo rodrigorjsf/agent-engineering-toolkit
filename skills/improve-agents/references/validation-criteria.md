@@ -36,7 +36,7 @@ Directional goals — not auto-fail triggers. Apply during IMPROVE operations wh
 - [ ] Non-standard configuration values documented (e.g., `addopts = "--cov=src"`, `strict = true`, line-length overrides)
 - [ ] Cross-scope build prerequisites at root level (e.g., WASM must build before web — document ordering at root)
 - [ ] Progressive disclosure applied: domain docs referenced, not inlined
-- [ ] No information that tools can enforce (linting, formatting rules → use hooks instead)
+- [ ] No information that tools can enforce (linting, formatting rules already handled by tooling config)
 - [ ] No duplication of content across files in the hierarchy
 - [ ] No directory/file structure listings
 - [ ] No standard language conventions the model already knows
@@ -67,9 +67,8 @@ Directional goals — not auto-fail triggers. Apply during IMPROVE operations wh
 - [ ] Root file: one-liner + package manager (if non-standard) + build commands (if non-standard) + pointers
 - [ ] Domain content lives in separate files, not inline
 - [ ] Progressive disclosure pointers point to files that actually exist
-- [ ] **CLAUDE.md-specific**: `.claude/rules/` files have path-scoping (`paths:` frontmatter) when they apply to specific file patterns
-- [ ] **CLAUDE.md-specific**: Minimal content in always-loaded locations (`./CLAUDE.md`, `.claude/rules/*.md` without paths)
-- [ ] **AGENTS.md-specific**: Subdirectory AGENTS.md files used for monorepo package scoping (no `.claude/rules/` equivalent)
+- [ ] Subdirectory AGENTS.md files used for monorepo package scoping
+- [ ] Domain docs (`docs/TOPIC.md`) referenced from root rather than inlined
 
 ---
 

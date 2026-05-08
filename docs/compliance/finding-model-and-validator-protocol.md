@@ -98,7 +98,7 @@ Apply these seven steps for each artifact. Steps 1–4 use the manifest's Valida
 
 **Step 1 — Resolve scope and bundle**: Look up the artifact's scope ID in `normative-source-matrix.md` § Scope Registry. Load the named source bundle from § Named Source Bundles (e.g., `claude-plugin-bundle` for agents-initializer). This determines Primary, Secondary, Project, Supporting, and Forbidden sources.
 
-**Step 2 — Load artifact from manifest**: Find the artifact row in `artifact-audit-manifest.md` §§ 5–9. Note the Type, Validators, Copy Group, and Ph.7? columns.
+**Step 2 — Load artifact from manifest**: Find the artifact row in `artifact-audit-manifest.md` §§ 5–10. Note the Type, Validators, Copy Group, and Ph.7? columns.
 
 **Step 3 — Apply validators**: Execute each validator in the Validators column. Expand codes using `artifact-audit-manifest.md` § Validator Code Legend (e.g., `r:ps` → `.claude/rules/plugin-skills.md`). For rule validators (`r:*`), check against the rule file. For instruction validators (`i:*`), check against the instruction file. For quality gate validators (`q:*`, `ac:*`), run the relevant gate phase.
 
@@ -182,14 +182,15 @@ Existing quality gates (`quality-gate`, `agent-customizer-quality-gate`) continu
 
 **When a gate is the validator for a compliance audit**: the auditor wraps each F001 finding in a CF-NNN record by adding Check Category, Scope, Evidence, Violated Source (as normative source ID), Provenance, Revalidation fields, and Gate Rerun Record.
 
-**For non-gated artifacts** (see `artifact-audit-manifest.md` § 11 Validator Coverage Matrix, rows marked Gap): auditors produce CF-NNN findings directly using this protocol. No gate wrapping occurs. Gate rerun evidence references `.specs/reports/quality-gate-[YYYY-MM-DD]-findings.md` or `.specs/reports/agent-customizer-quality-gate-[YYYY-MM-DD]-findings.md`.
+**For non-gated artifacts** (see `artifact-audit-manifest.md` § 12 Validator Coverage Matrix, rows marked Gap): auditors produce CF-NNN findings directly using this protocol. No gate wrapping occurs. Gate rerun evidence references `.specs/reports/quality-gate-[YYYY-MM-DD]-findings.md` or `.specs/reports/agent-customizer-quality-gate-[YYYY-MM-DD]-findings.md`.
 
 | Scope | Quality Gate | Automated Coverage | Manual-Only Artifacts |
 |-------|-------------|-------------------|----------------------|
 | agents-initializer | `quality-gate` | skill, agent, reference, template | plugin-manifest, config-file, readme |
 | agent-customizer | `agent-customizer-quality-gate` | skill, agent, reference, template, drift-manifest | plugin-manifest, config-file, readme |
 | cursor-initializer | **None** | — | **All artifacts** |
+| cursor-customizer | `cursor-customizer-quality-gate` | skill, agent, reference, template, drift-manifest | plugin-manifest, config-file, readme |
 | standalone | `quality-gate` (shared) | skill, reference, template | readme |
 | repository-global | **None** | — | **All artifacts** |
 
-See `artifact-audit-manifest.md` § 12 Quality Gate Coverage Map for detailed check-level coverage.
+See `artifact-audit-manifest.md` § 13 Quality Gate Coverage Map for detailed check-level coverage.

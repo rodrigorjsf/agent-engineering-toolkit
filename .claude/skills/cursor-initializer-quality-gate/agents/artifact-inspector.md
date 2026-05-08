@@ -15,7 +15,6 @@ Use bash commands to measure files and verify content.
 **Convention sources to read first:**
 - `.claude/rules/cursor-plugin-skills.md`
 - `.claude/rules/reference-files.md`
-- `plugins/cursor-initializer/CLAUDE.md`
 
 ---
 

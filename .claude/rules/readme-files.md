@@ -7,7 +7,7 @@ paths:
 
 # README File Conventions
 
-- Every README must include `## Cost and Model Guidance` as section 2 (immediately after the title and description paragraph), copied verbatim from the standard block defined in `.github/instructions/readme-files.instructions.md`
+- Every README must include `## Cost and Model Guidance` as section 2 (immediately after the title and description paragraph) with standard wording about model cost, execution frequency, and one-time investment framing
 - Root `README.md` covers repo-level content only — per-plugin skill detail belongs in plugin READMEs, not root; reference plugin READMEs with links
 - Root README installation section contains one-liners per distribution, each ending with a link to the respective plugin README for full detail
 - Per-plugin READMEs cover only their own distribution — no content from other plugins

@@ -37,7 +37,7 @@ Agent (Cmd+K / Agent Chat) events:
 Tab (inline completions) events:
 `beforeTabFileRead`, `afterTabFileEdit`
 
-Reject any event name not in this list (in particular, PascalCase Claude Code names that have no Cursor analogue).
+Reject any event name not in this list (in particular, PascalCase event names from other agent platforms that have no Cursor analogue).
 
 ### Quality Checks
 

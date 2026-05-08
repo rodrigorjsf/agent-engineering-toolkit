@@ -56,17 +56,26 @@ The agent runs on Sonnet with read-only tools (Read, Grep, Glob, Bash) in an iso
 
 ### Phase 2: Generate Subagent
 
-Before generating, read these reference documents:
+#### Phase 2a: Load Context
+
+Drop any references from Phase 1. Read these references:
 
 - `${CLAUDE_SKILL_DIR}/references/subagent-authoring-guide.md` — when to use subagents, system prompt structure, model selection heuristics, tool restriction patterns, anti-patterns
 - `${CLAUDE_SKILL_DIR}/references/subagent-config-reference.md` — YAML frontmatter fields, valid model IDs, tool allowlist/denylist, orchestration patterns, plugin restrictions
+
+Decide model selection, tool restrictions, and target location.
+
+#### Phase 2b: Apply Patterns
+
+Drop Phase 2a references. Read this reference:
+
 - `${CLAUDE_SKILL_DIR}/references/prompt-engineering-strategies.md` — subagent-specific prompting (role prompting, structured output, confidence filtering)
 
 Read `${CLAUDE_SKILL_DIR}/assets/templates/subagent-definition.md` and fill its placeholders using:
 
 - User requirements for the new subagent (role, purpose, tools needed)
 - Phase 1 analysis output (existing agents, naming conventions, delegation patterns)
-- Evidence from the reference files above
+- Decisions from Phase 2a (model, tools, target location)
 
 Apply model selection heuristic:
 

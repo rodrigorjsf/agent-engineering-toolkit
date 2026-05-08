@@ -56,10 +56,19 @@ The agent runs on Sonnet with read-only tools (Read, Grep, Glob, Bash) in an iso
 
 ### Phase 2: Generate Skill
 
-Before generating, read these reference documents:
+#### Phase 2a: Load Context
+
+Drop any references from Phase 1. Read these references:
 
 - `${CLAUDE_SKILL_DIR}/references/skill-authoring-guide.md` — core principles, structure rules, progressive disclosure, anti-patterns
 - `${CLAUDE_SKILL_DIR}/references/skill-format-reference.md` — frontmatter fields, name validation, string substitution variables
+
+Decide skill structure: phases, reference file names, and whether `assets/templates/` is needed.
+
+#### Phase 2b: Apply Patterns
+
+Drop Phase 2a references. Read these references:
+
 - `${CLAUDE_SKILL_DIR}/references/behavioral-guidelines.md` — Karpathy-aligned behavior and safe persuasion patterns for skills
 - `${CLAUDE_SKILL_DIR}/references/prompt-engineering-strategies.md` — per-artifact prompting strategies for skills
 

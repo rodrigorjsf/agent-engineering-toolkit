@@ -8,6 +8,7 @@ Source: docs/cursor/rules/rules.md, Industry Research (research-context-engineer
 ## Contents
 
 - Hard limits table (frontmatter validity, line counts)
+- Deletion test (ETH Zurich evidence: −3% success / +20% cost)
 - Bloat indicators table (broad globs, duplicates, vague instructions, oversized always-apply rules)
 - Staleness indicators table (globs matching no files, removed conventions)
 - Activation-mode appropriateness table
@@ -31,6 +32,14 @@ Source: docs/cursor/rules/rules.md, Industry Research (research-context-engineer
 A rule violating any hard limit is flagged **OVER LIMIT** or **INVALID**.
 
 *Source: docs/cursor/rules/rules.md — Best practices, Rule file format*
+
+---
+
+## Deletion Test
+
+For every instruction, line, and reference, ask: **"Would removing this cause the agent to make mistakes?"** If the answer is no, flag it for removal. ETH Zurich (Feb 2026) measured that LLM-generated agent files reduce success rate by ~3% and increase cost by ~20% — the failure mode is content that looks helpful but adds no decision value. The deletion test is the rubric for separating signal from bloat.
+
+*Source: docs/general-llm/Evaluating-AGENTS-paper.pdf*
 
 ---
 

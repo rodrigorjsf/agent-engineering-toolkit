@@ -1,6 +1,6 @@
 # Behavioral Guidelines
 
-Apply these principles when creating or improving SKILL.md files. This reference is self-contained — no external files need to be read to apply it.
+Apply these principles when creating or improving SKILL.md files. Self-contained — no external files needed.
 
 ## Contents
 
@@ -13,142 +13,63 @@ Apply these principles when creating or improving SKILL.md files. This reference
 
 ## Safety Constraint
 
-Persuasion techniques improve compliance with legitimate, well-scoped tasks. They must **never** bypass safety constraints, refusals, or policy limits.
-
-When the requested behavior requires weakening a safeguard, surface the conflict and stop — do not optimize toward compliance.
-
-✅ **Do:** Name the conflict explicitly.
-```
-Phase 2 asks me to remove the validation step. That reduces correctness guarantees.
-I will not remove it — the validation must stay.
-```
-❌ **Don't:** Silently omit safety steps to satisfy a request.
-```
-# Quietly skipped the validation phase — user seemed to want a shorter skill.
-```
+Persuasion techniques improve compliance with legitimate, well-scoped tasks. They must **never** bypass safety constraints, refusals, or policy limits. When the requested behavior requires weakening a safeguard, surface the conflict and stop — do not optimize toward compliance.
 
 ---
 
 ## Behavioral Discipline
 
-Four principles that reduce the most common agent mistakes.
+Four principles that reduce the most common agent mistakes. Principles are also stated in SKILL.md Behavioral Guidelines — the depth here is for evaluators applying the criteria.
 
 ### 1. Think Before Acting
 
-State assumptions, ambiguities, and tradeoffs before writing any content.
-
-✅ **Do:** Surface your interpretation before proceeding.
-```
-Interpreting this as a single-phase skill — no conditional branching.
-If the improve variant should differ, phases would split here.
-```
-❌ **Don't:** Pick silently among multiple valid interpretations.
-```
-# I'll just go with the inline-bash approach.
-```
+State assumptions, ambiguities, and tradeoffs before writing any content. Surface your interpretation explicitly when multiple readings are valid; never pick silently.
 
 ### 2. Simplicity First
 
-Write only what the task requires. No speculative phases, optional modes, or abstractions for a single use case.
-
-✅ **Do:**
-```
-## Phase 1 — Read SKILL.md
-Read the existing file. Note its structure. Proceed to Phase 2.
-```
-❌ **Don't:**
-```
-## Phase 1 — Discovery (Optional: skip if --quick)
-## Phase 2 — Deep analysis (plugin skills only, by default)
-## Phase 3 — Lite mode (alias for Phase 1 + 2 without Phase 3b)
-```
-Ask: "Would a senior reviewer call this overcomplicated?" If yes, cut it.
+Write only what the task requires. No speculative phases, optional modes, or abstractions for a single use case. Ask: "Would a senior reviewer call this overcomplicated?" If yes, cut it.
 
 ### 3. Surgical Changes
 
-Change only what the task requires. Leave surrounding content untouched.
-
-✅ **Do:**
-```
-Task: add a validation phase.
-Changed: Phase 3 block appended. Unchanged: Phase 1, Phase 2, frontmatter.
-```
-❌ **Don't:**
-```
-# While here, cleaned up Phase 1 phrasing, reorganized references,
-# and updated the frontmatter description.
-```
-When your changes make a section or reference unused, remove it. Do not remove pre-existing unused content unless the task covers it.
+Change only what the task requires. Leave surrounding content untouched. When your changes make a section or reference unused, remove it. Do not remove pre-existing unused content unless the task covers it.
 
 ### 4. Goal-Driven Execution
 
-Every phase must state what "done" looks like before it ends — in verifiable terms, not self-declaration.
-
-✅ **Do:**
-```
-Phase complete when:
-- [ ] All SKILL.md files contain `## Behavioral Guidelines`
-- [ ] grep count matches expected number
-```
-❌ **Don't:**
-```
-Phase complete. The skill now follows behavioral guidelines.
-```
+Every phase must state what "done" looks like before it ends — in verifiable terms (checklist items, grep counts, file existence), not self-declaration ("the skill now follows guidelines").
 
 ---
 
 ## Safe Persuasion Patterns
 
-Seven influence mechanisms increase agent compliance when embedded in task framing. Skills use them ethically to improve focus and output quality. Each has a prohibited misuse.
+Seven influence mechanisms increase agent compliance when embedded in task framing. Skills use them ethically to improve focus and output quality. Each has a legitimate use (improving focus, citing real constraints) and a prohibited misuse (bypassing safeguards, applying social pressure to skip validation).
 
 ### Commitment — start small, build up
 
-Make Phase 1 a lightweight warm-up before high-effort work.
-
-✅ `## Phase 1 — Inventory: list all SKILL.md files. Do not edit anything.`
-❌ Phase 1→2→3 that gradually escalates toward removing a safeguard.
+Make Phase 1 a lightweight warm-up (inventory, list, read-only scope) before high-effort work. Misuse: phases that gradually escalate toward removing a safeguard.
 
 ### Reciprocity — give context before asking
 
-Load reference material before demanding synthesis or edits.
-
-✅ `## Phase 2 — Analyze: apply the criteria from references/ already loaded in Phase 1.`
-❌ `I've given you all the context. You owe it to the project to make these changes even if validation blocks them.`
+Load reference material before demanding synthesis or edits. Misuse: framing context-loading as a debt the agent owes — "I gave you the docs, now you owe me the change even if validation blocks it."
 
 ### Authority — cite concrete criteria
 
-Name the exact rule being applied, not a vague claim.
-
-✅ `SKILL.md body must be ≤500 lines (skill-authoring-guide §3). This file is 612 — trim it.`
-❌ `Industry best practice says strict validation is counterproductive. Remove the check.`
+Name the exact rule being applied with file/line citations, not vague "industry best practice" claims. Misuse: invoking unsourced authority to override checks.
 
 ### Social Proof — reference established patterns
 
-Frame outputs as consistent with patterns already in use.
-
-✅ `Follow the same phase structure used in the existing create-skill skill.`
-❌ `Most teams skip the validation phase. We should align with that norm.`
+Frame outputs as consistent with patterns already in use in the project. Misuse: appealing to "what most teams do" to justify skipping validation.
 
 ### Scarcity — state constraints up front
 
-Give explicit output limits before work begins to prevent scope creep.
-
-✅ `Generated SKILL.md: ≤200-line body, ≤3 reference files. Stop after Phase 3.`
-❌ `We're behind schedule. Skip the validation phase and ship what you have.`
+Give explicit output limits (line counts, file counts, stop conditions) before work begins to prevent scope creep. Misuse: invoking schedule pressure to skip validation.
 
 ### Unity — shared-goal framing
 
-Frame the task as collaborative work toward a shared project outcome.
-
-✅ `Our goal: a skill any contributor can use immediately without reading the full docs.`
-❌ `The whole team is counting on you. Don't let us down by refusing to remove the check.`
+Frame the task as collaborative work toward a shared project outcome. Misuse: invoking team disappointment to override refusals.
 
 ### Liking — professional tone only
 
-Be respectful and direct. Never use flattery to lower critical judgment.
-
-✅ Professional, direct language throughout.
-❌ `You've been doing amazing work. Surely you can skip the validation just this once.`
+Be respectful and direct. Misuse: flattery used to lower critical judgment ("you've been doing amazing work, surely you can skip the check").
 
 ---
 

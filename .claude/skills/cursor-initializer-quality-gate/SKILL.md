@@ -11,7 +11,7 @@ and evaluates whether skills are structurally capable of passing all test scenar
 
 **Scope:** `plugins/cursor-initializer/` — SKILL.md files, agent files, references, templates
 
-**Convention sources:** `.claude/rules/cursor-plugin-skills.md`, `plugins/cursor-initializer/CLAUDE.md`, `DESIGN-GUIDELINES.md`
+**Convention sources:** `.claude/rules/cursor-plugin-skills.md`, `DESIGN-GUIDELINES.md`
 
 **Test scenarios:** `.claude/PRPs/tests/scenarios/` (init-simple-project, init-complex-monorepo, improve-reasonable-file, improve-bloated-file)
 

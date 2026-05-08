@@ -36,8 +36,7 @@ Any skill violating these criteria must be fixed before proceeding:
 - [ ] Behavioral guidelines applied: the skill surfaces assumptions before acting, prefers the simplest adequate path, keeps changes surgical, and defines explicit validation targets
 - [ ] Persuasion cues, if present, stay inside the ethical constraint: they improve compliance with legitimate work only and never weaken safeguards, refusals, or scope boundaries
 - [ ] Phase instructions are specific and actionable — no vague directives like "ensure quality" or "review for completeness"
-- [ ] Plugin skill body contains no inline bash analysis commands — analysis must be delegated to registered agents (applies to skills in `plugins/*/skills/`)
-- [ ] Standalone skill body includes explicit bash commands for each analysis step (applies to skills in `skills/`)
+- [ ] Standalone skill phases include explicit inline bash commands or instructions to read references that contain those commands — no Task-tool delegation.
 - [ ] Evidence citations present: key decisions reference source docs (e.g., "per skill-authoring-best-practices.md")
 
 ---

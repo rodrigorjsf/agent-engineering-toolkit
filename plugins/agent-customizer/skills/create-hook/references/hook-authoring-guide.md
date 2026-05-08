@@ -144,6 +144,12 @@ For **prompt/agent** hooks — return JSON `{"ok": true/false, "reason": "..."}`
 
 *Source: hooks/automate-workflow-with-hooks.md lines ~393-420; hooks/claude-hook-reference-doc.md lines 80-88*
 
+### Hook Output Discipline
+
+**Golden rule of hook output: success silent, failure verbose.** Stdout/stderr from hooks is injected into Claude's context. A passing typecheck or 4,000-line test log on every PostToolUse pushes the smart zone into the dumb zone. Emit nothing on success; emit specific error traces only on failure.
+
+*Source: harness-engineering.md*
+
 ---
 
 ## Security Considerations

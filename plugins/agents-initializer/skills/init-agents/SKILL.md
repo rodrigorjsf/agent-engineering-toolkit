@@ -68,10 +68,19 @@ Require the parsed output to state explicitly when a simple single-package proje
 
 ### Phase 3: Generate Files
 
-Before generating, read these reference documents:
+#### Phase 3a: Hierarchy Decisions
+
+Drop any references from Phases 1–2. Read these references:
 
 - `${CLAUDE_SKILL_DIR}/references/progressive-disclosure-guide.md` — file hierarchy decisions
 - `${CLAUDE_SKILL_DIR}/references/what-not-to-include.md` — content exclusion criteria
+
+Decide which file types to generate (root, scope, domain) and what content belongs in each tier.
+
+#### Phase 3b: Generate Files
+
+Drop Phase 3a references. Read this reference:
+
 - `${CLAUDE_SKILL_DIR}/references/context-optimization.md` — token budget guidelines
 
 Using ONLY the information from Phase 1 and Phase 2, generate the file hierarchy:

@@ -2,6 +2,7 @@
 
 Multi-plugin marketplace for evidence-based agent artifact engineering.
 ALWAYS keep `caveman` skill enabled in ultra mode
+Always remember to consult the advisor when facing MEDIUM or HIGH complex resoning.
 
 ## Structure
 
@@ -29,19 +30,12 @@ Each skill directory contains:
 - Rules and review instructions describe **current** patterns — user `*.prd.md`/`*.plan.md` files may extend or override conventions for new scope. When new scope is adopted, update affected rules and instructions to reflect the evolved patterns.
 
 See `plugins/agents-initializer/CLAUDE.md` for plugin-specific conventions.
-See `plugins/cursor-initializer/CLAUDE.md` for cursor-initializer plugin conventions.
-See `plugins/cursor-customizer/CLAUDE.md` for cursor-customizer plugin conventions.
+See `plugins/cursor-customizer/CONVENTIONS.md` for cursor-customizer plugin conventions.
 See `plugins/agent-customizer/CLAUDE.md` for agent-customizer plugin conventions.
 
 ## Knowledge Lookup
 
-This repo follows a wiki-first lookup contract (see ADR-0004 and `.claude/rules/wiki-routing.md`):
-
-1. **Wiki index** — read `wiki/knowledge/index.md` first to find candidate pages.
-2. **Wiki page** — read the specific `wiki/knowledge/<slug>.md` and follow `[[wiki-link]]` cross-references.
-3. **Source documents** — fall through to `docs/` only when the wiki lacks coverage. Treat `docs/` as immutable raw input.
-
-Page format and citation rules live in `wiki/CLAUDE.md`. Ingest and lint workflows live in their own skills (`/wiki-ingest`, `/wiki-lint`). When the wiki lacks coverage, prefer ingesting the relevant `docs/` source via `/wiki-ingest` over instructing agents to re-read raw documents repeatedly.
+Wiki-first lookup — see `.claude/rules/wiki-routing.md` and ADR-0004 for the lookup contract; format/citation rules in `wiki/CLAUDE.md`.
 
 ## Documentation
 
@@ -87,6 +81,4 @@ When something fails repeatedly, when User has to re-explain, or when a workarou
 - Agents fail silently on wrong paths. Always verify hardcoded paths.
 - Before creating a new project artifact, check if an existing one can be extended or merged.
 
-# RTK (Rust Token Killer) - Token-Optimized Commands
 
-@RTK.md

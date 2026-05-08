@@ -67,14 +67,23 @@ Wait for it to complete and parse its structured output.
 
 ### Phase 3: Generate Improvement Plan
 
-Read these reference documents:
+#### Phase 3a: Diagnose
+
+Drop any references from Phases 1–2. Read these references:
 
 - `${CLAUDE_SKILL_DIR}/references/subagent-authoring-guide.md` — when to use subagents, system prompt structure, model selection, tool restriction, anti-patterns
 - `${CLAUDE_SKILL_DIR}/references/subagent-evaluation-criteria.md` — bloat/staleness indicators, quality rubric
+
+Identify all issues from both agent reports: generic boilerplate, model mismatches, overtriggering, missing output format. Do not yet write the full improvement plan.
+
+#### Phase 3b: Plan
+
+Drop Phase 3a references. Read these references:
+
 - `${CLAUDE_SKILL_DIR}/references/subagent-config-reference.md` — YAML frontmatter fields, model IDs, orchestration patterns, plugin restrictions
 - `${CLAUDE_SKILL_DIR}/references/prompt-engineering-strategies.md` — subagent-specific prompting
 
-Based on both agent reports, create improvement plan with categories:
+Based on Phase 3a findings, create improvement plan with categories:
 
 1. **Removals** — generic system prompt boilerplate, overtriggering language, redundant instructions
 2. **Refactoring** — tighten tool list to minimum-necessary, fix model selection, add structured output format, improve description for routing specificity

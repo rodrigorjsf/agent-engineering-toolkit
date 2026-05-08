@@ -21,7 +21,7 @@ The pair of plugins targeting the Claude Code platform — `agents-initializer` 
 _Avoid_: Claude flavor, Anthropic plugins
 
 **Cursor distribution**:
-The pair of plugins targeting Cursor — `cursor-initializer` (initializer) + `cursor-customizer` (customizer, planned). Generated artifacts target `.cursor/`.
+The pair of plugins targeting Cursor — `cursor-initializer` (initializer) + `cursor-customizer` (customizer). Generated artifacts target `.cursor/`.
 _Avoid_: Cursor flavor, IDE plugins
 
 **Standalone distribution**:
@@ -79,6 +79,7 @@ _Avoid_: claude-free, vendor-pure (these miss the product-vs-research distinctio
 - The **Claude Code distribution** and the **Cursor distribution** are siblings — same conceptual roles, different platform formats and conventions.
 - A **Source document** in `docs/` is summarized into one **Wiki page** in `wiki/knowledge/`; one Source document may also seed multiple concept Wiki pages with `[[wiki-link]]` cross-references.
 - The **Wiki** is the canonical knowledge surface for agents; **Source documents** are searched only when the wiki lacks coverage.
+- The **Standalone distribution** sources from the cross-platform standard alone (platform-agnostic docs, filtered to skills and AGENTS.md authoring); plugin distributions source from their platform's docs plus the standard. See ADR-0006.
 
 ## Example dialogue
 

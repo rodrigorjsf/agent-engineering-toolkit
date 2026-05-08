@@ -1,6 +1,11 @@
 ---
 paths:
-  - "**/*.md"
+  - "wiki/**/*.md"
+  - "docs/**/*.md"
+  - "plugins/*/skills/*/SKILL.md"
+  - "skills/*/SKILL.md"
+  - ".claude/skills/*/SKILL.md"
+  - ".github/instructions/**/*.md"
 ---
 
 # Wiki-First Knowledge Lookup

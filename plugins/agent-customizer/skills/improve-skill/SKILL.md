@@ -65,20 +65,23 @@ Wait for it to complete and parse its structured output.
 
 ### Phase 3: Generate Improvement Plan
 
-Read these reference documents:
+#### Phase 3a: Diagnose
+
+Drop Phases 1–2 references. Read:
 
 - `${CLAUDE_SKILL_DIR}/references/skill-authoring-guide.md` — core principles, structure, progressive disclosure, anti-patterns
 - `${CLAUDE_SKILL_DIR}/references/skill-evaluation-criteria.md` — bloat/staleness indicators, quality rubric
+
+Identify issues from both agent reports. Do not write the plan yet.
+
+#### Phase 3b: Plan
+
+Drop Phase 3a references. Read:
+
 - `${CLAUDE_SKILL_DIR}/references/behavioral-guidelines.md` — Karpathy-aligned behavior and safe persuasion patterns for skills
 - `${CLAUDE_SKILL_DIR}/references/prompt-engineering-strategies.md` — skill-specific prompting strategies
 
-Based on both agent reports, create improvement plan with categories:
-
-1. **Removals** — bloat (inlined content, over-specified instructions), stale (broken agent refs, removed tools), duplicates
-2. **Refactoring** — progressive disclosure optimization, phase consolidation, reference path corrections
-3. **Additions** — missing sections (self-validation, output format). Only suggest Hard Rules or Preflight if the skill has user-facing interactions or side effects — do NOT suggest them for informational/analysis-only skills that read and report.
-
-If all three categories yield zero items after analysis, conclude: "No improvements needed — artifact is already convention-compliant." and proceed directly to Phase 5 with an empty improvement summary.
+Create improvement plan: **Removals** (bloat: inlined content, over-specified instructions; stale: broken agent refs, removed tools; duplicates); **Refactoring** (progressive disclosure, phase consolidation, reference paths); **Additions** (missing sections — suggest Hard Rules/Preflight only for user-facing skills, not analysis-only). If all categories yield zero items, conclude "No improvements needed" and proceed to Phase 5.
 
 ### Phase 4: Self-Validation
 

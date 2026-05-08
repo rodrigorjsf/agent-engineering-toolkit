@@ -14,7 +14,7 @@ intentionally shared files remain byte-identical across their declared copy fami
 
 **Rule sources:**
 - `.claude/rules/reference-files.md` — "Explicitly shared references MUST have identical content across their intended copies"
-- `plugins/cursor-customizer/CLAUDE.md` — shared references are copied (not symlinked) into each skill; copies must remain in sync
+- `plugins/cursor-customizer/CONVENTIONS.md` — shared references are copied (not symlinked) into each skill; copies must remain in sync
 - `plugins/cursor-customizer/docs-drift-manifest.md` — declares which references are verbatim copies and which are derived
 
 A group passes parity if all files in the `md5sum` output show the same hash. A group fails if

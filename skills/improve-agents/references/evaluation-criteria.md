@@ -66,7 +66,7 @@ Check each line of the file against these indicators:
 |----------|------|-----|
 | Does root file stay focused on essentials? | One-sentence desc + tooling + pointers only | Inlines domain rules |
 | Are domain topics in separate files? | Testing in TESTING.md, build in BUILD.md | All topics in one file |
-| Do subdirectory files exist for distinct scopes? | packages/api/CLAUDE.md for API-specific rules | Everything in root |
+| Do subdirectory files exist for distinct scopes? | packages/api/AGENTS.md for API-specific rules | Everything in root |
 | Are pointers provided to detailed docs? | "See docs/TESTING.md" | No cross-references |
 
 *Source: file-evaluator.md lines 52-59*
@@ -101,8 +101,7 @@ Check each instruction block for migration potential to on-demand mechanisms:
 
 | Signal | Classification | Priority |
 |--------|---------------|----------|
-| File pattern globs in instruction text | Path-scoped rule candidate (`RULE_CANDIDATE`) | HIGH — pure token savings |
-| "Always"/"never" deterministic enforcement | Hook candidate (`HOOK_CANDIDATE`) | HIGH — deterministic enforcement |
+| Content specific to one package or scope | Subdirectory AGENTS.md candidate (`RULE_CANDIDATE`) | HIGH — pure token savings for root |
 | Domain knowledge or workflow block >50 lines | Skill candidate (`SKILL_CANDIDATE`) | MEDIUM — net savings = block − 100 tokens |
 | Standard conventions / agent-inferable content | DELETE candidate (`DELETE_CANDIDATE`) | HIGH — pure savings |
 | Content duplicated across multiple files | Consolidation candidate (`CONSOLIDATE`) | MEDIUM — saves (N−1) × content size |
@@ -159,8 +158,8 @@ Return findings in exactly this format:
 - Lines 150-200: Testing conventions should be in separate `docs/TESTING.md`
 
 **Automation Opportunity Issues:**
-- Lines 45-60: Formatting enforcement (HOOK_CANDIDATE — deterministic behavior)
-- Lines 200-210: "*.test.ts" glob pattern (RULE_CANDIDATE — path-specific)
+- Lines 45-60: Scope-specific content (RULE_CANDIDATE — move to subdirectory AGENTS.md)
+- Lines 200-210: Domain workflow block >50 lines (SKILL_CANDIDATE — extract to skill)
 
 ### Cross-File Issues
 - [List cross-file contradictions or duplications, or "None"]

@@ -15,7 +15,7 @@ Use bash commands to measure files and verify content patterns.
 **Convention sources to read first:**
 - `.claude/rules/cursor-plugin-skills.md`
 - `.claude/rules/reference-files.md`
-- `plugins/cursor-customizer/CLAUDE.md`
+- `plugins/cursor-customizer/CONVENTIONS.md`
 - `docs/adr/0002-product-strict-research-foundation.md`
 - `.claude/skills/cursor-customizer-quality-gate/references/quality-gate-criteria.md`
 

@@ -7,7 +7,7 @@ Source: skills/research-claude-code-skills-format.md, skills/extend-claude-with-
 
 ## Contents
 
-- Frontmatter fields (open standard + Claude Code extensions)
+- Frontmatter fields (open standard)
 - Name validation rules
 - String substitutions
 - Directory structure
@@ -30,22 +30,7 @@ Source: skills/research-claude-code-skills-format.md, skills/extend-claude-with-
 | `metadata` | No | Arbitrary key-value map (author, version, etc.) |
 | `allowed-tools` | No | Space-delimited list of pre-approved tools (experimental) |
 
-*In Claude Code: if `name` omitted, uses directory name; if `description` omitted, uses first paragraph.
-
-### Claude Code Extensions (platform-specific)
-
-| Field | Description |
-|-------|-------------|
-| `argument-hint` | Hint shown in autocomplete, e.g. `[issue-number]` or `[filename] [format]` |
-| `disable-model-invocation` | `true` = user-only invocation; description removed from context |
-| `user-invocable` | `false` = hidden from `/` menu; Claude invokes automatically only |
-| `model` | Model override when skill is active |
-| `effort` | Effort level: `low`, `medium`, `high`, `max` (Opus 4.6 only for `max`) |
-| `context` | `fork` = run in isolated subagent with separate context |
-| `agent` | Subagent type when `context: fork` (e.g., `Explore`, `Plan`, `general-purpose`) |
-| `hooks` | Hooks scoped to this skill's lifecycle (see hooks documentation) |
-
-*Source: skills/research-claude-code-skills-format.md lines 90-125; skills/extend-claude-with-skills.md lines 183-198*
+*If `name` is omitted, the host tool typically uses the directory name; if `description` is omitted, it uses the first paragraph.*
 
 ---
 
@@ -71,7 +56,6 @@ Use these variables inside SKILL.md content:
 | `$ARGUMENTS` | All arguments passed when invoking the skill |
 | `$ARGUMENTS[N]` or `$N` | Specific argument by 0-based index |
 | `${CLAUDE_SESSION_ID}` | Current session ID (for logging, session-specific files) |
-| `${CLAUDE_SKILL_DIR}` | Claude Code plugin variable — not available in standalone distribution; use relative `references/` paths instead |
 
 **Critical**: Use relative `references/` paths to reference bundled files (portable across all AI tools); not hardcoded absolute paths:
 

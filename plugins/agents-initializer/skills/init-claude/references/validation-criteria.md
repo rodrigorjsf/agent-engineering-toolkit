@@ -7,69 +7,35 @@ Source: improve-claude/SKILL.md:143-160, improve-agents/SKILL.md:108-122, file-e
 
 ## Hard Limits (Auto-fail if violated)
 
-Any file violating these criteria must be fixed before proceeding:
-
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| File length | ≤ 200 lines | Anthropic Docs: "Target under 200 lines per CLAUDE.md file" |
-| Instruction count | ≤ 150-200 | HumanLayer: "~150-200 instructions with reasonable consistency" |
-| Contradictions (within or between files) | 0 | Anthropic: "Claude may pick one arbitrarily" |
-| Language-specific rules in root | 0 | Domain rules belong in separate files |
-| Stale file path references | 0 | "File paths change constantly... actively poisons context" |
+Any file violating these must be fixed before proceeding: ≤200 lines per file (Anthropic Docs); ≤150-200 instructions per file (HumanLayer — frontier LLMs follow this many with reasonable consistency); 0 contradictions within or between files (Claude picks arbitrarily); 0 language-specific rules in root (domain rules belong in separate files); 0 stale file-path references (paths change constantly and actively poison context).
 
 ## Recommended Targets (Advisory)
 
-Directional goals — not auto-fail triggers. Apply during IMPROVE operations when within the 200-line hard limit:
-
-| Target | Range | Note |
-|--------|-------|------|
-| Root file length | 15-40 lines | Derived from "absolute minimum" guidance |
-| Scope file length | 10-30 lines | One topic per file guideline |
+Directional goals (not auto-fail) for IMPROVE operations within the 200-line hard limit: root file 15-40 lines (derived from "absolute minimum" guidance); scope file 10-30 lines (one topic per file).
 
 ---
 
 ## Quality Checks (All must pass)
 
-- [ ] Every instruction is actionable (not vague like "write clean code")
-- [ ] Package manager specified if non-standard (pnpm, bun, yarn; omit if npm)
-- [ ] Non-standard commands documented (build, test, lint, migrate — e.g., `alembic upgrade head`, `prisma migrate deploy`)
-- [ ] Non-standard configuration values documented (e.g., `addopts = "--cov=src"`, `strict = true`, line-length overrides)
-- [ ] Cross-scope build prerequisites at root level (e.g., WASM must build before web — document ordering at root)
-- [ ] Progressive disclosure applied: domain docs referenced, not inlined
-- [ ] No information that tools can enforce (linting, formatting rules → use hooks instead)
-- [ ] No duplication of content across files in the hierarchy
-- [ ] No directory/file structure listings
-- [ ] No standard language conventions the model already knows
-- [ ] No long explanations or tutorials (link to external docs instead)
-- [ ] Critical instructions appear at start or end of file (not buried in middle)
-- [ ] One scope per file (TypeScript rules in one file, testing rules in another)
+**Content**: every instruction is actionable (not vague); non-standard package manager / commands / config values documented; cross-scope build prerequisites at root level; progressive disclosure applied (domain docs referenced, not inlined); one scope per file.
+
+**Exclusions**: no tool-enforceable rules in CLAUDE.md (use hooks instead); no duplication across files; no directory/file structure listings; no standard language conventions the model already knows; no long explanations or tutorials (link out instead).
+
+**Placement**: critical instructions at start or end of file (avoid the lost-in-the-middle zone).
 
 ---
 
 ## If This Is an IMPROVE Operation — Also Check
 
-**Information Preservation:**
+**Information Preservation**: critical project info retained (domain concepts, security/compliance notes); custom commands/scripts from the original kept; existing progressive disclosure structure not flattened back into root; non-obvious architectural decisions carried forward.
 
-- [ ] Critical project information preserved (domain concepts, security notes, compliance requirements)
-- [ ] Custom commands/scripts referenced in the original file are retained
-- [ ] Existing progressive disclosure structure not flattened back into root
-- [ ] Non-obvious architectural decisions carried forward (not deleted as "bloat")
-
-**Structural:**
-
-- [ ] Files not merged that should stay separate (each scope gets its own file)
-- [ ] Scope widened rather than narrowed where the original had too little coverage
+**Structural**: files that should remain separate are not merged (each scope gets its own file); scope widened where the original had too little coverage.
 
 ---
 
 ## Structural Checks
 
-- [ ] Root file: one-liner + package manager (if non-standard) + build commands (if non-standard) + pointers
-- [ ] Domain content lives in separate files, not inline
-- [ ] Progressive disclosure pointers point to files that actually exist
-- [ ] **CLAUDE.md-specific**: `.claude/rules/` files have path-scoping (`paths:` frontmatter) when they apply to specific file patterns
-- [ ] **CLAUDE.md-specific**: Minimal content in always-loaded locations (`./CLAUDE.md`, `.claude/rules/*.md` without paths)
-- [ ] **AGENTS.md-specific**: Subdirectory AGENTS.md files used for monorepo package scoping (no `.claude/rules/` equivalent)
+Root file: one-liner + package manager (if non-standard) + build commands (if non-standard) + pointers. Domain content lives in separate files, not inline. Progressive disclosure pointers point to files that actually exist. **CLAUDE.md-specific**: `.claude/rules/` files have `paths:` frontmatter when scoped to file patterns; minimal content in always-loaded locations (`./CLAUDE.md`, `.claude/rules/*.md` without `paths:`). **AGENTS.md-specific**: subdirectory AGENTS.md files used for monorepo package scoping (no `.claude/rules/` equivalent).
 
 ---
 

@@ -8,6 +8,7 @@ Source: docs/cursor/hooks/hooks-guide.md
 ## Contents
 
 - Hard limits table (JSON validity, recognized events, valid matchers)
+- Deletion test (ETH Zurich evidence: −3% success / +20% cost)
 - Bloat indicators table (overly broad matchers, redundant hooks)
 - Staleness indicators table (deprecated event names, invalid tools)
 - Quality assessment (event selection, error handling, security)
@@ -29,6 +30,14 @@ Source: docs/cursor/hooks/hooks-guide.md
 A hook configuration violating any hard limit is flagged **INVALID** regardless of intent.
 
 *Source: docs/cursor/hooks/hooks-guide.md "Configuration", "Per-Script Configuration Options"*
+
+---
+
+## Deletion Test
+
+For every instruction, line, and reference, ask: **"Would removing this cause the agent to make mistakes?"** If the answer is no, flag it for removal. ETH Zurich (Feb 2026) measured that LLM-generated agent files reduce success rate by ~3% and increase cost by ~20% — the failure mode is content that looks helpful but adds no decision value. The deletion test is the rubric for separating signal from bloat.
+
+*Source: docs/general-llm/Evaluating-AGENTS-paper.pdf*
 
 ---
 

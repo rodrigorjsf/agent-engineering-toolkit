@@ -2,6 +2,42 @@
 
 ---
 
+## 2026-05-03 — Update: compliance-routing (register cursor-customizer scope)
+
+**Page updated (1):** `compliance-routing.md`
+
+**Changes:**
+- Updated Routing Decision Table row for Cursor IDE plugins: expanded from `cursor-initializer` only to `cursor-initializer`, `cursor-customizer`, and updated the label to plural "Cursor IDE plugins". Both Cursor plugins now route to `cursor-plugin-bundle`.
+
+**Why:** CF-GOV-005 (issue #106 / XC-9) — `cursor-customizer` shipped but was absent from all scope-tracking artifacts.
+
+---
+
+## 2026-05-03 — Update: validation-routing-standalone (ADR-0005 follow-ups)
+
+**Page updated (1):** `validation-routing-standalone.md`
+
+**Changes:**
+- Added `## Layered scope` section after "Source Authority", documenting the two-layer split from ADR-0005: skill body layer (SKILL.md prose + references) must be platform-agnostic (`SHARED-*`/`GENERAL-*` only); template layer (`assets/templates/`) MAY embed platform-specific format if the skill `name` declares that target. The `name` field is canonical — aliasing to escape scoping is itself a violation.
+- Rewrote contamination signal list to scope `${CLAUDE_SKILL_DIR}`, `paths:`, `globs:` bullets to "skill body or neutral-skill templates" rather than blanket-forbidding everywhere.
+- Qualified the "Common Validation Mistakes" bullet about `.claude/rules/` references: applies to skill prose and neutral-skill templates only; Claude-targeted-skill templates (`init-claude`/`improve-claude`) MAY reference `.claude/rules/` per ADR-0005.
+
+**Why:** CF-GOV-001 and CF-GOV-004 mandated follow-ups from ADR-0005 (issues #98 / XC-1).
+
+---
+
+## 2026-05-02 — Ingest: pi-context-zone (Smart/Warm/Dumb zone framework)
+
+**Page added (1):** `pi-context-zone.md` — 99 lines.
+
+**Source compiled:** `docs/context-engineering/pi-context-zone-github.md` (Dex Horthy's HumanLayer Smart/Warm/Dumb zone framework, 40%/70% thresholds, MRCR v2 model-by-model resilience data).
+
+**Why:** Q1/Q2 of the 2026-05-02 alignment-audit grilling round established the smart-zone framework as one of five doctrinal anchors for the audit. The framework was previously embedded only inside `[[context-engineering]] § Dumb Zone` and `[[harness-engineering]] § The Dumb Zone`; promoting it to a dedicated page provides a stable, citable wiki anchor for audit findings and prevents drift across the two embedding pages.
+
+**Cross-references:** Page links into `[[context-engineering]]`, `[[context-rot]]`, `[[harness-engineering]]`, `[[progressive-disclosure]]`, `[[long-context-lost-in-middle]]`, `[[rpi-workflow]]`, `[[claude-code-subagents]]`. Index updated under "Foundational Concepts" between `[[context-rot]]` and `[[progressive-disclosure]]`. Total wiki pages: 38 → 39.
+
+---
+
 ## 2026-05-02 — RAG → Wiki migration (ADR-0004)
 
 **Pages updated (4):** `compliance-routing.md`, `validation-routing-claude.md`, `validation-routing-cursor.md`, `validation-routing-standalone.md`.

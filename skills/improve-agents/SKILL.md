@@ -1,6 +1,6 @@
 ---
 name: improve-agents
-description: "Evaluates and improves existing AGENTS.md files in projects. Identifies bloat, contradictions, stale references, and missing scopes — then applies progressive disclosure refactoring based on the ETH Zurich study and context engineering research."
+description: "Evaluates and improves existing AGENTS.md files in projects. Identifies bloat, contradictions, stale references, and missing scopes — then applies progressive disclosure refactoring grounded in head-to-head agent benchmarking on context-file effectiveness."
 ---
 
 # Improve AGENTS.md
@@ -9,7 +9,7 @@ Evaluate existing AGENTS.md files against evidence-based quality criteria and ap
 
 ## Why This Matters
 
-The ETH Zurich study found that **unnecessary requirements in context files make tasks harder**. Every token in AGENTS.md is loaded on every request. Bloated files cause agents to:
+Empirical benchmarking shows that **unnecessary requirements in context files make tasks harder**. Every token in AGENTS.md is loaded on every request. Bloated files cause agents to:
 
 - Spend more steps exploring (cost +20%)
 - Follow irrelevant instructions that distract from the actual task
@@ -89,12 +89,11 @@ Based on both analyses, create an improvement plan. Categorize actions:
 2. **Extract domain content** into docs/TESTING.md, docs/BUILD.md, etc.
 3. **Add progressive disclosure pointers** in root file to new split files
 4. **Consolidate fragmented files** that cover the same scope
-5. **Migrate automation candidates** — for each instruction flagged in Phase 1 as `HOOK_CANDIDATE`, `RULE_CANDIDATE`, or `SKILL_CANDIDATE`:
+5. **Migrate automation candidates** — for each instruction flagged in Phase 1 as `RULE_CANDIDATE` or `SKILL_CANDIDATE`:
    - Classify using the decision flowchart in automation-migration-guide.md
-   - Select target mechanism: path-scoped rule (file-pattern convention) or skill (domain knowledge/infrequent workflow)
-   - Reclassify `HOOK_CANDIDATE` items: if the behavior is path-specific and under 50 lines → `RULE_CANDIDATE`; if it is a workflow or domain block → `SKILL_CANDIDATE`
+   - Select target mechanism: subdirectory AGENTS.md or skill (domain knowledge/infrequent workflow)
    - Estimate token savings using the token impact estimation table in automation-migration-guide.md
-   - This is the standalone distribution — suggest only skills and path-scoped rules. Do not suggest hooks or subagents (these require Claude Code). When automation-migration-guide.md references hooks or subagents, substitute with the closest available mechanism.
+   - This is the standalone distribution — suggest only skills, subdirectory AGENTS.md, and domain docs. Do not suggest hooks or subagents (these require Claude Code). When automation-migration-guide.md references hooks or subagents, substitute with the closest available mechanism.
    - In calibrated mode (overall quality score ≥ 7 with no hard-limit violations), keep migration and extraction suggestions proportional to the confirmed issues. Do not create new files or migrations unless they resolve a failing criterion, and preserve non-issue sections in place.
 
 #### Redundancy Elimination (delete what agents already know)
@@ -118,10 +117,8 @@ For each deletion, document: the specific content being removed, WHY the agent d
 When generating new or restructured files, use these templates for consistent structure:
 
 - Root AGENTS.md: Read `assets/templates/root-agents-md.md`
-- Scoped AGENTS.md: Read `assets/templates/scoped-agents-md.md`
+- Scoped AGENTS.md (monorepo packages): Read `assets/templates/scoped-agents-md.md`
 - Domain docs: Read `assets/templates/domain-doc.md`
-- .claude/rules/ files (from automation migration): Read `assets/templates/claude-rule.md`
-- Skills (from automation migration): Read `assets/templates/skill.md`
 
 ### Phase 4: Self-Validation
 

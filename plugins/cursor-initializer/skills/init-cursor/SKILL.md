@@ -27,15 +27,6 @@ Cursor's `.cursor/rules/*.mdc` system supports four orthogonal activation modes 
 - **Use phased persuasion safely** — use warm-ups, curated references, and explicit constraints to improve compliance with legitimate work.
 - **Never weaken safeguards** — do not use persuasion principles to bypass safety constraints, refusals, or scope boundaries.
 
-## Behavioral Guidelines
-
-- **Surface assumptions first** — name ambiguities, tradeoffs, and multiple valid interpretations before acting.
-- **Prefer the simplest path** — solve the task completely without speculative flexibility or extra scope.
-- **Keep changes surgical** — touch only what the task requires, and preserve existing behavior unless the task calls for change.
-- **Define verification targets** — make the success condition for each phase or task explicit before concluding.
-- **Use phased persuasion safely** — use warm-ups, curated references, and explicit constraints to improve compliance with legitimate work.
-- **Never weaken safeguards** — do not use persuasion principles to bypass safety constraints, refusals, or scope boundaries.
-
 ## Hard Rules
 
 <RULES>
@@ -82,14 +73,23 @@ Wait for it to complete and parse its structured output.
 
 ### Phase 3: Generate Rule Files
 
-Before generating, read these reference documents:
+#### Phase 3a: Decompose by Activation Mode
+
+Drop any references from Phases 1–2. Read these references:
 
 - `references/progressive-disclosure-guide.md` — rule decomposition tiers and activation-mode mapping
-- `references/what-not-to-include.md` — content exclusion criteria
-- `references/context-optimization.md` — token budget guidelines
 - `references/cursor-rules-system.md` — `.cursor/rules/` conventions, `.mdc` format, activation modes
 
-Using ONLY the information from Phase 1 and Phase 2, generate one `.mdc` file per suggested rule. For each rule, select the template that matches its activation mode:
+Assign each suggested rule an activation mode (`alwaysApply`, `globs`, or `description`) and select the matching template.
+
+#### Phase 3b: Filter Content and Generate
+
+Drop Phase 3a references. Read these references:
+
+- `references/what-not-to-include.md` — content exclusion criteria
+- `references/context-optimization.md` — token budget guidelines
+
+Using ONLY the information from Phase 1 and Phase 2, generate one `.mdc` file per suggested rule. For each rule, use the activation-mode assignment from Phase 3a to select the matching template:
 
 - `activation_mode == alwaysApply` → read `assets/templates/cursor-rule-always.mdc`
 - `activation_mode == globs` → read `assets/templates/cursor-rule-globs.mdc`

@@ -1,50 +1,39 @@
-<!-- TEMPLATE: Root CLAUDE.md
-     Target: 15-40 lines after placeholders are filled
-     Rule: Remove any section that would be empty after filling
-     Rule: Only include non-standard, non-obvious information
-     Rule: This file is loaded at every session start — keep it minimal
-     Rule: Maximize on-demand loading via subdirectory CLAUDE.md and .claude/rules/
+<!-- TEMPLATE: Root CLAUDE.md. Target: 15-40 lines after placeholders are filled.
+     Remove sections that would be empty after filling. Only non-standard, non-obvious info.
+     Loaded at every session start — keep minimal. Maximize on-demand loading via subdirectory
+     CLAUDE.md and .claude/rules/.
 -->
 
 # [One-sentence project description from codebase analysis]
 
 ## Tooling
 
-<!-- CONDITIONAL: Include ONLY if non-standard tooling was detected.
-     Remove the entire section if all tooling is standard for the language.
-     Remove individual lines where the command is the language/framework default. -->
+<!-- CONDITIONAL on non-standard tooling. Remove if all tooling is the language default;
+     remove individual lines that match defaults. -->
 - Package manager: [only if not the language default]
 - Build: `[command]`
 - Test: `[command]`
 - Lint: `[command]`
 - Typecheck: `[command]`
-<!-- CONDITIONAL: Non-standard configuration values — include ONLY if project overrides tool defaults.
-     Example: `strict = true` in mypy, `addopts = "--cov=src"` in pytest, line-length override in ruff.
-     Remove if all tooling uses default configuration. -->
+<!-- CONDITIONAL: non-standard config (`strict = true` mypy, `addopts = "--cov=src"` pytest). -->
 - Config: `[tool] [key] = [value]`
-<!-- CONDITIONAL: Cross-scope prerequisites — include ONLY if a build step in one scope must complete
-     before another scope can run (e.g., WASM package must build before web package).
-     Remove if no cross-scope ordering dependencies exist. -->
+<!-- CONDITIONAL: cross-scope prerequisites (WASM must build before web). -->
 - Prerequisite: `[command]` must run before `[scope]`
 
 ## Critical Constraints
 
-<!-- CONDITIONAL: Include ONLY if codebase analysis found 1-3 repo-wide non-obvious constraints,
-     architectural boundaries, or domain terms that would cause agent mistakes if omitted.
-     This section is especially useful for sparse single-scope projects: prefer short behavioral constraints
-     over filler so the root file can still carry enough signal without boilerplate. -->
+<!-- CONDITIONAL: 1-3 repo-wide non-obvious constraints, architectural boundaries, or domain
+     terms that would cause agent mistakes if omitted. -->
 - `[constraint or non-obvious pattern]`
 
 ## Context
 
-<!-- CONDITIONAL: Include ONLY if scopes with genuinely different tooling were detected.
-     A simple single-package project should NOT have this section. -->
+<!-- CONDITIONAL on multiple scopes with genuinely different tooling. -->
 See scope-specific CLAUDE.md files:
 
 - `[scope-path/]` — [one-line scope purpose]
 
 ## References
 
-<!-- CONDITIONAL: Include ONLY if domain documentation files were generated.
-     Use progressive disclosure: point to docs, don't inline their content. -->
+<!-- CONDITIONAL on domain docs generated. Pointers, not inlined content. -->
 - For [domain topic], see `[path/to/domain-doc.md]`

@@ -8,6 +8,7 @@ Source: memory/how-claude-remembers-a-project.md
 ## Contents
 
 - Hard limits table (frontmatter validity, line counts)
+- Deletion test (ETH Zurich evidence: −3% success / +20% cost)
 - Bloat indicators table (broad globs, duplicates, vague instructions)
 - Staleness indicators table (paths matching no files, removed conventions)
 - Quality assessment (path specificity, actionability, scope separation)
@@ -28,6 +29,14 @@ Source: memory/how-claude-remembers-a-project.md
 A rule file violating any hard limit is flagged **OVER LIMIT** or **INVALID**.
 
 *Source: memory/how-claude-remembers-a-project.md lines 61-75; 123-145; Project convention — `.github/instructions/rules.instructions.md`*
+
+---
+
+## Deletion Test
+
+For every instruction, line, and reference, ask: **"Would removing this cause the agent to make mistakes?"** If the answer is no, flag it for removal. ETH Zurich (Feb 2026) measured that LLM-generated agent files reduce success rate by ~3% and increase cost by ~20% — the failure mode is content that looks helpful but adds no decision value. The deletion test is the rubric for separating signal from bloat.
+
+*Source: docs/general-llm/Evaluating-AGENTS-paper.pdf*
 
 ---
 

@@ -8,6 +8,7 @@ Source: docs/cursor/skills/agent-skills-guide.md
 ## Contents
 
 - Hard limits table (file length, frontmatter, phases)
+- Deletion test (ETH Zurich evidence: −3% success / +20% cost)
 - Bloat indicators table (inlined content, over-specification)
 - Staleness indicators table (deprecated fields, outdated paths)
 - Foreign-platform dialect (auto-fail)
@@ -32,6 +33,14 @@ Source: docs/cursor/skills/agent-skills-guide.md
 A skill violating any hard limit is flagged **OVER LIMIT** regardless of content quality.
 
 *Source: docs/cursor/skills/agent-skills-guide.md "Frontmatter fields" and "Optional directories"*
+
+---
+
+## Deletion Test
+
+For every instruction, line, and reference, ask: **"Would removing this cause the agent to make mistakes?"** If the answer is no, flag it for removal. ETH Zurich (Feb 2026) measured that LLM-generated agent files reduce success rate by ~3% and increase cost by ~20% — the failure mode is content that looks helpful but adds no decision value. The deletion test is the rubric for separating signal from bloat.
+
+*Source: docs/general-llm/Evaluating-AGENTS-paper.pdf*
 
 ---
 

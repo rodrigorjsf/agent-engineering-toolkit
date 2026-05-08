@@ -91,7 +91,7 @@ Detect and remove these before generating or improving configuration files:
 |---------------|-----------|-----|
 | Stale file paths | Check if referenced paths actually exist | Remove or update |
 | Contradictions | Compare instructions across all files | Remove the weaker/older rule |
-| Over-specification | Count lines; check if agent already follows rule | Delete or convert to hook |
+| Over-specification | Count lines; check if agent already follows rule | Delete or rely on tooling enforcement |
 | Failed approach accumulation | Look for rules added defensively after incidents | Remove rules that shouldn't be needed |
 | High-churn information | Look for version numbers, file counts, team names | Remove or move to a pointer |
 
@@ -108,9 +108,7 @@ Use these patterns to move content from always-consumed to on-demand locations:
 | Pattern | How it works | Token impact |
 |---------|-------------|-------------|
 | Skills | Description loaded at start; full body loaded on invocation | On-demand |
-| Path-scoped rules | Trigger only when matching files are read | On-demand |
-| Subdirectory config files | Load when working in that directory | On-demand |
-| `@path/to/import` | Expands when parent file loads | Controlled |
+| Subdirectory AGENTS.md | Loads when working under that subdirectory | On-demand |
 | Domain docs (e.g., `docs/TESTING.md`) | Agent navigates when relevant | On-demand |
 
 > "Rather than pre-processing all relevant data up front, agents maintain lightweight identifiers and use these references to dynamically load data into context at runtime."

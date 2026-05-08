@@ -19,7 +19,9 @@ Source: subagents/research-subagent-best-practices.md, subagents/creating-custom
 
 ## When to Use Subagents
 
-Subagents are for **isolated, specialized work** that should not pollute the main conversation context.
+Subagents are context firewalls. They encapsulate exploration work — glob output, grep noise, evaluator scans — in an isolated window so it never reaches the parent context. Only the condensed, structured result flows back. The orchestrator stays in the smart zone; the subagent absorbs the noise.
+
+*Source: harness-engineering.md*
 
 | Use subagent when | Use inline Claude when | Use hook when |
 |------------------|----------------------|--------------|

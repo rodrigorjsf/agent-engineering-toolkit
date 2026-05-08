@@ -1,7 +1,7 @@
 # What NOT to Include
 
 Evidence-based exclusion table for AGENTS.md and CLAUDE.md content.
-Sources: ETH Zurich paper (Evaluating AGENTS.md), Anthropic Best Practices, a-guide-to-agents.md, hooks/automate-workflow-with-hooks.md
+Sources: ETH Zurich paper (Evaluating AGENTS.md), Anthropic Best Practices, a-guide-to-agents.md, research-context-engineering-comprehensive.md
 
 ---
 
@@ -21,7 +21,7 @@ Sources: ETH Zurich paper (Evaluating AGENTS.md), Anthropic Best Practices, a-gu
 | Long explanations and tutorials | Context is for instructions, not education | Listed in explicit ❌ Exclude column | Anthropic Best Practices |
 | Detailed API documentation | Link to external docs instead of inlining | Listed in explicit ❌ Exclude column | Anthropic Best Practices |
 | Anything the agent can infer from code | Agent reads code directly; redundant instructions waste tokens | "Anything Claude can figure out by reading code" | Anthropic Best Practices |
-| Hook-enforced behaviors (formatting, file blocking, notifications) | Hooks handle these deterministically; config file instructions are redundant and may conflict with hook execution. **Migrate** to hook configuration for zero context cost | "Hooks provide deterministic control over Claude Code's behavior, ensuring certain actions always happen rather than relying on the LLM" | Anthropic Hooks Guide |
+| Tooling-enforced behaviors (formatting, linting, file blocking) | Config files already enforce these deterministically; redundant instructions waste attention budget without adding control | "If Claude already does it correctly, delete it" | Anthropic Best Practices |
 
 *Source: init-agents/SKILL.md:106-116 expanded; research-context-engineering-comprehensive.md:113-121; Evaluating-AGENTS-paper.md abstract*
 
@@ -31,20 +31,7 @@ Not all excluded content should be deleted — some should migrate to on-demand 
 
 | Exclusion Category | Action | Mechanism |
 |-------------------|--------|-----------|
-| Hook-enforced behaviors | **Migrate** | Hook (zero context cost, deterministic enforcement) |
-| Path-specific conventions | **Migrate** | `.claude/rules/` with `paths:` (loads on file match only) |
-| Domain knowledge blocks >50 lines | **Migrate** | Skill `user-invocable: false` (~100 token startup cost) |
-| Agent-inferable content | **Delete** | No migration — agents discover via tools |
-| Stale, vague, or duplicate content | **Delete** | No migration value |
-
-### Exclusion Actions
-
-Not all excluded content should be deleted — some should migrate to on-demand mechanisms:
-
-| Exclusion Category | Action | Mechanism |
-|-------------------|--------|-----------|
-| Hook-enforced behaviors | **Migrate** | Hook (zero context cost, deterministic enforcement) |
-| Path-specific conventions | **Migrate** | `.claude/rules/` with `paths:` (loads on file match only) |
+| Package or scope-specific conventions | **Migrate** | Subdirectory AGENTS.md in the relevant package |
 | Domain knowledge blocks >50 lines | **Migrate** | Skill `user-invocable: false` (~100 token startup cost) |
 | Agent-inferable content | **Delete** | No migration — agents discover via tools |
 | Stale, vague, or duplicate content | **Delete** | No migration value |

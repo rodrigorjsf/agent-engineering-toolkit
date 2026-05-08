@@ -27,6 +27,7 @@ Any hook violating these criteria must be fixed before proceeding:
 - [ ] Matcher is specific (not `"*"` for blocking hooks)
 - [ ] Error handling defined: exit 2 with meaningful stderr for blockable events; non-blockable events should provide informative stderr
 - [ ] Silent success uses exit 0 (not leaving stderr output that confuses verbose mode)
+- [ ] Successful runs produce no stdout/stderr output (silent success)
 - [ ] Secrets not hardcoded in any hook configuration field (`command` strings, `headers`, URLs, or other values) — use environment variables
 - [ ] `command` hook used for deterministic checks (not `agent` for simple regex checks)
 - [ ] `prompt` or `agent` hook used only when judgment is genuinely required

@@ -4,7 +4,7 @@ Complete checklist of expected results and the findings report template for the
 cursor-initializer quality gate meta-skill.
 
 Source: `.claude/rules/cursor-plugin-skills.md`, `.claude/rules/reference-files.md`,
-`plugins/cursor-initializer/CLAUDE.md`, `.github/instructions/agent-definitions.instructions.md`,
+`.github/instructions/agent-definitions.instructions.md`,
 `.github/instructions/template-files.instructions.md`
 
 ## Contents

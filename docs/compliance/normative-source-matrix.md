@@ -47,8 +47,9 @@ When multiple sources could apply to an artifact, use this precedence order:
 | `agents-initializer` | Claude Code plugin | `plugins/agents-initializer/` | Claude Code | `.claude-plugin` |
 | `agent-customizer` | Claude Code plugin | `plugins/agent-customizer/` | Claude Code | `.claude-plugin` |
 | `cursor-initializer` | Cursor IDE plugin | `plugins/cursor-initializer/` | Cursor | `.cursor-plugin` |
+| `cursor-customizer` | Cursor IDE plugin | `plugins/cursor-customizer/` | Cursor | `.cursor-plugin` |
 | `standalone` | Portable skills | `skills/` | Any AI tool | None |
-| `repository-global` | Governance artifacts | Root, `.claude/rules/`, `.github/instructions/`, `docs/` | All | N/A |
+| `repository-global` | Governance artifacts | Root, `.claude/rules/`, `.claude/skills/`, `.github/instructions/`, `docs/` | All | N/A |
 
 ---
 
@@ -119,8 +120,11 @@ When multiple sources could apply to an artifact, use this precedence order:
 | `rule:cursor-agent-files` | `.claude/rules/cursor-agent-files.md` | Cursor agent definitions |
 | `rule:reference-files` | `.claude/rules/reference-files.md` | All reference files |
 | `rule:readme-files` | `.claude/rules/readme-files.md` | All README files |
-| `rule:rag-mcp-server` | `.claude/rules/rag-mcp-server.md` | RAG MCP server implementation |
-| `rule:rag-storage-search` | `.claude/rules/rag-storage-and-search.md` | RAG storage and search |
+| `rule:wiki-routing` | `.claude/rules/wiki-routing.md` | Wiki-first knowledge lookup contract |
+| `rule:compliance-maintenance` | `.claude/rules/compliance-maintenance.md` | Compliance docs, drift manifests, parity |
+| `rule:plugin-versioning` | `.claude/rules/plugin-versioning.md` | Plugin and marketplace manifest SemVer |
+
+<!-- RAG rules and reindex hook removed per ADR-0004. -->
 
 ### Review Instructions (Normative — review-time enforcement)
 
@@ -142,13 +146,13 @@ When multiple sources could apply to an artifact, use this precedence order:
 
 | Artifact Type | File Pattern | Present In |
 |---------------|-------------|------------|
-| `skill` | `*/SKILL.md` | All 5 scopes |
-| `agent` | `agents/*.md` | agents-initializer, cursor-initializer, agent-customizer |
-| `reference` | `references/*.md` | All 4 distribution scopes |
-| `template` | `assets/templates/*.md`, `*.mdc` | All 4 distribution scopes |
-| `plugin-manifest` | `plugin.json`, `marketplace.json` | agents-initializer, cursor-initializer, agent-customizer |
-| `config-file` | `CLAUDE.md`, `AGENTS.md` | All 5 scopes |
-| `readme` | `README.md` | All 5 scopes |
+| `skill` | `*/SKILL.md` | All 6 scopes |
+| `agent` | `agents/*.md` | agents-initializer, cursor-initializer, cursor-customizer, agent-customizer |
+| `reference` | `references/*.md` | All 5 distribution scopes |
+| `template` | `assets/templates/*.md`, `*.mdc` | All 5 distribution scopes |
+| `plugin-manifest` | `plugin.json`, `marketplace.json` | agents-initializer, cursor-initializer, cursor-customizer, agent-customizer |
+| `config-file` | `CLAUDE.md`, `AGENTS.md` | All 6 scopes |
+| `readme` | `README.md` | All 6 scopes |
 | `rule` | `.claude/rules/*.md` | repository-global |
 | `instruction` | `.github/instructions/*.md` | repository-global |
 | `docs` | `docs/**/*.md` | repository-global |
@@ -193,13 +197,25 @@ When multiple sources could apply to an artifact, use this precedence order:
 | `config-file` | `CURSOR-RULES`, `CURSOR-PRACTICES` | `PROJECT-DESIGN-GUIDELINES`, `GENERAL-AGENTS-GUIDE` | `instr:plugin-config` | `CLAUDE-MEMORY`, `.claude/rules/` patterns |
 | `readme` | `CURSOR-PLUGIN` | `PROJECT-DESIGN-GUIDELINES` | `rule:readme-files`, `instr:readme-files` | Claude-only skills, standalone-only content |
 
+### cursor-customizer (Cursor Plugin)
+
+| Artifact | Primary Sources | Secondary Sources | Project Rules | Forbidden Sources |
+|----------|----------------|-------------------|---------------|-------------------|
+| `skill` | `CURSOR-SKILLS`, `CURSOR-PLUGIN` | `SHARED-SKILLS-STD`, `SHARED-AUTHORING`, `PROJECT-DESIGN-GUIDELINES` | `rule:cursor-plugin-skills`, `instr:skill-files` | `CLAUDE-*`, `${CLAUDE_SKILL_DIR}`, inline bash patterns |
+| `agent` | `CURSOR-SUBAGENTS` | `GENERAL-SUBAGENTS`, `PROJECT-DESIGN-GUIDELINES` | `rule:cursor-agent-files`, `instr:agent-definitions` | `CLAUDE-SUBAGENTS`, `tools:`/`maxTurns:` fields |
+| `reference` | `CURSOR-RULES`, `CURSOR-SKILLS` | `SHARED-AUTHORING`, `PROJECT-DESIGN-GUIDELINES` | `rule:reference-files`, `instr:reference-files` | `CLAUDE-MEMORY` (`paths:` guidance) |
+| `template` | `CURSOR-RULES`, `CURSOR-SKILLS` | `PROJECT-DESIGN-GUIDELINES` | `instr:template-files` | `paths:` frontmatter, Claude hook templates |
+| `plugin-manifest` | `CURSOR-PLUGIN` | — | `instr:plugin-config` | `CLAUDE-PLUGINS` manifest fields |
+| `config-file` | `CURSOR-RULES`, `CURSOR-PRACTICES` | `PROJECT-DESIGN-GUIDELINES`, `GENERAL-AGENTS-GUIDE` | `instr:plugin-config` | `CLAUDE-MEMORY`, `.claude/rules/` patterns |
+| `readme` | `CURSOR-PLUGIN` | `PROJECT-DESIGN-GUIDELINES` | `rule:readme-files`, `instr:readme-files` | Claude-only skills, standalone-only content |
+
 ### standalone (Portable Skills)
 
 | Artifact | Primary Sources | Secondary Sources | Project Rules | Forbidden Sources |
 |----------|----------------|-------------------|---------------|-------------------|
 | `skill` | `SHARED-SKILLS-STD` | `SHARED-AUTHORING`, `PROJECT-DESIGN-GUIDELINES` | `rule:standalone-skills`, `instr:skill-files` | `CLAUDE-*`, `CURSOR-*`, agent delegation, Task tool |
 | `reference` | `SHARED-AUTHORING` | `PROJECT-DESIGN-GUIDELINES`, `GENERAL-AGENTS-GUIDE` | `rule:reference-files`, `instr:reference-files` | `CLAUDE-HOOKS`, `CURSOR-HOOKS` (hook/subagent guidance) |
-| `template` | `SHARED-SKILLS-STD` | `PROJECT-DESIGN-GUIDELINES` | `instr:template-files` | `.mdc` templates, hook-config templates, `paths:`/`globs:` |
+| `template` | `SHARED-SKILLS-STD` | `PROJECT-DESIGN-GUIDELINES` | `instr:template-files` | `.mdc` templates, hook-config templates, `paths:`/`globs:` forbidden in neutral-skill templates; allowed in platform-targeted-skill templates per ADR-0005 |
 | `readme` | `SHARED-SKILLS-STD` | `PROJECT-DESIGN-GUIDELINES` | `rule:readme-files`, `instr:readme-files` | Cursor-only skills (init-cursor, improve-cursor), plugin content |
 
 ### repository-global (Governance Artifacts)
@@ -208,6 +224,7 @@ When multiple sources could apply to an artifact, use this precedence order:
 |----------|----------------|-------------------|---------------|-------------------|
 | `rule` | `CLAUDE-MEMORY` | `PROJECT-DESIGN-GUIDELINES` | `instr:rules` | — |
 | `instruction` | `PROJECT-DESIGN-GUIDELINES` | `SHARED-AUTHORING` | — | — |
+| `skill` | `SHARED-SKILLS-STD`, `SHARED-AUTHORING`, `PROJECT-DESIGN-GUIDELINES` | `GENERAL-AGENTS-GUIDE` | `instr:skill-files` | `CLAUDE-*`-only Primary, `CURSOR-*`-only Primary, end-user platform-target source bundles |
 | `config-file` (root) | `CLAUDE-MEMORY`, `PROJECT-DESIGN-GUIDELINES` | `GENERAL-AGENTS-GUIDE` | `instr:plugin-config` | — |
 | `docs` | Per-subdirectory scope (see catalog) | `PROJECT-DESIGN-GUIDELINES` | `instr:documentation` | Completed PRPs, historical plans |
 | `readme` (root) | `PROJECT-DESIGN-GUIDELINES` | — | `rule:readme-files`, `instr:readme-files` | Per-plugin detail |
@@ -251,10 +268,9 @@ When multiple sources could apply to an artifact, use this precedence order:
 
 | Skill | Output Artifacts |
 |-------|-----------------|
-| `init-claude`, `improve-claude` | `.claude/rules/*.md`, `CLAUDE.md` |
 | `init-cursor`, `improve-cursor` | `.cursor/rules/*.mdc`, `AGENTS.md` |
 | `init-agents`, `improve-agents` | `AGENTS.md` only (portable) |
-| Standalone create/improve | Platform-appropriate artifacts |
+| Standalone `create-skill`, `improve-skill` | SKILL.md packages (platform-agnostic, per ADR-0006) |
 
 ---
 
@@ -273,7 +289,7 @@ For `agents-initializer` and `agent-customizer` scopes:
 
 ### `cursor-plugin-bundle`
 
-For `cursor-initializer` scope:
+For `cursor-initializer` and `cursor-customizer` scopes:
 - **Primary**: `CURSOR-SKILLS`, `CURSOR-PLUGIN`, `CURSOR-SUBAGENTS`, `CURSOR-RULES`, `CURSOR-HOOKS`, `CURSOR-PRACTICES`
 - **Secondary**: `SHARED-SKILLS-STD`, `SHARED-AUTHORING`, `PROJECT-DESIGN-GUIDELINES`
 - **Project**: `rule:cursor-plugin-skills`, `rule:cursor-agent-files`, `rule:reference-files`, `rule:readme-files`, `instr:skill-files`, `instr:agent-definitions`, `instr:reference-files`, `instr:template-files`, `instr:plugin-config`, `instr:readme-files`
@@ -288,6 +304,7 @@ For `standalone` scope:
 - **Project**: `rule:standalone-skills`, `rule:reference-files`, `rule:readme-files`, `instr:skill-files`, `instr:reference-files`, `instr:template-files`, `instr:readme-files`
 - **Supporting**: `GENERAL-AGENTS-PAPER`, `GENERAL-CONTEXT`
 - **Forbidden**: All `CLAUDE-*` sources, all `CURSOR-*` sources, hook/subagent-specific guidance
+- **Two-layer split (ADR-0005)**: Skill body (SKILL.md prose, `references/`) must source only `SHARED-*` and `GENERAL-*` IDs; templates (`assets/templates/`) MAY use platform-specific source IDs if and only if the skill's `name` field declares that platform target.
 
 ### `agent-customizer-bundle`
 

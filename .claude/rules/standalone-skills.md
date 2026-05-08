@@ -12,6 +12,7 @@ paths:
 - Reference docs in `references/` are "follow these instructions" content — not executable scripts
 - `references/` directory MUST exist alongside SKILL.md and contain evidence-based guidance files
 - `assets/templates/` directory MUST exist alongside SKILL.md and contain output templates; validator-type or report-only standalone skills that do not generate templated artifacts MAY omit it
+- Templates in `assets/templates/` MAY embed platform-specific format only if the skill's `name` declares that platform target. The skill's `name` field is the canonical platform-target declaration — aliasing to escape this scoping is itself a violation.
 - Standalone skills MUST encode behavioral discipline: surface assumptions first, prefer the simplest complete path, keep changes surgical, and define explicit validation targets
 - If standalone skills use persuasion patterns, they MUST state the ethical constraint that those patterns support legitimate work only and never bypass safeguards or refusals
 - Self-validation phase MUST read `references/validation-criteria.md` and loop until all checks pass
@@ -19,8 +20,7 @@ paths:
 - Each skill bundles its own copies of shared references — no symlinks, no cross-directory references
 - Standalone bundled-file references MUST use relative `references/...` and `assets/templates/...` paths — NEVER `${CLAUDE_SKILL_DIR}`
 - When an intentionally shared reference is updated, update all intended copies in sync
-- Standalone improve skills MUST suggest only skills and path-scoped rules as migration targets — NEVER hooks or subagents (these require Claude Code plugin architecture)
-- When shared references mention hooks or subagents, standalone SKILL.md MUST instruct to substitute with the closest available mechanism (rule or skill)
+- Standalone skills MUST NOT author hooks, subagents, path-scoped rules, or CLAUDE.md hierarchy. The standalone bundle authors only **skills** (SKILL.md packages) and **AGENTS.md**. See ADR-0006.
 - SKILL.md `name` field: ≤64 chars, lowercase letters/numbers/hyphens only, no XML tags
 - SKILL.md `description` field: non-empty, ≤1024 chars, third person, no XML tags
 - SKILL.md body: under 500 lines

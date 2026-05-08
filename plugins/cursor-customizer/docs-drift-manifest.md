@@ -45,7 +45,7 @@ The check runs as part of the plugin's quality gate and may also be invoked manu
 |----------------|-------------------|------------|
 | `references/rule-authoring-guide.md` | `docs/cursor/rules/rules.md` | Verbatim copy of `create-rule/references/rule-authoring-guide.md` (per the per-skill-copy convention). |
 | `references/rule-validation-criteria.md` | `docs/cursor/rules/rules.md`; Industry Research (`research-context-engineering-comprehensive.md`) | Verbatim copy of `create-rule/references/rule-validation-criteria.md`. |
-| `references/rule-evaluation-criteria.md` | `docs/cursor/rules/rules.md`; Industry Research (`research-context-engineering-comprehensive.md`) | Derived: bloat / staleness / activation-mode appropriateness rubric and quality scoring. Improve-only reference. |
+| `references/rule-evaluation-criteria.md` | `docs/cursor/rules/rules.md`; Industry Research (`research-context-engineering-comprehensive.md`); Industry Research (`docs/general-llm/Evaluating-AGENTS-paper.pdf`, Deletion Test section) | Derived: bloat / staleness / activation-mode appropriateness rubric and quality scoring. Improve-only reference. |
 | `references/prompt-engineering-strategies.md` | `plugins/agent-customizer/skills/create-rule/references/prompt-engineering-strategies.md` | Verbatim copy. Vendor-neutral content; per the per-skill-copy convention this file is duplicated, not symlinked. |
 
 ### create-hook
@@ -94,7 +94,7 @@ This slice ships `cursor-customizer`'s end-to-end Cursor subagent authoring tool
 | `references/subagent-authoring-guide.md` | `docs/cursor/subagents/subagents-guide.md` | Derived (≤200 lines, with attribution; identical content to `create-subagent` copy) |
 | `references/subagent-config-reference.md` | `docs/cursor/subagents/subagents-guide.md`; `docs/adr/0002-product-strict-research-foundation.md` | Derived (identical content to `create-subagent` copy) |
 | `references/subagent-validation-criteria.md` | `docs/cursor/subagents/subagents-guide.md`; `docs/adr/0002-product-strict-research-foundation.md` | Derived (identical content to `create-subagent` copy) |
-| `references/subagent-evaluation-criteria.md` | `docs/cursor/subagents/subagents-guide.md`; `docs/adr/0002-product-strict-research-foundation.md` | Derived (improve-only scoring rubric) |
+| `references/subagent-evaluation-criteria.md` | `docs/cursor/subagents/subagents-guide.md`; `docs/adr/0002-product-strict-research-foundation.md`; Industry Research (`docs/general-llm/Evaluating-AGENTS-paper.pdf`, Deletion Test section) | Derived (improve-only scoring rubric) |
 | `references/prompt-engineering-strategies.md` | `plugins/agent-customizer/skills/create-subagent/references/prompt-engineering-strategies.md` | Verbatim copy (identical content to `create-subagent` copy) |
 
 ### Frontmatter contract
@@ -124,7 +124,7 @@ This slice populates the `create-skill` and `improve-skill` reference inventorie
 | `references/skill-authoring-guide.md` | Derived (≤200 lines, with attribution) | `docs/cursor/skills/agent-skills-guide.md` |
 | `references/skill-format-reference.md` | Derived | `docs/cursor/skills/agent-skills-guide.md` |
 | `references/skill-validation-criteria.md` | Derived | `docs/cursor/skills/agent-skills-guide.md` |
-| `references/skill-evaluation-criteria.md` | Derived | `docs/cursor/skills/agent-skills-guide.md` |
+| `references/skill-evaluation-criteria.md` | Derived | `docs/cursor/skills/agent-skills-guide.md`; Industry Research (`docs/general-llm/Evaluating-AGENTS-paper.pdf`, Deletion Test section) |
 | `references/behavioral-guidelines.md` | Verbatim copy | `plugins/agent-customizer/skills/create-skill/references/behavioral-guidelines.md` |
 | `references/prompt-engineering-strategies.md` | Verbatim copy | `plugins/agent-customizer/skills/create-skill/references/prompt-engineering-strategies.md` |
 

@@ -8,44 +8,23 @@ Sources: research-claude-code-skills-format.md, research-context-engineering-com
 
 ## Contents
 
-- Loading behavior table (when each location loads, token impact, claudeMdExcludes)
+- Loading behavior summary (defers full table to progressive-disclosure-guide)
 - Path-scoping syntax (YAML frontmatter for conditional loading)
 - When to create rules files (conventions and domain-critical)
 - When NOT to create rules files (content belongs elsewhere)
 - Rules directory structure (organization and discovery)
 - Rules vs CLAUDE.md decision table
-- CLAUDE.md hierarchy (5 scopes with resolution order)
 - Maximize on-demand loading (priority order for placement)
 
 ---
 
-## Loading Behavior Table
+## Loading Behavior Summary
 
-Use this to decide where to place content (priority: minimize always-consumed tokens):
+`.claude/rules/*.md` without `paths:` frontmatter loads at session start (always consumed). With `paths:`, it loads only when matching files are read (on-demand). The full loading-timing matrix for CLAUDE.md, subdirectory CLAUDE.md, domain docs, and skills lives in `progressive-disclosure-guide.md` § CLAUDE.md-Specific Hierarchy.
 
-| Location | Loads when | Token impact |
-|----------|------------|-------------|
-| `./CLAUDE.md` | Session start | **Always consumed** |
-| `./.claude/CLAUDE.md` | Session start | **Always consumed** |
-| `.claude/rules/*.md` (no `paths:`) | Session start | **Always consumed** |
-| `.claude/rules/*.md` (with `paths:`) | When matching files are read | On-demand |
-| `./subdir/CLAUDE.md` | When files in that dir are read | On-demand |
-| `docs/*.md` domain files | When agent navigates to them | On-demand |
-| Skills | When invoked | On-demand |
+`claudeMdExcludes` (in `.claude/settings.local.json`) skips irrelevant ancestor CLAUDE.md files in large monorepos.
 
-**Rule**: Move content from always-consumed to on-demand locations wherever possible.
-
-**`claudeMdExcludes`**: Skip irrelevant CLAUDE.md files by path/glob in `.claude/settings.local.json`:
-
-```json
-{ "claudeMdExcludes": ["**/other-team/CLAUDE.md"] }
-```
-
-Patterns match absolute paths. Arrays merge across settings layers. Managed policy files cannot be excluded.
-
-*Source: memory/how-claude-remembers-a-project.md lines 243-260*
-
-*Source: improve-claude/SKILL.md:130-141; research-context-engineering-comprehensive.md:181-208*
+*Source: memory/how-claude-remembers-a-project.md lines 243-260; research-context-engineering-comprehensive.md:181-208*
 
 ---
 
@@ -72,19 +51,7 @@ Rules **without** `paths:` frontmatter load unconditionally at session start (al
 
 ## When to Create Rules Files
 
-Create `.claude/rules/` files for exactly two categories:
-
-**1. Convention rules** — file-pattern-specific coding conventions:
-
-- Style rules for specific file types (`**/*.ts`, `**/*.test.ts`)
-- Framework-specific patterns (e.g., route handlers, migration scripts)
-- Only when conventions are non-obvious and would cause mistakes if not followed
-
-**2. Domain-critical rules** — security/compliance triggered by sensitive file patterns:
-
-- Data privacy rules for files handling sensitive data
-- Security rules for client-facing code patterns
-- Compliance rules for regulated data handling
+Two categories warrant a `.claude/rules/` file: (1) **convention rules** — file-pattern-specific coding conventions (style rules for `**/*.ts`, `**/*.test.ts`; framework-specific patterns like route handlers or migration scripts), only when non-obvious enough to cause mistakes; (2) **domain-critical rules** — security, privacy, or compliance triggered by sensitive file patterns.
 
 *Source: init-claude/SKILL.md:118-136*
 
@@ -92,31 +59,13 @@ Create `.claude/rules/` files for exactly two categories:
 
 ## When NOT to Create Rules Files
 
-| Scenario | Where it belongs instead |
-|----------|--------------------------|
-| Project-wide general conventions | Root `CLAUDE.md` |
-| Scope-wide conventions (one area) | Subdirectory `CLAUDE.md` |
-| Obvious patterns the model already knows | Omit entirely |
+Project-wide general conventions belong in root `CLAUDE.md`; scope-wide conventions for one area belong in a subdirectory `CLAUDE.md`; obvious patterns the model already knows should be omitted entirely.
 
 ---
 
 ## Rules Directory Structure
 
-```
-.claude/
-├── CLAUDE.md              # Main project instructions (always loaded)
-└── rules/
-    ├── code-style.md      # Style rules (use path-scoping if file-specific)
-    ├── testing.md         # Testing conventions with paths: ["**/*.test.*"]
-    ├── security.md        # Security requirements with paths: ["src/api/**"]
-    └── frontend/
-        └── react.md       # Sub-organized by domain
-```
-
-- Each file covers **one topic** with a descriptive filename
-- Files discovered **recursively** in `.claude/rules/`
-- Supports **symlinks** for sharing across projects; circular symlinks are detected and handled gracefully
-- User-level rules (`~/.claude/rules/`) apply to all projects; loaded **before** project rules (project rules take higher priority)
+`.claude/rules/` holds one file per topic with descriptive filenames (e.g., `code-style.md`, `testing.md` with `paths: ["**/*.test.*"]`, `security.md` with `paths: ["src/api/**"]`); subdirectories like `frontend/react.md` group rules by domain. Files are discovered recursively. Symlinks are supported for cross-project sharing (circular symlinks handled gracefully). User-level rules (`~/.claude/rules/`) apply to all projects but project rules take precedence.
 
 *Source: research-context-engineering-comprehensive.md lines 284-305*
 
@@ -124,39 +73,12 @@ Create `.claude/rules/` files for exactly two categories:
 
 ## Rules vs CLAUDE.md Decision Table
 
-| Content | Use |
-|---------|-----|
-| Relevant to every task in the repo | Root `./CLAUDE.md` |
-| Relevant to one area/package | `subdir/CLAUDE.md` |
-| Specific to certain file patterns | `.claude/rules/rule.md` with `paths:` |
-| Workflow the agent invokes explicitly | Skill |
-
----
-
-## CLAUDE.md Hierarchy (5 Scopes)
-
-Resolution order: more specific scopes take precedence.
-
-| Priority | Scope | Location |
-|----------|-------|----------|
-| 1 (highest) | Managed (org) | System-level (MDM-deployed) |
-| 2 | CLI args | Command line — session only |
-| 3 | Local | `.claude/settings.local.json` (gitignored) |
-| 4 | Project | `./CLAUDE.md` (version controlled) |
-| 5 (lowest) | User | `~/.claude/CLAUDE.md` (personal) |
-
-Subdirectory `CLAUDE.md` files load **on-demand** (not at startup).
-
-*Source: research-context-engineering-comprehensive.md lines 259-282*
+Relevant to every task → root `./CLAUDE.md`. Relevant to one area/package → `subdir/CLAUDE.md`. Specific to file patterns → `.claude/rules/rule.md` with `paths:`. Workflow the agent invokes explicitly → skill.
 
 ---
 
 ## Maximize On-Demand Loading
 
-When generating or improving Claude config, prefer this priority order:
+When placing new content, prefer this priority order: (1) path-scoped `.claude/rules/` file → (2) subdirectory `CLAUDE.md` → (3) domain doc (`docs/TESTING.md`) → (4) skill → (5) only if truly needed every task, root `CLAUDE.md`. The 5-scope CLAUDE.md hierarchy table (Managed/CLI/Local/Project/User) lives in `progressive-disclosure-guide.md`.
 
-1. Can it be a path-scoped `.claude/rules/` file? → Move there
-2. Can it be a subdirectory `CLAUDE.md`? → Move there
-3. Can it be a domain doc (`docs/TESTING.md`)? → Move there
-4. Can it be a skill? → Move there
-5. Only if truly needed for every task → Keep in root `CLAUDE.md`
+*Source: research-context-engineering-comprehensive.md lines 259-282*

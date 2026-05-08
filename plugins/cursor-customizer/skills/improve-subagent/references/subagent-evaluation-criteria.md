@@ -8,6 +8,7 @@ Source: docs/cursor/subagents/subagents-guide.md, docs/adr/0002-product-strict-r
 ## Contents
 
 - Hard limits table (frontmatter validity, required fields)
+- Deletion test (ETH Zurich evidence: −3% success / +20% cost)
 - Bloat indicators table
 - Staleness indicators table
 - Quality assessment
@@ -30,6 +31,14 @@ Source: docs/cursor/subagents/subagents-guide.md, docs/adr/0002-product-strict-r
 A subagent violating any hard limit is flagged **INVALID** regardless of other quality.
 
 *Source: docs/cursor/subagents/subagents-guide.md; docs/adr/0002-product-strict-research-foundation.md*
+
+---
+
+## Deletion Test
+
+For every instruction, line, and reference, ask: **"Would removing this cause the agent to make mistakes?"** If the answer is no, flag it for removal. ETH Zurich (Feb 2026) measured that LLM-generated agent files reduce success rate by ~3% and increase cost by ~20% — the failure mode is content that looks helpful but adds no decision value. The deletion test is the rubric for separating signal from bloat.
+
+*Source: docs/general-llm/Evaluating-AGENTS-paper.pdf*
 
 ---
 

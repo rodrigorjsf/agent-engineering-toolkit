@@ -7,8 +7,8 @@ Evidence-based rules-first initializer and optimizer for Cursor projects. Genera
 This plugin analyzes your entire codebase before generating or improving configuration files.
 Execution cost scales with project size and scope — a large or complex project can be expensive to run.
 
-**Recommended model:** Claude Opus delivers the best analysis quality for this workload.
-**Viable alternative:** Claude Sonnet with High effort produces decent results at lower cost.
+**Recommended model:** a frontier reasoning model delivers the best analysis quality for this workload.
+**Viable alternative:** a frontier balanced model with high effort produces decent results at lower cost.
 
 **Usage pattern:** run each skill once per project, or when the codebase has changed significantly.
 Not on every session.

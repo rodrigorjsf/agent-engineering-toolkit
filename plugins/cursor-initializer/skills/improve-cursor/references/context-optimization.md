@@ -1,132 +1,42 @@
 # Context Optimization
 
-Evidence-based instructions for managing token budgets and attention in agent configuration files.
-Source: research-context-engineering-comprehensive.md
+Token-budget and attention guidance for `.cursor/rules/*.mdc` and AGENTS.md files.
+Source: Industry Research — research-context-engineering-comprehensive.md.
+
+Hard limits live in `validation-criteria.md`. Bloated files cause the model to miss important instructions: if Cursor keeps doing something despite a rule against it, the file is probably too long. (Industry Research)
 
 ---
 
-## Contents
+## Attention Budget
 
-- Hard limits (lines per file, instruction count, contradictions)
-- The attention budget (finite resource, n-squared constraint)
-- Lost in the middle (placement strategy for critical instructions)
-- Quality over quantity checklist (include/exclude decision table)
-- Context poisoning vectors (detection and removal)
-- JIT documentation patterns (on-demand loading strategies)
-- Key citations
-
----
-
-## Hard Limits
-
-| Limit | Value | Source |
-|-------|-------|--------|
-| Lines per configuration file | ≤ 200 | Anthropic Docs: 200-line target for configuration files in this toolkit |
-| Instructions per file | ≤ 150-200 | HumanLayer: "Frontier LLMs can follow ~150-200 instructions with reasonable consistency." |
-| Contradictions between files | 0 | Anthropic: conflicting instructions make the model choose inconsistently. |
-
-> Anthropic's warning generalizes here: bloated configuration files cause the model to miss important instructions.
-> — Anthropic Best Practices
-
-> Anthropic's warning generalizes here: if a configuration file keeps growing, the model may ignore an instruction even when it is present.
-> — Anthropic Best Practices
-
----
-
-## The Attention Budget
-
-Context is a **finite resource with diminishing marginal returns**. Do not treat it as unlimited.
-
-> "LLMs have an 'attention budget' that they draw on when parsing large volumes of context. Every new token introduced depletes this budget by some amount."
-> — Anthropic Engineering: Effective Context Engineering
-
-Architectural reason: Transformers create **n² pairwise relationships** for n tokens — attention gets stretched thin as context grows. Models trained on shorter sequences have fewer parameters for long-range dependencies.
-
-**Key principle**: *"Good context engineering means finding the smallest possible set of high-signal tokens that maximize the likelihood of some desired outcome."* — Anthropic
-
-> Context rot: "As the number of tokens in the context window increases, the model's ability to accurately recall information from that context decreases." — Anthropic
+Context is finite with diminishing returns; every new token depletes the attention budget. Transformers form n² pairwise relationships, so attention stretches as context grows. Goal: smallest set of high-signal tokens that maximize the desired outcome. As context grows, recall accuracy decreases ("context rot"). (Industry Research, Effective Context Engineering)
 
 ---
 
 ## Lost in the Middle
 
-Critical instructions must be at the **start or end** of files, not buried in the middle.
-
-> Performance is "highest when relevant information is at the beginning or end of the context... degrades significantly for information in the middle of long contexts."
-> — Liu et al., Lost in the Middle (arXiv:2307.03172)
-
-**Apply this when generating files:** Place the most important instructions in the first 20% and last 20% of each configuration file.
+Place the most important instructions in the first 20% and last 20% of each file. Performance is highest at start and end; degrades for information buried in the middle. (Liu et al., arXiv:2307.03172)
 
 ---
 
-## Quality Over Quantity Checklist
+## Quality Over Quantity
 
-For each instruction line, ask: **"Would removing this cause the agent to make mistakes? If not, cut it."**
-— Anthropic Best Practices
+Apply the deletion test: "Would removing this cause the agent to make mistakes? If not, cut it." Full include/exclude categories: see `what-not-to-include.md`. **Specificity goldilocks**: ✅ "Use 2-space indentation"; "Run `npm test` before committing"; "API handlers live in `src/api/handlers/`". ❌ "Format code properly"; "Test your changes"; "Keep files organized".
 
-| ✅ Include | ❌ Exclude |
-|-----------|-----------|
-| Bash commands the agent cannot guess | Anything the agent can figure out by reading code |
-| Code style rules that differ from defaults | Standard language conventions already known |
-| Testing instructions (non-standard) | Detailed API documentation (link instead) |
-| Non-obvious architectural decisions | Long explanations or tutorials |
-| Developer environment quirks | File-by-file descriptions of the codebase |
-| Non-standard tooling | Self-evident practices ("write clean code") |
-
-**Instruction specificity goldilocks:**
-
-- ✅ "Use 2-space indentation" vs. ❌ "Format code properly"
-- ✅ "Run `npm test` before committing" vs. ❌ "Test your changes"
-- ✅ "API handlers live in `src/api/handlers/`" vs. ❌ "Keep files organized"
-
-*Source: research-context-engineering-comprehensive.md lines 113-134*
+*Source: Industry Research — research-context-engineering-comprehensive.md lines 113-134*
 
 ---
 
 ## Context Poisoning Vectors
 
-Detect and remove these before generating or improving configuration files:
+Detect and remove: stale file paths (check existence; remove or update); contradictions (drop the weaker rule); over-specification (rules already followed; delete or convert to hook); failed-approach accumulation (defensive rules added after incidents); high-churn data (versions, file counts, team names — remove or replace with a pointer). Treat configuration files like code: review when things go wrong, prune regularly. (Industry Research)
 
-| Poison vector | Detection | Fix |
-|---------------|-----------|-----|
-| Stale file paths | Check if referenced paths actually exist | Remove or update |
-| Contradictions | Compare instructions across all files | Remove the weaker/older rule |
-| Over-specification | Count lines; check if agent already follows rule | Delete or convert to hook |
-| Failed approach accumulation | Look for rules added defensively after incidents | Remove rules that shouldn't be needed |
-| High-churn information | Look for version numbers, file counts, team names | Remove or move to a pointer |
-
-> Treat configuration files like code: review them when things go wrong, prune them regularly. — Adapted from Anthropic Best Practices
-
-*Source: research-context-engineering-comprehensive.md lines 213-253*
+*Source: Industry Research — research-context-engineering-comprehensive.md lines 213-253*
 
 ---
 
-## JIT Documentation Patterns
+## JIT Documentation
 
-Use these patterns to move content from always-consumed to on-demand locations:
+Move from always-consumed to on-demand: skills (description at start, body on invocation), path-scoped rules (load on file match), subdirectory configs (load when working there), domain docs in `docs/` (agent navigates when relevant). Maintain lightweight identifiers; load data into context at runtime. (Industry Research, Effective Context Engineering)
 
-| Pattern | How it works | Token impact |
-|---------|-------------|-------------|
-| Skills | Description loaded at start; full body loaded on invocation | On-demand |
-| Path-scoped rules | Trigger only when matching files are read | On-demand |
-| Subdirectory config files | Load when working in that directory | On-demand |
-| `@path/to/import` | Expands when parent file loads | Controlled |
-| Domain docs (e.g., `docs/TESTING.md`) | Agent navigates when relevant | On-demand |
-
-> "Rather than pre-processing all relevant data up front, agents maintain lightweight identifiers and use these references to dynamically load data into context at runtime."
-> — Anthropic Engineering: Effective Context Engineering
-
-*Source: research-context-engineering-comprehensive.md lines 138-208, 451-461*
-
----
-
-## Key Citations
-
-| Claim | Source |
-|-------|--------|
-| ≤200 lines per file | Agent Skills Standard |
-| ~150-200 instruction limit | HumanLayer (Kyle) via a-guide-to-agents.md |
-| n² attention constraint / context rot | Anthropic Engineering Blog |
-| Lost-in-the-middle effect | Liu et al., arXiv:2307.03172 |
-| Quality over quantity heuristic | Anthropic Best Practices |
-| JIT documentation strategy | Anthropic Engineering: Effective Context Engineering |
+*Source: Industry Research — research-context-engineering-comprehensive.md lines 138-208, 451-461*
