@@ -1,6 +1,6 @@
 ---
 name: init-agents
-description: "Initializes optimized AGENTS.md hierarchy for projects. Uses subagent-driven codebase analysis to generate minimal, scoped files following progressive disclosure — based on the ETH Zurich 'Evaluating AGENTS.md' study showing that minimal developer-style files outperform comprehensive auto-generated ones."
+description: 'Initializes AGENTS.md hierarchy (Claude Code plugin) via subagent-driven codebase analysis. Generates minimal, scoped files per ETH Zurich AGENTS.md study.'
 ---
 
 # Initialize AGENTS.md
