@@ -23,6 +23,15 @@
             "command": ".claude/hooks/check-docs-sync.sh"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/check-skill-self-containment-hook.sh"
+          }
+        ]
       }
     ]
   },
