@@ -52,6 +52,7 @@ The Cursor distribution is product-strict. The skill tree (SKILL.md, references,
 - [ ] All bundled-path references in SKILL.md use relative paths from the skill root
 - [ ] `description` written in third person ("Deploys..." not "I deploy..." or "You can use...")
 - [ ] `description` includes what the skill does AND when to use it (trigger terms)
+- [ ] `description` length ≤ 200 chars (target band 110–150) — measure via Python YAML, not single-line awk; if > 200 chars, frontmatter MUST include `description-budget-exception: <reason>` (hard cap 400 chars). See ADR-0007.
 - [ ] Progressive disclosure applied: references loaded per phase, not all upfront
 - [ ] No reference content inlined in SKILL.md body (should be in `references/` subdirectory)
 - [ ] Each phase instruction is concise (≤10 lines); depth lives in reference files
