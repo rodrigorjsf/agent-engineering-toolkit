@@ -68,7 +68,9 @@ The description is **the only thing your agent sees** when deciding which skill 
 
 **Format**:
 
-- Max 1024 chars
+- Project ceiling: ≤ 200 chars (target band 110–150). See `.claude/rules/skill-description-budget.md` and ADR-0007.
+- Hard upstream cap: 1024 chars (Agent Skills spec).
+- Exception: > 200 chars allowed only if frontmatter includes `description-budget-exception: <reason>` (absolute hard cap 400 chars).
 - Write in third person
 - First sentence: what it does
 - Second sentence: "Use when [specific triggers]"
@@ -110,6 +112,7 @@ Split into separate files when:
 After drafting, verify:
 
 - [ ] Description includes triggers ("Use when...")
+- [ ] Description ≤ 200 chars (or has `description-budget-exception:` field, ≤ 400 chars)
 - [ ] SKILL.md under 100 lines
 - [ ] No time-sensitive info
 - [ ] Consistent terminology
