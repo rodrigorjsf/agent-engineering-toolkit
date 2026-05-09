@@ -29,7 +29,7 @@ Progressive disclosure is the single most impactful technique for managing agent
 
 - **Root CLAUDE.md** → Always loaded (target: 15–40 lines)
 - **`.claude/rules/`** → Path-scoped rules with glob patterns; load only when matching files are read
-- **Skills (SKILL.md)** → Invoked by name or auto-triggered by description match
+- **Skills (SKILL.md)** → Invoked by name or auto-triggered by description match. Skill metadata (name + description) is the "Always" tier; `skillListingBudgetFraction` (default `0.01`) caps the total — exceeding ~15–25 skills causes silent description truncation and breaks auto-invocation. See [[skill-listing-budget]].
 - **[[claude-code-subagents]]** → Isolated context windows, return only summaries
 
 ### Cursor IDE
@@ -87,6 +87,7 @@ This allows a 50,000-token knowledge base to present as a ~2,000-token effective
 
 - [[context-engineering]]
 - [[context-rot]]
+- [[skill-listing-budget]]
 - [[evaluating-agents-paper]]
 - [[agent-configuration-files]]
 - [[claude-code-memory]]

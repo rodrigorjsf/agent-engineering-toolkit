@@ -2,6 +2,26 @@
 
 ---
 
+## 2026-05-09 — Ingest: skills-listing-budget (skill listing budget mechanism)
+
+**Source**: `docs/claude/skills-listing-budget.md`
+
+**Page created (1):** `skill-listing-budget.md`
+
+**Pages updated (3):**
+- `claude-code-skills.md` — added "Skill Listing Budget" section; added `[[skill-listing-budget]]` to Related pages
+- `context-engineering.md` — expanded Dead Context bullet about skills to mention the budget cap and silent truncation; added `[[skill-listing-budget]]` to Related pages
+- `progressive-disclosure.md` — expanded Claude Code Skills bullet to note `skillListingBudgetFraction` enforcement; added `[[skill-listing-budget]]` to Related pages
+
+**Cross-link decisions:**
+- Linked `[[skill-listing-budget]]` from all three updated pages (bidirectional)
+- `[[skill-authoring]]` added to new page's Related pages — description optimization is the canonical fix
+
+**Open question for follow-up:**
+- Priority algorithm for "lowest-priority" skill truncation not documented in source — may be usage frequency or insertion order; needs verification against Claude Code source or changelog.
+
+---
+
 ## 2026-05-03 — Update: compliance-routing (register cursor-customizer scope)
 
 **Page updated (1):** `compliance-routing.md`
@@ -156,3 +176,7 @@
 | context-engineering.md      | 59     | 76    | Implementation strategies detail, Ball of Mud anti-pattern, instruction budget               |
 
 **Total:** 2138 → 2758 lines (+29%), 16 pages unchanged (already adequate)
+
+## 2026-05-09 — Skill description budget ceiling
+
+Added project-level 200-char hard ceiling on `SKILL.md description:` fields. New `.claude/rules/skill-description-budget.md` (auto-loads for `**/SKILL.md`) plus ADR-0007 record the trade-off (silent skill loss vs per-session token cost) and the chosen ceiling. Wiki page `[[skill-listing-budget]]` extended with a "Project ceiling (this repo)" section. 40 over-budget descriptions rewritten across `.claude/skills/`, four plugin distributions, and standalone `skills/`.

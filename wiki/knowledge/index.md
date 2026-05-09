@@ -1,6 +1,6 @@
 # Wiki Index
 
-Total pages: **39**
+Total pages: **40**
 
 ---
 
@@ -31,6 +31,7 @@ Total pages: **39**
 | Page                      | Summary                                                       |
 | ------------------------- | ------------------------------------------------------------- |
 | [[claude-code-skills]]    | SKILL.md format, frontmatter, string substitutions, locations |
+| [[skill-listing-budget]]  | `skillListingBudgetFraction` cap, silent truncation, solutions; project 200-char ceiling (ADR-0007) |
 | [[claude-code-hooks]]     | Lifecycle events, hook types, exit codes, matchers            |
 | [[claude-code-plugins]]   | Plugin structure, manifest, distribution, namespacing         |
 | [[claude-code-memory]]    | CLAUDE.md hierarchy, path-scoped rules, imports, auto memory  |

@@ -71,7 +71,7 @@ The practical implication: **intentional compaction is mandatory**, not optional
 
 Audit dead context:
 - Scope plugins per project, not globally
-- Remove skills not relevant to current work
+- Remove skills not relevant to current work — Claude Code v2.1.129+ enforces a `skillListingBudgetFraction` cap (default 1% of context window, ~2,000 tokens on Sonnet 4.6); skills over the budget lose descriptions silently, breaking auto-invocation. See [[skill-listing-budget]].
 - Test effective budget with a bare context first
 - IFScale benchmark: at 500 instructions, agents follow only ~68% and skip 1 in 3 (source: agents-md-is-a-liability-paddo.md)
 
@@ -131,6 +131,7 @@ Well-formatted 1,000-token prompt beats a wall-of-text 900-token prompt. Cut con
 
 - [[context-rot]]
 - [[progressive-disclosure]]
+- [[skill-listing-budget]]
 - [[prompt-engineering]]
 - [[whitespace-and-formatting]]
 - [[multilingual-performance]]

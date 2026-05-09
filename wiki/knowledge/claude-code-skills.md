@@ -2,7 +2,7 @@
 
 **Summary**: Custom instruction packages that extend Claude Code's capabilities through SKILL.md files with YAML frontmatter — following the Agent Skills open standard with Claude-specific extensions for model selection, tool restriction, and context forking.
 **Sources**: extend-claude-with-skills.md, research-claude-code-skills-format.md, analysis-extend-claude-with-skills.md, analysis-research-claude-code-skills-format.md
-**Last updated**: 2026-04-18
+**Last updated**: 2026-05-09
 
 ---
 
@@ -55,6 +55,19 @@ my-skill/
 | Instructions (SKILL.md body)     | Skill activated   | <5,000 tokens |
 | Resources (references/, assets/) | Explicitly loaded | On-demand     |
 
+## Skill Listing Budget
+
+Skill metadata (name + description) loads at session start. Claude Code v2.1.129+ enforces a hard cap via `skillListingBudgetFraction` (default `0.01` = 1% of context window):
+
+| Setting | Default | Effect |
+|---|---|---|
+| `skillListingBudgetFraction` | `0.01` | ~2,000 tokens on Sonnet 4.6's 200K window |
+| `skillListingMaxDescChars` | `1536` | Per-skill truncation limit |
+
+When the budget is exceeded, lowest-priority descriptions are dropped silently — **no warning**. A skill with a truncated description cannot be auto-invoked. This is a correctness concern: 15–25 skills is the practical ceiling before truncation begins.
+
+Solutions in priority order: disable unused skills → tighten descriptions to 100–150 chars → raise `skillListingBudgetFraction` as last resort. See [[skill-listing-budget]] for full details and configuration examples.
+
 ## Bundled Skills
 
 Claude Code ships with: `/batch`, `/claude-api`, `/debug`, `/loop`, `/simplify`
@@ -77,6 +90,7 @@ Claude Code ships with: `/batch`, `/claude-api`, `/debug`, `/loop`, `/simplify`
 
 - [[agent-skills-standard]]
 - [[skill-authoring]]
+- [[skill-listing-budget]]
 - [[claude-code-plugins]]
 - [[cursor-skills]]
 - [[progressive-disclosure]]
