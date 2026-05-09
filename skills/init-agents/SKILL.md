@@ -1,6 +1,6 @@
 ---
 name: init-agents
-description: "Initializes optimized AGENTS.md hierarchy for projects. Generates minimal, scoped files following progressive disclosure: minimal developer-written files outperform comprehensive auto-generated ones in head-to-head agent benchmarking."
+description: 'Initializes AGENTS.md hierarchy (platform-agnostic). Generates minimal, scoped files via progressive disclosure — minimal developer files outperform auto-generated.'
 ---
 
 # Initialize AGENTS.md

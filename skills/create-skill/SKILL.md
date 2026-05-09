@@ -1,6 +1,6 @@
 ---
 name: create-skill
-description: "Creates new SKILL.md files with references, templates, and frontmatter grounded in the docs corpus. Uses inline codebase analysis and evidence-based guidance. Use when creating a new skill from scratch."
+description: 'Creates new SKILL.md files with references, templates, and frontmatter from the docs corpus. Uses inline codebase analysis. Use when creating a skill from scratch.'
 ---
 
 # Create Skill
