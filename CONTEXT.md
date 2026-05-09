@@ -50,6 +50,10 @@ _Avoid_: rules-only (rules-first leaves room for legacy migration; rules-only wo
 **Subagent**:
 A YAML-fronted agent definition spawned for delegated, isolated work. Claude Code uses `tools:`/`maxTurns:`; Cursor uses `readonly:`/`model: inherit`.
 
+**Skill description budget**:
+The character ceiling on the `description:` field of every `SKILL.md` in this repository, enforced to keep total skill metadata within Claude Code's `skillListingBudgetFraction` default (1% of context). Target band: 110–150 chars; hard ceiling: 200 chars; exception up to 400 chars with `description-budget-exception:` frontmatter field. See ADR-0007 and `[[skill-listing-budget]]`.
+_Avoid_: description limit, description cap (these miss the budget-fraction connection)
+
 ### Knowledge base vocabulary
 
 **Wiki**:
