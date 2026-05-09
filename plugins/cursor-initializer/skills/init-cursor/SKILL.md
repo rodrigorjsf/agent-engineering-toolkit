@@ -1,6 +1,6 @@
 ---
 name: init-cursor
-description: "Initializes a rules-first .cursor/rules/*.mdc hierarchy for projects without existing Cursor configuration. Uses subagent-driven codebase analysis and a four-tier rule decomposition heuristic to generate the minimum set of rules each with the correct activation mode."
+description: 'Initializes rules-first `.cursor/rules/*.mdc` hierarchy for projects without Cursor config. Uses four-tier rule decomposition + correct activation mode per rule.'
 ---
 
 # Initialize Cursor Rules

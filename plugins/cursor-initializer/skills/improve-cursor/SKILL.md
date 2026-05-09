@@ -1,6 +1,6 @@
 ---
 name: improve-cursor
-description: "Evaluates and improves existing .cursor/rules/*.mdc files. When AGENTS.md is present in the target project, runs a non-destructive migration sub-flow that decomposes its content into modular rules without touching the original file."
+description: 'Evaluates and improves existing `.cursor/rules/*.mdc` files. Non-destructive AGENTS.md migration when present — decomposes into modular rules, original untouched.'
 ---
 
 # Improve Cursor Rules
