@@ -1,6 +1,6 @@
 ---
 name: quality-gate
-description: "Performs a complete quality gate analysis of the agents-initializer project. Validates all artifacts against documented conventions, checks cross-distribution parity, runs docs drift detection, evaluates red-green test scenario coverage, and generates a structured findings report compatible with /prp-core:prp-prd when issues are found."
+description: 'Quality-gate audit of agents-initializer: convention compliance, cross-distribution parity, docs drift, red-green tests. Outputs PRD-compatible findings.'
 ---
 
 # Quality Gate Analysis

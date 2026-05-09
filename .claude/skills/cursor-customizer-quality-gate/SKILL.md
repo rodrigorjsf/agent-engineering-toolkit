@@ -1,6 +1,6 @@
 ---
 name: cursor-customizer-quality-gate
-description: "Performs a complete quality gate analysis of the cursor-customizer plugin. Validates all artifacts against documented Cursor-platform conventions, checks intra-plugin shared-copy parity, runs docs drift detection, evaluates red-green test scenarios, and generates a structured findings report compatible with /prp-core:prp-prd when issues are found."
+description: 'Quality-gate audit of cursor-customizer plugin: convention compliance, parity, docs drift, red-green tests. Outputs PRD-compatible findings.'
 ---
 
 # Cursor-Customizer Quality Gate Analysis

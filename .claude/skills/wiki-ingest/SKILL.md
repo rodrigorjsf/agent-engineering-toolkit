@@ -1,6 +1,6 @@
 ---
 name: wiki-ingest
-description: Compile a `docs/` source document into the `wiki/knowledge/` knowledge base — Karpathy-style ingest. Use when a new file is added under `docs/` and the user wants it summarized, cross-linked, and indexed in the wiki. Trigger phrases include "ingest this doc", "compile into the wiki", "add to the wiki", "summarize and cross-link", or `/wiki-ingest <path>`. Skip for casual questions about a doc — only invoke when the user wants a durable wiki entry.
+description: 'Compile a `docs/` source file into `wiki/knowledge/` (summary, cross-links, index). Use to ingest a doc into the wiki, not for casual reads.'
 ---
 
 # Wiki Ingest

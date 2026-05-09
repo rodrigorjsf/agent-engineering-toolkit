@@ -1,6 +1,6 @@
 ---
 name: update-review-instructions
-description: "Generates or updates GitHub Copilot review instruction files in .github/instructions/ for a selected project scope. Analyzes current conventions from .claude/rules/, DESIGN-GUIDELINES.md, and existing skill structures to produce evidence-based, scope-specific review guidelines under the 4,000 character code review limit."
+description: 'Generate/update GitHub Copilot review instructions in `.github/instructions/` from `.claude/rules/` and skill structures. Stays under 4K char limit.'
 ---
 
 # Update Review Instructions

@@ -1,6 +1,6 @@
 ---
 name: agent-customizer-quality-gate
-description: "Performs a complete quality gate analysis of the agent-customizer plugin. Validates all artifacts against documented conventions, checks intra-plugin shared-copy parity, runs docs drift detection, evaluates red-green test scenarios, and generates a structured findings report compatible with /prp-core:prp-prd when issues are found."
+description: 'Quality-gate audit of agent-customizer plugin: convention compliance, parity, docs drift, red-green tests. Outputs PRD-compatible findings.'
 ---
 
 # Quality Gate Analysis — agent-customizer Plugin

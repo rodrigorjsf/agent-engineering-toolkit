@@ -1,6 +1,6 @@
 ---
 name: receiving-code-review
-description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
+description: 'Process code-review feedback with technical rigor — verify before implementing, no performative agreement. Use when receiving PR review comments.'
 argument-hint: <pr-number>[:review-id]
 ---
 

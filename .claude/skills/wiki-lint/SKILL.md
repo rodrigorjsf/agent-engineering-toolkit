@@ -1,6 +1,6 @@
 ---
 name: wiki-lint
-description: Run health checks over `wiki/knowledge/` — Karpathy-style wiki linting. Use when the user wants to audit, lint, or sweep the wiki for contradictions, orphan pages, missing concept pages, broken `[[wiki-link]]`s, format violations, or stale claims. Trigger phrases include "lint the wiki", "audit the wiki", "wiki health check", "check the wiki for issues", `/wiki-lint`. Do not invoke for routine page edits — only for explicit audit requests or after large ingestion runs.
+description: 'Lint `wiki/knowledge/` for contradictions, orphans, broken `[[links]]`, stale claims. Use for explicit audits or after large `wiki-ingest` runs.'
 ---
 
 # Wiki Lint
