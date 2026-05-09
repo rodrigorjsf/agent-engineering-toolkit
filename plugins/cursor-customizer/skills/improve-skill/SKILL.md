@@ -1,6 +1,6 @@
 ---
 name: improve-skill
-description: "Evaluates and optimizes existing Cursor SKILL.md packages against evidence-based quality criteria from the Agent Skills standard. Identifies bloat, staleness, and missed best practices. Use when improving an existing Cursor skill."
+description: 'Evaluates and optimizes existing Cursor SKILL.md packages: bloat, staleness, missed Agent Skills best practices. Use when improving an existing Cursor skill.'
 ---
 
 # Improve Skill

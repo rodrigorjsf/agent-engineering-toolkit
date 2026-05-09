@@ -1,6 +1,6 @@
 ---
 name: create-hook
-description: "Creates new Cursor hook configurations grounded in Cursor's native event model. Generates the right event, handler, matcher, and exit-code behavior with JSON-schema compliance. Use when creating a new hook from scratch."
+description: 'Creates new Cursor hook configs grounded in the native event model: event, handler, matcher, exit-code behavior. Use when creating a new Cursor hook.'
 ---
 
 # Create Hook

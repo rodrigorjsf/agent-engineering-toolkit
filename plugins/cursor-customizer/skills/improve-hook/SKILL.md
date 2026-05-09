@@ -1,6 +1,6 @@
 ---
 name: improve-hook
-description: "Evaluates and optimizes existing Cursor hook configurations against evidence-based quality criteria. Checks event names against Cursor's native vocabulary, matcher specificity, exit-code handling, and security gaps. Use when improving an existing hook."
+description: 'Evaluates and optimizes existing Cursor hook configs: native events, matcher specificity, exit-code handling, security. Use when improving an existing hook.'
 ---
 
 # Improve Hook

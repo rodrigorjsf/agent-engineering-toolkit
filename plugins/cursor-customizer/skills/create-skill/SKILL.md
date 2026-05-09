@@ -1,6 +1,6 @@
 ---
 name: create-skill
-description: "Creates new Cursor SKILL.md packages with references, templates, and frontmatter grounded in the Agent Skills standard. Uses subagent-driven project analysis and evidence-based guidance. Use when creating a new Cursor skill from scratch."
+description: 'Creates new Cursor SKILL.md packages with references, templates, and Agent Skills frontmatter. Use when creating a new Cursor skill from scratch.'
 ---
 
 # Create Skill

@@ -1,6 +1,6 @@
 ---
 name: improve-subagent
-description: "Evaluates and optimizes existing Cursor subagent definitions against evidence-based quality criteria. Checks Cursor-native frontmatter (name, description, model: inherit, readonly: true), prompt structure, and routing description quality. Use when improving an existing Cursor subagent."
+description: 'Evaluates and optimizes existing Cursor subagent definitions: native frontmatter (name, description, model, readonly), prompt structure. Use when improving one.'
 ---
 
 # Improve Subagent

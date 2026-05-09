@@ -1,6 +1,6 @@
 ---
 name: improve-rule
-description: "Evaluates and optimizes a single existing .cursor/rules/*.mdc file against evidence-based quality criteria from the Cursor docs corpus. Checks frontmatter validity, activation-mode appropriateness, glob specificity, and cross-rule overlaps. Use when improving an existing rule."
+description: 'Evaluates and optimizes a single `.cursor/rules/*.mdc` file: frontmatter validity, activation mode, glob specificity, overlaps. Use when improving an existing rule.'
 ---
 
 # Improve Rule

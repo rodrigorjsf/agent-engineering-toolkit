@@ -1,6 +1,6 @@
 ---
 name: create-rule
-description: "Creates a new .cursor/rules/*.mdc rule grounded in the docs corpus. Selects one of three activation modes (always, globs, description) by user intent, generates minimal, specific instructions with the correct frontmatter, and writes the rule into an already-initialized Cursor project."
+description: 'Creates a new `.cursor/rules/*.mdc` rule with correct activation mode (always/globs/description) and frontmatter. Use when adding a Cursor rule to an initialized project.'
 ---
 
 # Create Rule

@@ -1,6 +1,6 @@
 ---
 name: create-subagent
-description: "Creates new Cursor subagent definitions with the four-key Cursor-native frontmatter (name, description, model: inherit, readonly: true). Includes role-prompting heuristics and prompt-structure patterns. Use when creating a new Cursor subagent from scratch."
+description: 'Creates new Cursor subagent definitions with four-key native frontmatter (name, description, model: inherit, readonly: true). Use when creating one from scratch.'
 ---
 
 # Create Subagent
