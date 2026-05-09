@@ -19,7 +19,7 @@ Apply the canonical Hard Limits Table from `skill-evaluation-criteria.md` (body 
 
 **Structure**: self-validation phase reads `references/*validation-criteria.md`; `${CLAUDE_SKILL_DIR}` used for all bundled refs (no hardcoded paths); progressive disclosure applied (references loaded per phase, not upfront); no reference content inlined in SKILL.md body; each phase ≤10 lines with depth in references; reference files cited explicitly.
 
-**Frontmatter**: `description` in third person, includes both what + when to use; `description` length ≤ 200 chars (target 110–150) — measure via Python YAML; if > 200 chars, frontmatter MUST include `description-budget-exception: <reason>` (hard cap 400) — see `.claude/rules/skill-description-budget.md` and ADR-0007; `disable-model-invocation: true` set for side-effect workflows (commit, deploy, send).
+**Frontmatter**: `description` in third person, includes both what + when to use; `description` length ≤ 200 chars (target 110–150) — measure via Python YAML; if > 200 chars, frontmatter MUST include `description-budget-exception: <reason>` (hard cap 400) — see `.claude/rules/skill-description-budget.md`, `[[skill-listing-budget]]`, and ADR-0007; `disable-model-invocation: true` set for side-effect workflows (commit, deploy, send).
 
 **Discipline**: behavioral guidelines applied (surface assumptions, simplest path, surgical, validation targets); persuasion cues stay inside the ethical constraint; phase instructions specific and actionable (no "ensure quality").
 
