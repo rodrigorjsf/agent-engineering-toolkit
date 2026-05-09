@@ -113,7 +113,7 @@ This slice populates the `create-skill` and `improve-skill` reference inventorie
 |----------------|-------------|--------|
 | `references/skill-authoring-guide.md` | Derived (≤200 lines, with attribution) | `docs/cursor/skills/agent-skills-guide.md` |
 | `references/skill-format-reference.md` | Derived | `docs/cursor/skills/agent-skills-guide.md` |
-| `references/skill-validation-criteria.md` | Derived | `docs/cursor/skills/agent-skills-guide.md` |
+| `references/skill-validation-criteria.md` | Derived | `docs/cursor/skills/agent-skills-guide.md`; project policy from `docs/adr/0007-skill-description-budget-ceiling.md` and `wiki/knowledge/skill-listing-budget.md` (description-budget self-check criterion, added in feat/skill-description-budget-ceiling) |
 | `references/behavioral-guidelines.md` | Verbatim copy | `plugins/agent-customizer/skills/create-skill/references/behavioral-guidelines.md` |
 | `references/prompt-engineering-strategies.md` | Verbatim copy | `plugins/agent-customizer/skills/create-skill/references/prompt-engineering-strategies.md` |
 
@@ -123,7 +123,7 @@ This slice populates the `create-skill` and `improve-skill` reference inventorie
 |----------------|-------------|--------|
 | `references/skill-authoring-guide.md` | Derived (≤200 lines, with attribution) | `docs/cursor/skills/agent-skills-guide.md` |
 | `references/skill-format-reference.md` | Derived | `docs/cursor/skills/agent-skills-guide.md` |
-| `references/skill-validation-criteria.md` | Derived | `docs/cursor/skills/agent-skills-guide.md` |
+| `references/skill-validation-criteria.md` | Derived | `docs/cursor/skills/agent-skills-guide.md`; project policy from `docs/adr/0007-skill-description-budget-ceiling.md` and `wiki/knowledge/skill-listing-budget.md` (description-budget self-check criterion, added in feat/skill-description-budget-ceiling) |
 | `references/skill-evaluation-criteria.md` | Derived | `docs/cursor/skills/agent-skills-guide.md`; Industry Research (`docs/general-llm/Evaluating-AGENTS-paper.pdf`, Deletion Test section) |
 | `references/behavioral-guidelines.md` | Verbatim copy | `plugins/agent-customizer/skills/create-skill/references/behavioral-guidelines.md` |
 | `references/prompt-engineering-strategies.md` | Verbatim copy | `plugins/agent-customizer/skills/create-skill/references/prompt-engineering-strategies.md` |
