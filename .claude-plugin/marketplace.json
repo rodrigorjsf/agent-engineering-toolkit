@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "agent-engineering-toolkit",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Multi-plugin marketplace for evidence-based Claude Code artifact engineering. Provides plugins for configuration initialization (AGENTS.md, CLAUDE.md) and artifact creation/optimization (skills, hooks, rules, subagents).",
   "owner": {
     "name": "rodrigorjsf",
@@ -11,7 +11,7 @@
     {
       "name": "agents-initializer",
       "description": "Generate and optimize minimal, scoped AGENTS.md and CLAUDE.md configuration files based on academic research and Anthropic best practices. Uses subagent-driven analysis for context-efficient file generation.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": {
         "name": "rodrigorjsf",
         "email": "rodrigo_rjsf@hotmail.com"
@@ -22,7 +22,7 @@
     {
       "name": "agent-customizer",
       "description": "Create and improve Claude Code artifacts (skills, hooks, rules, subagents) with documentation-grounded guidance and evidence traceability.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "rodrigorjsf",
         "email": "rodrigo_rjsf@hotmail.com"
