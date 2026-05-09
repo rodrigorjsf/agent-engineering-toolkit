@@ -20,7 +20,7 @@ paths:
 - .mdc frontmatter allows ONLY: `description` (string), `alwaysApply` (boolean), `globs` (string|array)
 - Never use `paths:` in .mdc frontmatter — that is Claude Code specific
 - SKILL.md `name` field: ≤64 chars, lowercase letters/numbers/hyphens only, no XML tags
-- SKILL.md `description` field: non-empty, ≤1024 chars, third person, no XML tags
+- SKILL.md `description` field: non-empty, ≤1024 chars, third person, no XML tags; project ceiling 200 chars — see `.claude/rules/skill-description-budget.md`
 - SKILL.md body: under 500 lines
 - In `cursor-initializer`: `rule-domain-detector` agent walks a four-tier heuristic (tooling-non-obvious → file-pattern → monorepo-scope → on-demand cross-cutting / domain); empty list is the canonical passing output for trivial single-package projects
 - In `cursor-initializer`: `file-evaluator` agent has dual responsibility — per-rule `.mdc` quality assessment, and (when AGENTS.md is present) block-by-block classification of AGENTS.md content by destination activation mode

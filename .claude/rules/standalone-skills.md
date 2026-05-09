@@ -22,5 +22,5 @@ paths:
 - When an intentionally shared reference is updated, update all intended copies in sync
 - Standalone skills MUST NOT author hooks, subagents, path-scoped rules, or CLAUDE.md hierarchy. The standalone bundle authors only **skills** (SKILL.md packages) and **AGENTS.md**. See ADR-0006.
 - SKILL.md `name` field: ≤64 chars, lowercase letters/numbers/hyphens only, no XML tags
-- SKILL.md `description` field: non-empty, ≤1024 chars, third person, no XML tags
+- SKILL.md `description` field: non-empty, ≤1024 chars, third person, no XML tags; project ceiling 200 chars — see `.claude/rules/skill-description-budget.md`
 - SKILL.md body: under 500 lines

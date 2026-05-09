@@ -18,5 +18,5 @@ paths:
 - Conditional reference loading pattern: "read X only if project uses Y"
 - Plugin improve skills suggest available migration mechanisms (currently: hooks, path-scoped rules, skills, and subagents)
 - SKILL.md `name` field: ≤64 chars, lowercase letters/numbers/hyphens only, no XML tags
-- SKILL.md `description` field: non-empty, ≤1024 chars, third person, no XML tags
+- SKILL.md `description` field: non-empty, ≤1024 chars, third person, no XML tags; project ceiling 200 chars — see `.claude/rules/skill-description-budget.md`
 - SKILL.md body: under 500 lines
