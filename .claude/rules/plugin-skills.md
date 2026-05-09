@@ -12,6 +12,7 @@ paths:
 - `references/` directory MUST exist alongside SKILL.md and contain evidence-based guidance files
 - `assets/templates/` directory MUST exist alongside SKILL.md and contain output templates; validator-type or report-only plugin skills that do not generate templated artifacts MAY omit it
 - Skills MUST encode the behavioral discipline defined in `.github/instructions/karpathy-guidelines.instructions.md` (assumptions-first, simplest path, surgical changes, validation targets).
+- Skill body and `references/` MUST be self-contained — never link to `.claude/rules/*.md`, `docs/adr/*.md`, `wiki/knowledge/*.md`, sibling skill paths, or repo-root docs from inside the skill. Inline constraint content; the skill is a unit of distribution. See `.claude/rules/skill-self-containment.md`.
 - If plugin skills use persuasion patterns, they MUST state the ethical constraint that those patterns support legitimate work only and never bypass safeguards or refusals
 - Self-validation phase MUST read the relevant `references/*validation-criteria.md` file for that skill and loop until all checks pass
 - Reference files must be one level deep from SKILL.md — no nested `references/references/` paths

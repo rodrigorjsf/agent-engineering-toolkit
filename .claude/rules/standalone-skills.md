@@ -18,6 +18,7 @@ paths:
 - Self-validation phase MUST read `references/validation-criteria.md` and loop until all checks pass
 - Reference files must be one level deep from SKILL.md — no nested `references/references/` paths
 - Each skill bundles its own copies of shared references — no symlinks, no cross-directory references
+- Skill body and `references/` MUST be self-contained — never link to `.claude/rules/*.md`, `docs/adr/*.md`, `wiki/knowledge/*.md`, sibling skill paths, or repo-root docs from inside the skill. Inline constraint content; the skill is a unit of distribution. See `.claude/rules/skill-self-containment.md`.
 - Standalone bundled-file references MUST use relative `references/...` and `assets/templates/...` paths — NEVER `${CLAUDE_SKILL_DIR}`
 - When an intentionally shared reference is updated, update all intended copies in sync
 - Standalone skills MUST NOT author hooks, subagents, path-scoped rules, or CLAUDE.md hierarchy. The standalone bundle authors only **skills** (SKILL.md packages) and **AGENTS.md**. See ADR-0006.

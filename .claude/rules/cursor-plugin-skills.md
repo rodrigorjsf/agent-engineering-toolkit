@@ -10,6 +10,7 @@ paths:
 - Reference agents by registered name (e.g., "Delegate to the `artifact-analyzer` agent with this task:")
 - `references/` directory MUST exist alongside SKILL.md and contain evidence-based guidance files
 - Skills MUST encode the behavioral discipline defined in `.github/instructions/karpathy-guidelines.instructions.md` (assumptions-first, simplest path, surgical changes, validation targets).
+- Skill body and `references/` MUST be self-contained — never link to `.claude/rules/*.md`, `docs/adr/*.md`, `wiki/knowledge/*.md`, sibling skill paths, or repo-root docs from inside the skill. Inline constraint content; the skill is a unit of distribution. See `.claude/rules/skill-self-containment.md`.
 - `assets/templates/` directory MUST exist alongside SKILL.md and contain output templates
 - Bundled files in Cursor SKILL.md files MUST be referenced with relative paths from the skill root (`references/...`, `assets/templates/...`), not `${CLAUDE_SKILL_DIR}`
 - Self-validation phase MUST read `references/validation-criteria.md` and loop until all checks pass
