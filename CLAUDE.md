@@ -24,6 +24,7 @@ Each skill directory contains:
 
 - Distribution-specific rules in `.claude/rules/plugin-skills.md`, `.claude/rules/cursor-plugin-skills.md`, and `.claude/rules/standalone-skills.md`
 - Shared references are copied into each skill (not symlinked) — each skill is self-contained
+- **Skill self-containment** is universal across all distributions: `SKILL.md`, `references/`, and `assets/` of every skill (`.claude/skills/*`, `plugins/*/skills/*`, `skills/*`) MUST NOT link to `.claude/rules/`, `docs/adr/`, `wiki/knowledge/`, sibling skills, or repo-root docs. Inline constraint content; the skill is a unit of distribution. See `.claude/rules/skill-self-containment.md`.
 - When updating an intentionally shared reference, update all intended copies in sync
 - `.claude/rules/` enforces conventions automatically via path-scoped rules
 - `.claude/skills/` — development meta-skills for this project (not distributed to end-users)
@@ -80,5 +81,6 @@ When something fails repeatedly, when User has to re-explain, or when a workarou
 
 - Agents fail silently on wrong paths. Always verify hardcoded paths.
 - Before creating a new project artifact, check if an existing one can be extended or merged.
+- Skill bodies/refs/assets must inline constraint content, never link to `.claude/rules/`, `docs/adr/`, or wiki.
 
 
