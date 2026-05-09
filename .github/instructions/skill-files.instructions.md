@@ -8,7 +8,7 @@ applyTo: "**/skills/*/SKILL.md"
 
 Every SKILL.md must start with YAML frontmatter containing:
 - `name`: lowercase letters, numbers, hyphens only; max 64 characters
-- `description`: non-empty, max 1024 characters, third person, no XML tags
+- `description`: non-empty, third person, no XML tags. Project ceiling: ≤ 200 chars (target 110–150). Upstream schema cap: 1024 chars. Exceptions > 200 require a `description-budget-exception:` field inside the frontmatter (hard cap 400). See `.claude/rules/skill-description-budget.md` and ADR-0007.
 
 Flag any SKILL.md missing frontmatter or violating these constraints.
 

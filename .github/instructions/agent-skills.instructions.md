@@ -19,7 +19,7 @@ description: 'Toolkit for testing local web applications using Playwright. Use w
 | Field | Required | Constraints |
 |-------|----------|-------------|
 | `name` | Yes | Lowercase, hyphens, max 64 characters |
-| `description` | Yes | 10–1024 characters, single quotes |
+| `description` | Yes | 10–1024 chars (upstream); project ceiling ≤ 200 chars, target 110–150; exceptions > 200 require `description-budget-exception:` field (hard cap 400). See ADR-0007. |
 | `license` | No | SPDX identifier or reference to `LICENSE.txt` |
 
 ## Description Rules (Critical)
