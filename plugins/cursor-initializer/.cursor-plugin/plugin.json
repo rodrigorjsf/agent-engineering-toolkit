@@ -1,6 +1,6 @@
 {
   "name": "cursor-initializer",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Evidence-based rules-first initializer and optimizer for Cursor projects. Generates minimal .cursor/rules/*.mdc hierarchies with the right activation mode per rule; non-destructively migrates legacy AGENTS.md when present.",
   "author": {
     "name": "rodrigorjsf"
