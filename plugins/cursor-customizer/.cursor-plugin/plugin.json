@@ -1,6 +1,6 @@
 {
   "name": "cursor-customizer",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Rules-first, product-strict customizer for the Cursor distribution: creates and improves individual Cursor artifacts (rules, hooks, skills, subagents) inside an already-initialized project. Sibling of cursor-initializer.",
   "author": {
     "name": "rodrigorjsf"
