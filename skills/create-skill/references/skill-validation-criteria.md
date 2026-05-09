@@ -27,7 +27,7 @@ Any skill violating these criteria must be fixed before proceeding:
 - [ ] Bundled file references use relative paths within the skill directory (e.g., `references/...` and `assets/templates/...`), not absolute or cross-directory paths
 - [ ] `description` written in third person ("Processes..." not "I process..." or "You can use...")
 - [ ] `description` includes what the skill does AND when to use it
-- [ ] `description` length ≤ 200 chars (target band 110–150) — measure via Python YAML, not single-line awk; if > 200 chars, frontmatter MUST include `description-budget-exception: <reason>` (hard cap 400 chars). See `[[skill-listing-budget]]` and ADR-0007.
+- [ ] `description` length ≤ 200 chars (target band 110–150) — measure via Python YAML, not single-line awk; if > 200 chars, frontmatter MUST include `description-budget-exception: <one-line reason>` (absolute hard cap 400 chars). The 200-char ceiling exists because the host agent platform's skill-listing budget silently drops descriptions when the catalogue overflows; trimmed descriptions keep skills discoverable.
 - [ ] Progressive disclosure applied: references loaded per phase, not all upfront
 - [ ] No reference content inlined in SKILL.md body (should be in `references/` subdirectory)
 - [ ] Each phase instruction is concise (≤10 lines); depth lives in reference files

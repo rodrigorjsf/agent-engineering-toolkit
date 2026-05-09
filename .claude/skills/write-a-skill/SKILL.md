@@ -68,9 +68,9 @@ The description is **the only thing your agent sees** when deciding which skill 
 
 **Format**:
 
-- Project ceiling: ≤ 200 chars (target band 110–150). See `.claude/rules/skill-description-budget.md` and ADR-0007.
+- Project ceiling: ≤ 200 chars (target band 110–150). The 200-char ceiling exists because Claude Code's `skillListingBudgetFraction` default (1% of context, ~2K tokens on 200K models) silently drops descriptions when the catalogue overflows; trimmed descriptions keep skills discoverable.
 - Hard upstream cap: 1024 chars (Agent Skills spec).
-- Exception: > 200 chars allowed only if frontmatter includes `description-budget-exception: <reason>` (absolute hard cap 400 chars).
+- Exception: > 200 chars allowed only if frontmatter includes `description-budget-exception: <one-line reason>` (absolute hard cap 400 chars).
 - Write in third person
 - First sentence: what it does
 - Second sentence: "Use when [specific triggers]"
