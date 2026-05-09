@@ -1,6 +1,6 @@
 ---
 name: create-subagent
-description: "Creates new subagent definitions with YAML frontmatter grounded in the docs corpus. Includes model selection heuristics and tool restriction patterns. Use when creating a new Claude Code subagent from scratch."
+description: 'Creates new Claude Code subagent definitions with YAML frontmatter, model selection heuristics, and tool restriction patterns. Use when creating one from scratch.'
 ---
 
 # Create Subagent

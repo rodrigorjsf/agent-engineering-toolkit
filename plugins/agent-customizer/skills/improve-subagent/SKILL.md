@@ -1,6 +1,6 @@
 ---
 name: improve-subagent
-description: "Evaluates and optimizes existing subagent definitions against evidence-based quality criteria from the docs corpus. Checks frontmatter, tool restrictions, and prompt quality. Use when improving an existing subagent."
+description: 'Evaluates and optimizes existing Claude Code subagent definitions: frontmatter, tool restrictions, prompt quality. Use when improving an existing subagent.'
 ---
 
 # Improve Subagent

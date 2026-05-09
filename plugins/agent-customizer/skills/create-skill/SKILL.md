@@ -1,6 +1,6 @@
 ---
 name: create-skill
-description: "Creates new SKILL.md files with references, templates, and frontmatter grounded in the docs corpus. Uses subagent-driven codebase analysis and evidence-based guidance. Use when creating a new Claude Code skill from scratch."
+description: 'Creates new Claude Code SKILL.md files with references, templates, and frontmatter grounded in the docs corpus. Use when creating a new skill from scratch.'
 ---
 
 # Create Skill

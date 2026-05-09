@@ -1,6 +1,6 @@
 ---
 name: improve-hook
-description: "Evaluates and optimizes existing hook configurations against evidence-based quality criteria from the docs corpus. Checks event types, schema compliance, and security. Use when improving an existing hook."
+description: 'Evaluates and optimizes existing Claude Code hook configurations: event types, schema compliance, security. Use when improving an existing hook.'
 ---
 
 # Improve Hook

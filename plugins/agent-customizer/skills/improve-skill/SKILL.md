@@ -1,6 +1,6 @@
 ---
 name: improve-skill
-description: "Evaluates and optimizes existing SKILL.md files against evidence-based quality criteria from the docs corpus. Identifies bloat, staleness, and missed best practices. Use when improving an existing skill."
+description: 'Evaluates and optimizes existing Claude Code SKILL.md files: bloat, staleness, missed best practices. Use when improving an existing skill.'
 ---
 
 # Improve Skill
