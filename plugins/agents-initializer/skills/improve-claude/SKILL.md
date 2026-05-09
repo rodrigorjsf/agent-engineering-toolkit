@@ -1,6 +1,6 @@
 ---
 name: improve-claude
-description: 'Evaluates and improves existing CLAUDE.md files and `.claude/rules/`: bloat, contradictions, stale refs, missing scopes. Refactors via progressive disclosure.'
+description: 'Evaluates and improves existing CLAUDE.md and `.claude/rules/` (Claude Code plugin): bloat, contradictions, stale refs, missing scopes. Progressive-disclosure refactor.'
 ---
 
 # Improve CLAUDE.md

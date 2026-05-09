@@ -1,6 +1,6 @@
 ---
 name: improve-agents
-description: 'Evaluates and improves existing AGENTS.md files: bloat, contradictions, stale refs, missing scopes. Refactors via progressive disclosure (ETH Zurich study).'
+description: 'Evaluates and improves existing AGENTS.md (Claude Code plugin): bloat, contradictions, stale refs, missing scopes. Progressive-disclosure refactor (ETH Zurich).'
 ---
 
 # Improve AGENTS.md
