@@ -1,6 +1,6 @@
 {
   "name": "agents-initializer",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Evidence-based AGENTS.md and CLAUDE.md initializer and optimizer. Generates minimal, scoped configuration files following progressive disclosure principles — based on the ETH Zurich 'Evaluating AGENTS.md' study and Anthropic's context engineering best practices.",
   "author": {
     "name": "rodrigorjsf"
