@@ -1,6 +1,6 @@
 # Wiki Index
 
-Total pages: **39**
+Total pages: **41**
 
 ---
 
@@ -59,10 +59,11 @@ Total pages: **39**
 
 ## Agent Skills Standard
 
-| Page                      | Summary                                                          |
-| ------------------------- | ---------------------------------------------------------------- |
-| [[agent-skills-standard]] | Open specification, frontmatter, progressive disclosure loading  |
-| [[skill-authoring]]       | Eval-driven iteration, description optimization, script bundling |
+| Page                       | Summary                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------ |
+| [[agent-skills-standard]]  | Open specification, frontmatter, progressive disclosure loading                                        |
+| [[skill-authoring]]        | Eval-driven iteration, description optimization, script bundling                                       |
+| [[skill-body-convention]]  | Project-internal canonical tag vocabulary, artifact format routing, HTML baseline (ADR-0007)           |
 
 ## API & Tooling
 
@@ -78,6 +79,7 @@ Total pages: **39**
 | [[multilingual-performance]]      | Tokenization disparities, English-thinking, Portuguese analysis |
 | [[whitespace-and-formatting]]     | Formatting costs (1 token), structural quality improvements     |
 | [[long-context-lost-in-middle]]   | U-shaped positional bias: performance peaks at start/end, degrades in middle |
+| [[html-artifact-effectiveness]]   | Thariq 2026: HTML beats Markdown for rich human-rich + agent-executable artifacts |
 
 ## Compliance & Validation
 

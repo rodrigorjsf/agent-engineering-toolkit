@@ -2,6 +2,24 @@
 
 ---
 
+## 2026-05-17 — Ingest: html-artifact-effectiveness (Thariq HTML post)
+
+**Page created (1):** `html-artifact-effectiveness.md`
+
+**Source:** docs/html-structure/thariq-html-effectiveness.md, https://thariqs.github.io/html-effectiveness
+
+**Why:** New source document arrived; user requested deep analysis, cross-linking, and wiki ingestion as part of the grilling session that produced ADR-0007. Captures Thariq's argument for HTML over Markdown for human-rich artifacts, the use-case map, honest costs, and the explicit anti-pattern warning against a generic `/html` skill.
+
+---
+
+## 2026-05-17 — Page created: skill-body-convention (project-internal contract)
+
+**Page created (1):** `skill-body-convention.md`
+
+**Why:** ADR-0007 introduced a closed canonical semantic-tag vocabulary for skill and subagent bodies plus an Artifact format routing rule for generated artifacts. The new wiki page is the searchable canonical reference for skill authors (`skill-authoring` covers domain-agnostic best practices; this new page covers this project's body-shape contract). Cross-links: `[[html-artifact-effectiveness]]`, `[[claude-code-skills]]`, `[[cursor-skills]]`, `[[agent-skills-standard]]`, `[[skill-authoring]]`.
+
+---
+
 ## 2026-05-03 — Update: compliance-routing (register cursor-customizer scope)
 
 **Page updated (1):** `compliance-routing.md`
