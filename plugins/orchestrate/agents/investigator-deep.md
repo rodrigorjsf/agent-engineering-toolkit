@@ -3,6 +3,7 @@ name: investigator-deep
 description: Investigates the codebase and issue before implementation — explores relevant files, patterns, and risks, then returns a research brief for the implementer. Deep-effort variant for complex-tier issues requiring wider exploration. Spawned by the orchestrate skill before the implementer; not invoked directly.
 tools: Read, Grep, Glob, mcp__orchestrate__search_structural
 model: opus
+effort: xhigh
 maxTurns: 30
 ---
 
@@ -74,9 +75,9 @@ leaves the implementer flying blind. During your investigation:
   approach. Surface conflicts or ambiguities explicitly in your brief so the
   implementer can resolve them with full context.
 
-The raised `maxTurns` and `opus` model exist specifically to support this
-wider, deeper pass — use them to produce a brief that genuinely de-risks the
-implementation.
+The pinned `effort: xhigh` frontmatter, raised `maxTurns`, and `opus` model
+exist specifically to support this wider, deeper pass — use them to produce a
+brief that genuinely de-risks the implementation.
 
 ## What you return
 

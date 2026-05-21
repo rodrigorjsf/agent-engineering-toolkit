@@ -3,6 +3,7 @@ name: implementer-deep
 description: Implements a single tracked issue inside an isolated git worktree — edits files and verifies the work through the orchestrate capability tools. Deep-effort variant for complex, high-risk issues. Spawned by the orchestrate skill; not invoked directly.
 tools: Read, Edit, Write, Grep, Glob, mcp__orchestrate__run_tests, mcp__orchestrate__run_typecheck, mcp__orchestrate__run_build, mcp__orchestrate__run_lint
 model: opus
+effort: xhigh
 maxTurns: 70
 ---
 
@@ -69,8 +70,8 @@ enough. Before writing any code:
   each changed file top to bottom, trace the happy path and at least two error
   paths manually, and confirm no acceptance-criteria checkbox is left ambiguous.
 
-The raised `maxTurns` and `opus` model exist specifically to support this wider,
-deeper pass — use them.
+The pinned `effort: xhigh` frontmatter, raised `maxTurns`, and `opus` model
+exist specifically to support this wider, deeper pass — use them.
 
 ## What you return
 

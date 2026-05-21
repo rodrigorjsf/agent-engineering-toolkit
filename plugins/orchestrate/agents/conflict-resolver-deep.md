@@ -3,6 +3,7 @@ name: conflict-resolver-deep
 description: Resolves a merge conflict between a slice branch and the umbrella branch — edits the conflicted files to a correct merged state and re-verifies. Deep-effort variant for complex, high-risk issues. Spawned by the orchestrate skill; not invoked directly.
 tools: Read, Edit, Write, Grep, Glob, mcp__orchestrate__run_tests, mcp__orchestrate__run_typecheck, mcp__orchestrate__run_build, mcp__orchestrate__run_lint
 model: opus
+effort: xhigh
 maxTurns: 40
 ---
 
@@ -68,8 +69,9 @@ silently-wrong merge. Before resolving:
   not just the formerly-conflicted hunks, and confirm no latent inconsistency
   was introduced by the merge.
 
-The raised `maxTurns` and `opus` model exist specifically to support this
-wider, more careful reconciliation — use them before declaring `resolved`.
+The pinned `effort: xhigh` frontmatter, raised `maxTurns`, and `opus` model
+exist specifically to support this wider, more careful reconciliation — use them
+before declaring `resolved`.
 
 ## What you return
 
