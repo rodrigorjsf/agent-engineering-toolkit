@@ -10,8 +10,9 @@ Source: `.claude/rules/cursor-plugin-skills.md`, `.claude/rules/reference-files.
 ## Contents
 
 1. [Expected Results Checklist](#expected-results-checklist)
-2. [Severity Classification](#severity-classification)
-3. [Report Template](#report-template)
+2. [Canonical Semantic-Tag Convention Checks](#canonical-semantic-tag-convention-checks)
+3. [Severity Classification](#severity-classification)
+4. [Report Template](#report-template)
 
 ---
 
@@ -82,6 +83,39 @@ Source: `.claude/rules/cursor-plugin-skills.md`, `.claude/rules/reference-files.
 
 ---
 
+## Canonical Semantic-Tag Convention Checks
+
+Applies to all SKILL.md bodies under `plugins/cursor-initializer/skills/**/SKILL.md`.
+There are no subagent flows in cursor-initializer; subagent body checks are out of scope
+for this gate.
+Source: `wiki/knowledge/skill-body-convention.md`, `docs/adr/0007-skill-body-semantic-tag-convention.md`
+
+Mandatory tags for skills: `<TRIGGER>`, `<BEHAVIOUR>`, `<HARD_RULES>` (or legacy `<RULES>` alias),
+`<PROCESS>` containing at least one `<PHASE id="N" name="X">`.
+
+| # | Check | Tier | Severity |
+|---|-------|------|----------|
+| V1 | `<TRIGGER>` present in body | Hard-fail if absent | CRITICAL |
+| V2 | `<BEHAVIOUR>` present in body | Hard-fail if absent | CRITICAL |
+| V3 | `<HARD_RULES>` or `<RULES>` alias present in body | Hard-fail if absent | CRITICAL |
+| V4 | `<PROCESS>` present in body | Hard-fail if absent | CRITICAL |
+| V5 | `<PROCESS>` contains at least one `<PHASE>` | Hard-fail if zero `<PHASE>` | CRITICAL |
+| V6 | Every `<PHASE>` carries a mandatory `id=` attribute | Hard-fail if `id=` absent | CRITICAL |
+| V7 | All opened tags have a matching closing tag (no unbalanced open/close) | Hard-fail if unbalanced | CRITICAL |
+| V8 | All attribute values are properly quoted (no bare `=`, no unterminated quotes) | Hard-fail if malformed | CRITICAL |
+| V9 | All attribute names belong to the closed set: `avoid`, `always`, `when`, `name`, `id`, `priority` | Warn if non-canonical | MAJOR |
+| V10 | `<RULES>` occurrences reported as informational `<HARD_RULES>` alias candidates | Informational (not a fail or warn) | — |
+
+### Fixture corpus
+
+The golden fixture corpus for skill-body checks is the shared corpus at:
+`.claude/skills/agent-customizer-quality-gate/assets/fixtures/skill/`
+
+See the MANIFEST.md at that path for the 10 fixtures and their expected verdicts.
+A redirect stub lives at `.claude/skills/cursor-initializer-quality-gate/assets/fixtures/MANIFEST.md`.
+
+---
+
 ## Severity Classification
 
 | Severity | Meaning | Must Fix Before Release? |
@@ -108,6 +142,7 @@ Use this structure for `.specs/reports/cursor-quality-gate-[YYYY-MM-DD]-findings
 | Static Artifact Compliance | [N] | [N] | [N] | FAIL |
 | Cross-Copy Parity | [N] | [N] | [N] | PASS/FAIL |
 | Red-Green Test Coverage | 4 | [N] | [N] | PASS/FAIL |
+| Canonical Semantic-Tag Convention | [N] | [N] | [N] | PASS/FAIL |
 | **OVERALL** | [N] | [N] | [N] | **FAIL** |
 
 ---
