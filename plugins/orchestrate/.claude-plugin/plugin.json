@@ -1,7 +1,7 @@
 {
   "name": "orchestrate",
   "version": "1.0.0",
-  "description": "MCP server providing worktree lifecycle and orchestration tools for parallel Claude Code agents.",
+  "description": "Autonomously orchestrate a backlog of ready-for-agent GitHub issues — dependency-ordered waves, implementer and reviewer subagents in isolated git worktrees, checkpointed and resumable.",
   "author": {
     "name": "rodrigorjsf"
   },
