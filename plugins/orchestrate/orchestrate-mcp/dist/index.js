@@ -21198,6 +21198,9 @@ var removeWorktreeInputSchema = external_exports.object({
   ),
   repoPath: external_exports.string().optional().describe(
     "Path to the git repository that owns the worktree. Defaults to the current working directory."
+  ),
+  force: external_exports.boolean().optional().describe(
+    "When true, remove the worktree even if it has uncommitted or untracked changes ('git worktree remove --force'), and the dirty check is skipped. Default false \u2014 a dirty worktree is refused. The registered-worktree-root guard is always enforced, force or not."
   )
 });
 var createWorktreeOutputSchema = external_exports.object({
@@ -21395,30 +21398,34 @@ async function removeWorktree(input) {
       errorMessage: `Path is not a registered git worktree root: ${absWorktreePath}`
     };
   }
-  let porcelain;
-  try {
-    const { stdout } = await gitExecFile(
-      ["status", "--porcelain", "-z"],
-      absWorktreePath
-    );
-    porcelain = stdout;
-  } catch (err) {
-    return {
-      status: "error",
-      errorCode: "GIT_ERROR",
-      errorMessage: cleanGitError(err)
-    };
+  const force = input.force ?? false;
+  if (!force) {
+    let porcelain;
+    try {
+      const { stdout } = await gitExecFile(
+        ["status", "--porcelain", "-z"],
+        absWorktreePath
+      );
+      porcelain = stdout;
+    } catch (err) {
+      return {
+        status: "error",
+        errorCode: "GIT_ERROR",
+        errorMessage: cleanGitError(err)
+      };
+    }
+    const dirtyFiles = parsePorcelainZ(porcelain);
+    if (dirtyFiles.length > 0) {
+      return {
+        status: "refused",
+        dirtyFiles,
+        refusalReason: "Worktree has uncommitted or untracked changes; removal refused. The worktree and its branch have been left intact. Pass force=true to remove it anyway."
+      };
+    }
   }
-  const dirtyFiles = parsePorcelainZ(porcelain);
-  if (dirtyFiles.length > 0) {
-    return {
-      status: "refused",
-      dirtyFiles,
-      refusalReason: "Worktree has uncommitted or untracked changes; removal refused. The worktree and its branch have been left intact."
-    };
-  }
+  const removeArgs = force ? ["worktree", "remove", "--force", "--", absWorktreePath] : ["worktree", "remove", "--", absWorktreePath];
   try {
-    await gitExecFile(["worktree", "remove", "--", absWorktreePath], cwd);
+    await gitExecFile(removeArgs, cwd);
   } catch (err) {
     return {
       status: "error",
@@ -21772,7 +21779,7 @@ function planWaves(input) {
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
-  version: "0.3.0"
+  version: "0.4.0"
 });
 var registerTool = server.registerTool.bind(server);
 var handleCreateWorktree = async (input) => {
@@ -21820,7 +21827,7 @@ registerTool(
   "remove_worktree",
   {
     title: "Remove Git Worktree",
-    description: "Removes a git worktree if and only if it is a registered worktree root and clean (no uncommitted or untracked changes). If dirty, returns status='refused' and leaves the worktree and its branch intact. The associated branch is NOT deleted \u2014 the caller is responsible for branch cleanup.",
+    description: "Removes a git worktree. It must be a registered worktree root. By default a worktree with uncommitted or untracked changes is refused (status='refused') and left intact; pass force=true to remove it anyway. The associated branch is NOT deleted \u2014 the caller is responsible for branch cleanup.",
     inputSchema: removeWorktreeInputSchema.shape,
     outputSchema: removeWorktreeOutputSchema.shape
   },

@@ -32,7 +32,7 @@ import {
 
 const server = new McpServer({
   name: "orchestrate",
-  version: "0.3.0",
+  version: "0.4.0",
 });
 
 /**
@@ -154,10 +154,10 @@ registerTool(
   {
     title: "Remove Git Worktree",
     description:
-      "Removes a git worktree if and only if it is a registered worktree " +
-      "root and clean (no uncommitted or untracked changes). If dirty, " +
-      "returns status='refused' and leaves the worktree and its branch " +
-      "intact. The associated branch is NOT deleted — the caller is " +
+      "Removes a git worktree. It must be a registered worktree root. By " +
+      "default a worktree with uncommitted or untracked changes is refused " +
+      "(status='refused') and left intact; pass force=true to remove it " +
+      "anyway. The associated branch is NOT deleted — the caller is " +
       "responsible for branch cleanup.",
     inputSchema: removeWorktreeInputSchema.shape,
     outputSchema: removeWorktreeOutputSchema.shape,

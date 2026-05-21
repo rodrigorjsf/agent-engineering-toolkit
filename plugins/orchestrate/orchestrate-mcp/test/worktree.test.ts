@@ -380,6 +380,47 @@ describe("remove_worktree", () => {
     expect(fs.existsSync(wtPath)).toBe(false);
   });
 
+  it("force-removes a dirty worktree when force=true", async () => {
+    const wtPath = path.join(worktreesDir, "force-dirty-wt");
+    const created = await createWorktree({
+      baseRef: "HEAD",
+      branch: "force-dirty-branch",
+      worktreePath: wtPath,
+      repoPath,
+    });
+    expect(created.status).toBe("ok");
+
+    // Make the worktree dirty — a default removal would refuse this.
+    fs.writeFileSync(path.join(wtPath, "uncommitted.txt"), "in progress\n");
+
+    const result = await removeWorktree({
+      worktreePath: wtPath,
+      repoPath,
+      force: true,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.removedPath).toBe(wtPath);
+    expect(fs.existsSync(wtPath)).toBe(false);
+  });
+
+  it("force=true still refuses a directory that is not a registered worktree", async () => {
+    const plainDir = path.join(worktreesDir, "force-plain-dir");
+    fs.mkdirSync(plainDir);
+    fs.writeFileSync(path.join(plainDir, "file.txt"), "not a worktree\n");
+
+    const result = await removeWorktree({
+      worktreePath: plainDir,
+      repoPath,
+      force: true,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorCode).toBe("NOT_A_WORKTREE");
+    // The force flag must not bypass the registered-root guard.
+    expect(fs.existsSync(plainDir)).toBe(true);
+  });
+
   it("returns errorCode=NOT_A_WORKTREE for a subdirectory of a real worktree", async () => {
     const wtPath = path.join(worktreesDir, "parent-wt");
     const created = await createWorktree({

@@ -52,6 +52,15 @@ export const removeWorktreeInputSchema = z.object({
       "Path to the git repository that owns the worktree. Defaults to the " +
         "current working directory."
     ),
+  force: z
+    .boolean()
+    .optional()
+    .describe(
+      "When true, remove the worktree even if it has uncommitted or " +
+        "untracked changes ('git worktree remove --force'), and the dirty " +
+        "check is skipped. Default false — a dirty worktree is refused. The " +
+        "registered-worktree-root guard is always enforced, force or not."
+    ),
 });
 
 export const createWorktreeOutputSchema = z.object({
@@ -380,38 +389,47 @@ export async function removeWorktree(
     };
   }
 
-  // Check for uncommitted or untracked changes. `-z` emits NUL-terminated
-  // records with no C-style quoting; rename/copy entries split cleanly.
-  let porcelain: string;
-  try {
-    const { stdout } = await gitExecFile(
-      ["status", "--porcelain", "-z"],
-      absWorktreePath
-    );
-    porcelain = stdout;
-  } catch (err) {
-    return {
-      status: "error",
-      errorCode: "GIT_ERROR",
-      errorMessage: cleanGitError(err),
-    };
+  const force = input.force ?? false;
+
+  // Unless forced, refuse a worktree with uncommitted or untracked changes.
+  // `-z` emits NUL-terminated records with no C-style quoting; rename/copy
+  // entries split cleanly.
+  if (!force) {
+    let porcelain: string;
+    try {
+      const { stdout } = await gitExecFile(
+        ["status", "--porcelain", "-z"],
+        absWorktreePath
+      );
+      porcelain = stdout;
+    } catch (err) {
+      return {
+        status: "error",
+        errorCode: "GIT_ERROR",
+        errorMessage: cleanGitError(err),
+      };
+    }
+
+    const dirtyFiles = parsePorcelainZ(porcelain);
+    if (dirtyFiles.length > 0) {
+      return {
+        status: "refused",
+        dirtyFiles,
+        refusalReason:
+          "Worktree has uncommitted or untracked changes; removal refused. " +
+          "The worktree and its branch have been left intact. Pass " +
+          "force=true to remove it anyway.",
+      };
+    }
   }
 
-  const dirtyFiles = parsePorcelainZ(porcelain);
-  if (dirtyFiles.length > 0) {
-    return {
-      status: "refused",
-      dirtyFiles,
-      refusalReason:
-        "Worktree has uncommitted or untracked changes; removal refused. " +
-        "The worktree and its branch have been left intact.",
-    };
-  }
-
-  // Clean — proceed with removal (never --force).
-  // `--` terminates option parsing; the path positional follows.
+  // Remove the worktree. `--` terminates option parsing; with force=true the
+  // worktree is removed even when dirty.
+  const removeArgs = force
+    ? ["worktree", "remove", "--force", "--", absWorktreePath]
+    : ["worktree", "remove", "--", absWorktreePath];
   try {
-    await gitExecFile(["worktree", "remove", "--", absWorktreePath], cwd);
+    await gitExecFile(removeArgs, cwd);
   } catch (err) {
     return {
       status: "error",
