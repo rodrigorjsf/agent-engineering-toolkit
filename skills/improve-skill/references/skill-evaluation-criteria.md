@@ -21,7 +21,7 @@ Source: skills/skill-authoring-best-practices.md, Evaluating-AGENTS-paper.md
 | Criterion | Threshold | Source |
 |-----------|-----------|--------|
 | SKILL.md body length | ≤ 500 lines | Anthropic: "Keep SKILL.md under 500 lines" |
-| Reference files | ≤ 200 lines each | `.claude/rules/reference-files.md` — hard limit |
+| Reference files | ≤ 200 lines each | Reference files hard limit |
 | Reference files >100 lines | Must include a `## Contents` TOC | skill-authoring-best-practices.md line 403 |
 | `description` field | Present, non-empty, ≤ 1024 chars | Required for skill discovery and Agent Skills spec |
 | `name` field | Present, non-empty, 1-64 chars, kebab-case | Agent Skills specification |
@@ -29,7 +29,7 @@ Source: skills/skill-authoring-best-practices.md, Evaluating-AGENTS-paper.md
 
 A skill violating any hard limit is flagged **OVER LIMIT** regardless of content quality.
 
-*Source: skills/skill-authoring-best-practices.md line 259; `.claude/rules/reference-files.md`*
+*Source: skills/skill-authoring-best-practices.md line 259*
 
 ---
 
