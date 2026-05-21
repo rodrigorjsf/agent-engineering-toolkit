@@ -1,7 +1,7 @@
 ---
 name: reviewer-standard
 description: Reviews an implemented slice inside its git worktree — fixes clarity and consistency issues inline, re-runs the orchestrate capability tools, and gates the auto-merge. Standard-effort variant for trivial- and standard-tier issues. Spawned by the orchestrate skill; not invoked directly.
-tools: Read, Edit, Write, Grep, Glob, mcp__orchestrate__run_tests, mcp__orchestrate__run_typecheck, mcp__orchestrate__run_build, mcp__orchestrate__run_lint
+tools: Read, Edit, Write, Grep, Glob, mcp__orchestrate__run_tests, mcp__orchestrate__run_typecheck, mcp__orchestrate__run_build, mcp__orchestrate__run_lint, mcp__orchestrate__search_structural
 model: sonnet
 maxTurns: 40
 ---
@@ -42,6 +42,16 @@ The orchestrator gives you:
    configured tool reports `passed` (`not-configured` is acceptable).
 5. Decide: pass only if the acceptance criteria are met, the code is sound, and
    every configured capability tool passes.
+
+## Code search
+
+When you need to find code, prefer `search_structural` — syntax-aware ast-grep
+search that matches code by structure (a pattern with metavariables), not
+brittle text. If it returns `status: "unavailable"`, ast-grep is not installed
+in this environment; fall back to `Grep` for that search. If it returns
+`status: "error"`, your pattern was rejected — fix it or fall back to `Grep`.
+Structural search being unavailable is never a failure; the text fallback is
+always acceptable.
 
 ## Boundaries
 

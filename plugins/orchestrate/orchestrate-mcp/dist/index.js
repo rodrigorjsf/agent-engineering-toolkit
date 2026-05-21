@@ -21167,14 +21167,14 @@ function optionInjectionError(field, value) {
 }
 function cleanGitError(err) {
   if (err instanceof GitExecError && err.stderr.trim().length > 0) {
-    const firstLine7 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-    if (firstLine7) {
-      return firstLine7;
+    const firstLine8 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+    if (firstLine8) {
+      return firstLine8;
     }
   }
   const message = err instanceof Error ? err.message : String(err);
-  const firstLine6 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-  return firstLine6 ?? "Unknown git error";
+  const firstLine7 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return firstLine7 ?? "Unknown git error";
 }
 
 // src/tools/worktree.ts
@@ -22696,10 +22696,168 @@ async function spawnSuccessor(input) {
   };
 }
 
+// src/tools/search-structural.ts
+var import_child_process4 = require("child_process");
+var import_util8 = require("util");
+var execFileAsync3 = (0, import_util8.promisify)(import_child_process4.execFile);
+var DEFAULT_TIMEOUT_MS2 = 3e4;
+var MAX_CAPTURE_BYTES2 = 16 * 1024 * 1024;
+var MAX_MATCHES = 100;
+var MAX_SNIPPET_CHARS = 2e3;
+var ASTGREP_BINARY = "ast-grep";
+var structuralMatchSchema = external_exports.object({
+  file: external_exports.string().describe("Path of the file containing the match, as reported by ast-grep."),
+  startLine: external_exports.number().int().describe("First line of the match, as reported by ast-grep."),
+  endLine: external_exports.number().int().describe("Last line of the match, as reported by ast-grep."),
+  snippet: external_exports.string().describe("The matched source text, capped to 2000 characters.")
+});
+var searchStructuralInputSchema = external_exports.object({
+  pattern: external_exports.string().min(1).describe(
+    "An ast-grep pattern \u2014 code with metavariables, e.g. `console.log($A)` or `function $N($$$) { $$$ }`. Matches code by syntax, not text."
+  ),
+  language: external_exports.string().optional().describe(
+    "ast-grep language id the pattern is parsed in, e.g. 'typescript', 'tsx', 'python', 'rust', 'go'. Recommended \u2014 a pattern is grammar-specific."
+  ),
+  path: external_exports.string().optional().describe(
+    "File or directory to search, relative to repoPath. Defaults to the whole repository."
+  ),
+  repoPath: external_exports.string().optional().describe(
+    "Repository root the search runs in. Defaults to the MCP server's current working directory \u2014 callers should pass it explicitly."
+  )
+});
+var searchStructuralOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "unavailable", "error"]).describe(
+    "Outcome discriminant. 'ok' = the search ran; 'unavailable' = the ast-grep binary is not installed, so the caller should fall back to text search; 'error' = ast-grep ran but the search failed."
+  ),
+  matches: external_exports.array(structuralMatchSchema).optional().describe(
+    "Structural matches found. Present when status='ok'. Empty when nothing matched."
+  ),
+  matchCount: external_exports.number().int().optional().describe("Number of matches in `matches`. Present when status='ok'."),
+  truncated: external_exports.boolean().optional().describe(
+    `True when more than ${MAX_MATCHES} matches were found and \`matches\` was capped. Present when status='ok'.`
+  ),
+  errorCode: external_exports.enum(["ASTGREP_FAILED", "BAD_OUTPUT", "TIMEOUT"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'ASTGREP_FAILED' = ast-grep exited non-zero (often an invalid pattern); 'BAD_OUTPUT' = its output could not be parsed; 'TIMEOUT' = the search exceeded the time limit."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Human-readable description \u2014 why the search failed (status='error') or why ast-grep is unavailable (status='unavailable')."
+  )
+});
+function firstLine6(message) {
+  const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return line ?? message.trim();
+}
+function parseAstGrepJson(stdout) {
+  const trimmed = stdout.trim();
+  if (!trimmed) return { ok: true, matches: [] };
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { ok: false };
+  }
+  if (!Array.isArray(parsed)) return { ok: false };
+  const matches = [];
+  for (const item of parsed) {
+    if (typeof item !== "object" || item === null) continue;
+    const rec = item;
+    const file = typeof rec.file === "string" ? rec.file : null;
+    if (file === null) continue;
+    const range = typeof rec.range === "object" && rec.range !== null ? rec.range : {};
+    const start = typeof range.start === "object" && range.start !== null ? range.start : {};
+    const end = typeof range.end === "object" && range.end !== null ? range.end : {};
+    const startLine = typeof start.line === "number" ? start.line : 0;
+    const endLine = typeof end.line === "number" ? end.line : startLine;
+    const rawSnippet = typeof rec.lines === "string" ? rec.lines : typeof rec.text === "string" ? rec.text : "";
+    const snippet = rawSnippet.length > MAX_SNIPPET_CHARS ? rawSnippet.slice(0, MAX_SNIPPET_CHARS) + "\u2026" : rawSnippet;
+    matches.push({ file, startLine, endLine, snippet });
+  }
+  return { ok: true, matches };
+}
+function buildOk(matches) {
+  const truncated = matches.length > MAX_MATCHES;
+  const capped = truncated ? matches.slice(0, MAX_MATCHES) : matches;
+  return {
+    status: "ok",
+    matches: capped,
+    matchCount: capped.length,
+    truncated
+  };
+}
+async function searchStructural(input, opts = {}) {
+  const cwd = input.repoPath ?? process.cwd();
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS2;
+  const binary = opts.binary ?? ASTGREP_BINARY;
+  const searchPath = input.path ?? ".";
+  const args = ["run", "--json", "--pattern", input.pattern];
+  if (input.language) args.push("--lang", input.language);
+  args.push(searchPath);
+  try {
+    const { stdout } = await execFileAsync3(binary, args, {
+      cwd,
+      encoding: "utf8",
+      timeout: timeoutMs,
+      killSignal: "SIGKILL",
+      maxBuffer: MAX_CAPTURE_BYTES2,
+      windowsHide: true
+    });
+    const parsed = parseAstGrepJson(stdout.toString());
+    if (!parsed.ok) {
+      return {
+        status: "error",
+        errorCode: "BAD_OUTPUT",
+        errorMessage: "ast-grep output could not be parsed as JSON."
+      };
+    }
+    return buildOk(parsed.matches);
+  } catch (err) {
+    const e = err;
+    if (e.code === "ENOENT" || e.code === "EACCES") {
+      return {
+        status: "unavailable",
+        errorMessage: `The 'ast-grep' binary is not available (${e.code}). Fall back to text search.`
+      };
+    }
+    if (e.killed) {
+      return {
+        status: "error",
+        errorCode: "TIMEOUT",
+        errorMessage: `Structural search exceeded the ${timeoutMs} ms time limit.`
+      };
+    }
+    if (e.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+      return {
+        status: "error",
+        errorCode: "ASTGREP_FAILED",
+        errorMessage: `ast-grep output exceeded the ${MAX_CAPTURE_BYTES2}-byte capture limit.`
+      };
+    }
+    if (typeof e.code === "number") {
+      const out = e.stdout ? e.stdout.toString() : "";
+      const parsed = parseAstGrepJson(out);
+      if (parsed.ok && out.trim()) {
+        return buildOk(parsed.matches);
+      }
+      const errText = e.stderr ? e.stderr.toString() : "";
+      return {
+        status: "error",
+        errorCode: "ASTGREP_FAILED",
+        errorMessage: `ast-grep exited ${e.code}: ${firstLine6(
+          errText || e.message || String(err)
+        )}`
+      };
+    }
+    return {
+      status: "unavailable",
+      errorMessage: `ast-grep could not be run: ${firstLine6(e.message ?? String(err))}. Fall back to text search.`
+    };
+  }
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
-  version: "0.11.0"
+  version: "0.12.0"
 });
 var registerTool = server.registerTool.bind(server);
 var handleCreateWorktree = async (input) => {
@@ -22923,6 +23081,33 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleSpawnSuccessor
+);
+var handleSearchStructural = async (input) => {
+  const result = await searchStructural(input);
+  let text;
+  if (result.status === "ok") {
+    text = `Structural search found ${result.matchCount} match(es)` + (result.truncated ? ` (capped \u2014 more exist)` : "") + ".";
+  } else if (result.status === "unavailable") {
+    text = "Structural search is unavailable \u2014 ast-grep is not installed. Fall back to text search.";
+  } else {
+    text = `Structural search failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "search_structural",
+  {
+    title: "Structural Code Search",
+    description: "Syntax-aware code search powered by the ast-grep CLI \u2014 matches code by structure (an ast-grep pattern with metavariables), not text. Returns a discriminated `status`: 'ok' (search ran), 'unavailable' (ast-grep is not installed \u2014 the caller should fall back to text search), or 'error' (ast-grep ran but the search failed, e.g. an invalid pattern).",
+    inputSchema: searchStructuralInputSchema.shape,
+    outputSchema: searchStructuralOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleSearchStructural
 );
 async function main() {
   const transport = new StdioServerTransport();

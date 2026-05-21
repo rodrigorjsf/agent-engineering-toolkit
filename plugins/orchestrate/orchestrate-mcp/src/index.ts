@@ -52,10 +52,17 @@ import {
   type SpawnSuccessorInput,
   type SpawnSuccessorOutput,
 } from "./tools/spawn-successor.js";
+import {
+  searchStructural,
+  searchStructuralInputSchema,
+  searchStructuralOutputSchema,
+  type SearchStructuralInput,
+  type SearchStructuralOutput,
+} from "./tools/search-structural.js";
 
 const server = new McpServer({
   name: "orchestrate",
-  version: "0.11.0",
+  version: "0.12.0",
 });
 
 /**
@@ -451,6 +458,50 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleSpawnSuccessor as unknown as AnyToolHandler
+);
+
+// ─── search_structural ────────────────────────────────────────────────────────
+
+const handleSearchStructural: ToolHandler<
+  SearchStructuralInput,
+  SearchStructuralOutput
+> = async (input) => {
+  const result = await searchStructural(input);
+  let text: string;
+  if (result.status === "ok") {
+    text =
+      `Structural search found ${result.matchCount} match(es)` +
+      (result.truncated ? ` (capped — more exist)` : "") +
+      ".";
+  } else if (result.status === "unavailable") {
+    text =
+      "Structural search is unavailable — ast-grep is not installed. " +
+      "Fall back to text search.";
+  } else {
+    text = `Structural search failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "search_structural",
+  {
+    title: "Structural Code Search",
+    description:
+      "Syntax-aware code search powered by the ast-grep CLI — matches code by " +
+      "structure (an ast-grep pattern with metavariables), not text. Returns a " +
+      "discriminated `status`: 'ok' (search ran), 'unavailable' (ast-grep is " +
+      "not installed — the caller should fall back to text search), or 'error' " +
+      "(ast-grep ran but the search failed, e.g. an invalid pattern).",
+    inputSchema: searchStructuralInputSchema.shape,
+    outputSchema: searchStructuralOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleSearchStructural as unknown as AnyToolHandler
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────

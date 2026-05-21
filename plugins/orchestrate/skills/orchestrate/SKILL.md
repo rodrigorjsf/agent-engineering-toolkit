@@ -53,7 +53,9 @@ tolerated. Without `routing.json` the `resolve_routing` tool errors and the run
 falls back to the `-standard` variant of every role with no model override.
 An optional `.orchestrate/handoff.json` tunes the context-watchdog threshold
 and the successor launcher; without it, built-in defaults apply (see
-`references/context-handoff.md`).
+`references/context-handoff.md`). Installing the `ast-grep` CLI is optional —
+it enables the investigator and reviewer subagents' structural code search,
+which otherwise falls back to text search.
 
 ## 1. Start or resume the run
 
