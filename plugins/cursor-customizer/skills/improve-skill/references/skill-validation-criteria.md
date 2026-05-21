@@ -8,6 +8,7 @@ Source: docs/cursor/skills/agent-skills-guide.md
 ## Contents
 
 - Hard limits (auto-fail if violated)
+- Canonical Semantic-Tag Convention
 - Foreign-platform dialect ban (auto-fail if violated)
 - Quality checks (all must pass)
 - Improve-only checks (information preservation, structural)
@@ -30,6 +31,40 @@ Any skill violating these criteria must be fixed before proceeding:
 | Contradictions between phases | 0 | Agents pick arbitrarily when contradictions exist |
 
 *Source: docs/cursor/skills/agent-skills-guide.md "Frontmatter fields" and "Optional directories"*
+
+---
+
+## Canonical Semantic-Tag Convention
+
+The SKILL.md body (everything after the YAML frontmatter) MUST wrap its logical blocks in the canonical semantic-tag vocabulary. The validator applies three strictness tiers — hard-fail, warn, silent — and produces the same verdict every run.
+
+**Mandatory tags** (the SKILL.md body MUST contain all of these):
+
+- `<TRIGGER>` — plain-language activation cue ("use when X")
+- `<BEHAVIOUR>` — behavioural guidelines, mindset, posture
+- `<HARD_RULES>` — inviolable constraints
+- `<PROCESS>` — container for the ordered phases; MUST contain at least one `<PHASE>`
+- `<PHASE id="N" name="X">` — one execution step inside `<PROCESS>`; `id=` is mandatory on every `<PHASE>`
+
+**Optional tags** (absence is silent — never a finding): `<PREFLIGHT>`, `<REFERENCES>`, `<EXAMPLE>`, `<ANTI_PATTERN>`, `<OUTPUT>`, `<VALIDATION>`.
+
+**Closed attribute set**: `avoid=`, `always=`, `when=`, `name=`, `id=`, `priority=`. Any other attribute name is non-canonical.
+
+**Legacy `<RULES>` alias**: a `<RULES>` block satisfies the mandatory `<HARD_RULES>` check exactly as `<HARD_RULES>` does — its presence is neither a warn nor a hard-fail. No mass rename; migrate each `<RULES>` occurrence to `<HARD_RULES>` only when the file is next touched for other reasons.
+
+### Strictness tiers (apply verbatim — the verdict must be deterministic)
+
+| Tier | Trigger | Action |
+|-------|---------|--------|
+| **Hard-fail** | Any mandatory tag missing (`<TRIGGER>`, `<BEHAVIOUR>`, `<HARD_RULES>` or `<RULES>` alias, `<PROCESS>`, or `<PROCESS>` with zero `<PHASE>`) | Stop; fix before proceeding |
+| **Hard-fail** | Unbalanced tags — any opening tag without a matching closing tag, or a close with no open | Stop; fix before proceeding |
+| **Hard-fail** | Malformed attribute syntax — an attribute value missing its quotes, a stray `=`, or an unterminated quote | Stop; fix before proceeding |
+| **Warn** | A non-canonical attribute name (outside `avoid` / `always` / `when` / `name` / `id` / `priority`) — typo guard | Surface a warning; do not block |
+| **Silent** | Absence of any optional tag | No finding; proceed |
+
+A self-closing tag (`<TRIGGER ... />`) counts as balanced. `<PHASE>` missing its mandatory `id=` is a hard-fail (a mandatory attribute is absent, not malformed).
+
+*Source: wiki/knowledge/skill-body-convention.md; docs/adr/0007-skill-body-semantic-tag-convention.md*
 
 ---
 
@@ -63,6 +98,9 @@ The Cursor distribution is product-strict. The skill tree (SKILL.md, references,
 - [ ] Phase instructions are specific and actionable — no vague directives like "ensure quality" or "review for completeness"
 - [ ] Plugin skill bodies delegate analysis to registered subagents; no inline bash analysis commands
 - [ ] Evidence citations present: key decisions reference source docs (e.g., "per skill-authoring-guide.md")
+- [ ] Canonical semantic tags present in their canonical positions: `<TRIGGER>` after the title, `<BEHAVIOUR>`, `<HARD_RULES>`, then `<PROCESS>` containing one or more `<PHASE id="N" name="X">`
+- [ ] All semantic tags balanced and use only the closed attribute set (`avoid`, `always`, `when`, `name`, `id`, `priority`); every `<PHASE>` carries an `id=`
+- [ ] YAML frontmatter untouched by the convention — the `<TRIGGER>` cue is not duplicated into the `description` field
 
 ---
 
@@ -85,10 +123,11 @@ The Cursor distribution is product-strict. The skill tree (SKILL.md, references,
 
 Execute this loop for each generated or improved skill:
 
-1. Evaluate the skill against ALL criteria above (hard limits, foreign-dialect ban, quality checks, and IMPROVE-only checks if applicable).
+1. Evaluate the skill against ALL criteria above (hard limits, the **Canonical Semantic-Tag Convention** strictness tiers, foreign-dialect ban, quality checks, and IMPROVE-only checks if applicable).
 2. **For improve operations:** verify each suggestion in the improvement plan has a WHY field citing a source doc — no suggestion may lack a source reference.
-3. If ANY criterion fails: identify the specific failure, fix the skill, restart evaluation.
-4. Maximum 3 iterations — if still failing after 3 attempts, surface the remaining issues to the user.
-5. Only proceed to writing skills when ALL criteria pass.
+3. If ANY hard-fail criterion fails: identify the specific failure, fix the skill, restart evaluation.
+4. Surface every warn-tier finding (non-canonical attribute names) without blocking — the user decides whether to fix.
+5. Maximum 3 iterations — if still failing after 3 attempts, surface the remaining issues to the user.
+6. Only proceed to writing skills when ALL hard-fail and quality criteria pass.
 
 **Do not skip criteria for "minor" violations.** Hard limits and the foreign-dialect ban are absolute.
