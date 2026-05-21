@@ -21927,6 +21927,9 @@ function firstLine3(message) {
 function esc2(value) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
+function safeHref(url) {
+  return /^https?:\/\//i.test(url) ? url : "#";
+}
 function formatDuration(startedAt, updatedAt) {
   const start = new Date(startedAt).getTime();
   const end = new Date(updatedAt).getTime();
@@ -22150,7 +22153,7 @@ function renderDashboard(state) {
   }
   const total = Object.values(state.slices).length;
   const rows = sliceList.map(({ id, wave, slice }) => {
-    const pr = slice.pullRequest ? `<a href="${esc2(slice.pullRequest)}" target="_blank">#PR</a>` : "\u2014";
+    const pr = slice.pullRequest ? `<a href="${esc2(safeHref(slice.pullRequest))}" target="_blank">#PR</a>` : "\u2014";
     return `
       <tr>
         <td>#${esc2(String(slice.issue))}</td>
@@ -22162,7 +22165,7 @@ function renderDashboard(state) {
       </tr>`;
   }).join("");
   const progressPct = totalWaves > 0 ? Math.round(state.completedWaves / totalWaves * 100) : 0;
-  const finalPr = state.finalPullRequest ? `<a href="${esc2(state.finalPullRequest)}" target="_blank">${esc2(state.finalPullRequest)}</a>` : "\u2014";
+  const finalPr = state.finalPullRequest ? `<a href="${esc2(safeHref(state.finalPullRequest))}" target="_blank">${esc2(state.finalPullRequest)}</a>` : "\u2014";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -22368,7 +22371,7 @@ function renderReport(state) {
     (wave) => wave.map((id) => state.slices[id]).filter(Boolean)
   );
   const rows = sliceList.map((slice) => {
-    const pr = slice.pullRequest ? `<a href="${esc2(slice.pullRequest)}" target="_blank">PR</a>` : "\u2014";
+    const pr = slice.pullRequest ? `<a href="${esc2(safeHref(slice.pullRequest))}" target="_blank">PR</a>` : "\u2014";
     const reason = slice.failureReason ? esc2(slice.failureReason) : "\u2014";
     return `
       <tr>
@@ -22380,7 +22383,7 @@ function renderReport(state) {
         <td style="color: var(--state-failed-text); font-size: 12px;">${reason}</td>
       </tr>`;
   }).join("");
-  const finalPr = state.finalPullRequest ? `<a href="${esc2(state.finalPullRequest)}" target="_blank">${esc2(state.finalPullRequest)}</a>` : "Not yet created";
+  const finalPr = state.finalPullRequest ? `<a href="${esc2(safeHref(state.finalPullRequest))}" target="_blank">${esc2(state.finalPullRequest)}</a>` : "Not yet created";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -22788,17 +22791,18 @@ async function searchStructural(input, opts = {}) {
   const cwd = input.repoPath ?? process.cwd();
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS2;
   const binary = opts.binary ?? ASTGREP_BINARY;
+  const maxBuffer = opts.maxBufferBytes ?? MAX_CAPTURE_BYTES2;
   const searchPath = input.path ?? ".";
   const args = ["run", "--json", "--pattern", input.pattern];
   if (input.language) args.push("--lang", input.language);
-  args.push(searchPath);
+  args.push("--", searchPath);
   try {
     const { stdout } = await execFileAsync3(binary, args, {
       cwd,
       encoding: "utf8",
       timeout: timeoutMs,
       killSignal: "SIGKILL",
-      maxBuffer: MAX_CAPTURE_BYTES2,
+      maxBuffer,
       windowsHide: true
     });
     const parsed = parseAstGrepJson(stdout.toString());
