@@ -403,6 +403,104 @@ describe("renderDashboard — completed run status badge", () => {
   });
 });
 
+// ─── safeHref scheme allowlist ───────────────────────────────────────────────
+
+describe("renderDashboard — safeHref scheme allowlist", () => {
+  it("preserves an https:// slice PR URL in the href attribute", () => {
+    const state = JSON.parse(JSON.stringify(VALID_STATE)) as RunState;
+    state.slices["101"].pullRequest = "https://github.com/owner/repo/pull/201";
+    const html = renderDashboard(state);
+    expect(html).toContain('href="https://github.com/owner/repo/pull/201"');
+  });
+
+  it("replaces a javascript: slice PR URL with href=\"#\"", () => {
+    const state = JSON.parse(JSON.stringify(VALID_STATE)) as RunState;
+    state.slices["101"].pullRequest = "javascript:alert(1)";
+    const html = renderDashboard(state);
+    expect(html).not.toMatch(/href="javascript:/i);
+    expect(html).toContain('href="#"');
+  });
+
+  it("replaces a data: slice PR URL with href=\"#\"", () => {
+    const state = JSON.parse(JSON.stringify(VALID_STATE)) as RunState;
+    state.slices["101"].pullRequest = "data:text/html,<h1>xss</h1>";
+    const html = renderDashboard(state);
+    expect(html).not.toMatch(/href="data:/i);
+    expect(html).toContain('href="#"');
+  });
+
+  it("preserves an https:// finalPullRequest URL in the href attribute", () => {
+    const state = JSON.parse(JSON.stringify(VALID_STATE)) as RunState;
+    state.finalPullRequest = "https://github.com/owner/repo/pull/300";
+    const html = renderDashboard(state);
+    expect(html).toContain('href="https://github.com/owner/repo/pull/300"');
+  });
+
+  it("replaces a javascript: finalPullRequest URL with href=\"#\"", () => {
+    const state = JSON.parse(JSON.stringify(VALID_STATE)) as RunState;
+    state.finalPullRequest = "javascript:alert(1)";
+    const html = renderDashboard(state);
+    expect(html).not.toMatch(/href="javascript:/i);
+    expect(html).toContain('href="#"');
+  });
+
+  it("replaces a data: finalPullRequest URL with href=\"#\"", () => {
+    const state = JSON.parse(JSON.stringify(VALID_STATE)) as RunState;
+    state.finalPullRequest = "data:text/html,<h1>xss</h1>";
+    const html = renderDashboard(state);
+    expect(html).not.toMatch(/href="data:/i);
+    expect(html).toContain('href="#"');
+  });
+});
+
+describe("renderReport — safeHref scheme allowlist", () => {
+  it("preserves an https:// slice PR URL in the href attribute", () => {
+    const state = JSON.parse(JSON.stringify(VALID_STATE)) as RunState;
+    state.slices["101"].pullRequest = "https://github.com/owner/repo/pull/201";
+    const html = renderReport(state);
+    expect(html).toContain('href="https://github.com/owner/repo/pull/201"');
+  });
+
+  it("replaces a javascript: slice PR URL with href=\"#\"", () => {
+    const state = JSON.parse(JSON.stringify(VALID_STATE)) as RunState;
+    state.slices["101"].pullRequest = "javascript:alert(1)";
+    const html = renderReport(state);
+    expect(html).not.toMatch(/href="javascript:/i);
+    expect(html).toContain('href="#"');
+  });
+
+  it("replaces a data: slice PR URL with href=\"#\"", () => {
+    const state = JSON.parse(JSON.stringify(VALID_STATE)) as RunState;
+    state.slices["101"].pullRequest = "data:text/html,<h1>xss</h1>";
+    const html = renderReport(state);
+    expect(html).not.toMatch(/href="data:/i);
+    expect(html).toContain('href="#"');
+  });
+
+  it("preserves an https:// finalPullRequest URL in the href attribute", () => {
+    const state = JSON.parse(JSON.stringify(VALID_STATE)) as RunState;
+    state.finalPullRequest = "https://github.com/owner/repo/pull/300";
+    const html = renderReport(state);
+    expect(html).toContain('href="https://github.com/owner/repo/pull/300"');
+  });
+
+  it("replaces a javascript: finalPullRequest URL with href=\"#\"", () => {
+    const state = JSON.parse(JSON.stringify(VALID_STATE)) as RunState;
+    state.finalPullRequest = "javascript:alert(1)";
+    const html = renderReport(state);
+    expect(html).not.toMatch(/href="javascript:/i);
+    expect(html).toContain('href="#"');
+  });
+
+  it("replaces a data: finalPullRequest URL with href=\"#\"", () => {
+    const state = JSON.parse(JSON.stringify(VALID_STATE)) as RunState;
+    state.finalPullRequest = "data:text/html,<h1>xss</h1>";
+    const html = renderReport(state);
+    expect(html).not.toMatch(/href="data:/i);
+    expect(html).toContain('href="#"');
+  });
+});
+
 // ─── blockedBy id outside the slices map ─────────────────────────────────────
 
 describe("renderGraph — blockedBy id outside the slices map", () => {

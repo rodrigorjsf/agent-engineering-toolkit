@@ -113,6 +113,15 @@ function esc(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/**
+ * Scheme allowlist guard for href attribute values.
+ * Returns the URL unchanged when it starts with http:// or https:// (case-insensitive).
+ * Returns "#" for any other scheme (e.g. javascript:, data:) to prevent XSS.
+ */
+function safeHref(url: string): string {
+  return /^https?:\/\//i.test(url) ? url : "#";
+}
+
 /** Formats duration between two ISO-8601 timestamps as a human-readable string. */
 function formatDuration(startedAt: string, updatedAt: string): string {
   const start = new Date(startedAt).getTime();
@@ -374,7 +383,7 @@ export function renderDashboard(state: RunState): string {
   const rows = sliceList
     .map(({ id, wave, slice }) => {
       const pr = slice.pullRequest
-        ? `<a href="${esc(slice.pullRequest)}" target="_blank">#PR</a>`
+        ? `<a href="${esc(safeHref(slice.pullRequest))}" target="_blank">#PR</a>`
         : "—";
       return `
       <tr>
@@ -392,7 +401,7 @@ export function renderDashboard(state: RunState): string {
     totalWaves > 0 ? Math.round((state.completedWaves / totalWaves) * 100) : 0;
 
   const finalPr = state.finalPullRequest
-    ? `<a href="${esc(state.finalPullRequest)}" target="_blank">${esc(state.finalPullRequest)}</a>`
+    ? `<a href="${esc(safeHref(state.finalPullRequest))}" target="_blank">${esc(state.finalPullRequest)}</a>`
     : "—";
 
   return `<!doctype html>
@@ -643,7 +652,7 @@ export function renderReport(state: RunState): string {
   const rows = sliceList
     .map((slice) => {
       const pr = slice.pullRequest
-        ? `<a href="${esc(slice.pullRequest)}" target="_blank">PR</a>`
+        ? `<a href="${esc(safeHref(slice.pullRequest))}" target="_blank">PR</a>`
         : "—";
       const reason = slice.failureReason ? esc(slice.failureReason) : "—";
       return `
@@ -659,7 +668,7 @@ export function renderReport(state: RunState): string {
     .join("");
 
   const finalPr = state.finalPullRequest
-    ? `<a href="${esc(state.finalPullRequest)}" target="_blank">${esc(state.finalPullRequest)}</a>`
+    ? `<a href="${esc(safeHref(state.finalPullRequest))}" target="_blank">${esc(state.finalPullRequest)}</a>`
     : "Not yet created";
 
   return `<!doctype html>
