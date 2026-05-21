@@ -2,6 +2,53 @@
 
 ---
 
+## 2026-05-21 — Update: subagent pages reflect current Claude Code facts
+
+**Pages updated (2):** `claude-code-subagents.md`, `subagents.md`
+
+**Source:** `creating-custom-subagents.md` (Anthropic "Create custom subagents" page, refetched)
+
+**Changes to `claude-code-subagents.md`:**
+- Frontmatter table: added `color` (display color: red/blue/green/yellow/purple/orange/pink/cyan) and `initialPrompt` (auto-submitted first user turn when run as the main session agent) rows.
+- `effort` row: added `xhigh`; availability is now "available levels depend on the model" (dropped stale model-specific claims).
+- `permissionMode` row: added `auto` value (background classifier reviews commands) and the `default` value; full set is now default/acceptEdits/auto/dontAsk/bypassPermissions/plan.
+- `model` row: added `claude-opus-4-7` as the full-ID example.
+- `skills` row: clarified it preloads full skill content into context at startup (not merely "available skills").
+- Built-in subagents table: removed the `Bash` row (no longer documented); added `statusline-setup` and `claude-code-guide` to reconcile with the live "Other" tab.
+- Locations table: rebuilt as a 5-row priority table with the new "Managed settings" scope at priority 1 (highest), pushing CLI flag / project / user / plugin down.
+- Effort Levels table: added `xhigh`; availability column changed to "available levels depend on the model".
+- New "Fork Mode (Experimental)" subsection: forks inherit the full parent conversation, enabled via `CLAUDE_CODE_FORK_SUBAGENT=1`, `/fork` command, experimental, requires Claude Code v2.1.117+.
+- Added inline `(source: creating-custom-subagents.md)` citations to all touched sections.
+
+**Changes to `subagents.md` (Claude Code parts only — Cursor facts untouched):**
+- Cross-Platform Comparison "Effort" row: added `xhigh`.
+- "Effort Levels (Claude Code Only)" table: added `xhigh`; availability wording changed to "available levels depend on the model".
+- "Built-in Subagents" list: dropped the cross-platform `Bash/Terminal` line; `Bash` is now scoped to Cursor only; added Claude Code helper agents `statusline-setup` and `claude-code-guide`.
+
+**Index updated:** `claude-code-subagents` summary now mentions fork mode. Page count unchanged (41).
+
+**Why:** Anthropic's official "Create custom subagents" page changed substantially; two wiki pages held stale subagent facts (missing fields, stale effort availability, removed `Bash` built-in, no Managed settings scope, no fork mode).
+
+---
+
+## 2026-05-17 — Ingest: html-artifact-effectiveness (Thariq HTML post)
+
+**Page created (1):** `html-artifact-effectiveness.md`
+
+**Source:** docs/html-structure/thariq-html-effectiveness.md, https://thariqs.github.io/html-effectiveness
+
+**Why:** New source document arrived; user requested deep analysis, cross-linking, and wiki ingestion as part of the grilling session that produced ADR-0007. Captures Thariq's argument for HTML over Markdown for human-rich artifacts, the use-case map, honest costs, and the explicit anti-pattern warning against a generic `/html` skill.
+
+---
+
+## 2026-05-17 — Page created: skill-body-convention (project-internal contract)
+
+**Page created (1):** `skill-body-convention.md`
+
+**Why:** ADR-0007 introduced a closed canonical semantic-tag vocabulary for skill and subagent bodies plus an Artifact format routing rule for generated artifacts. The new wiki page is the searchable canonical reference for skill authors (`skill-authoring` covers domain-agnostic best practices; this new page covers this project's body-shape contract). Cross-links: `[[html-artifact-effectiveness]]`, `[[claude-code-skills]]`, `[[cursor-skills]]`, `[[agent-skills-standard]]`, `[[skill-authoring]]`.
+
+---
+
 ## 2026-05-03 — Update: compliance-routing (register cursor-customizer scope)
 
 **Page updated (1):** `compliance-routing.md`

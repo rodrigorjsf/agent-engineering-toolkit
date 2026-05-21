@@ -22,6 +22,7 @@ the generated files are in place. Treat the first execution as a one-time invest
 |---|---|---|---|
 | `agents-initializer` | Claude Code | Native plugin system | [plugins/agents-initializer/README.md](plugins/agents-initializer/README.md) |
 | `agent-customizer` | Claude Code | Native plugin system | [plugins/agent-customizer/README.md](plugins/agent-customizer/README.md) |
+| `orchestrate` | Claude Code | Native plugin system | [plugins/orchestrate/README.md](plugins/orchestrate/README.md) |
 | `cursor-initializer` | Cursor IDE | Native plugin system | [plugins/cursor-initializer/README.md](plugins/cursor-initializer/README.md) |
 | `cursor-customizer` | Cursor IDE | Native plugin system | [plugins/cursor-customizer/README.md](plugins/cursor-customizer/README.md) |
 | Standalone | Any AI tool | `npx skills add` / manual | [skills/README.md](skills/README.md) |
@@ -64,6 +65,15 @@ For a full evidence-to-implementation mapping, see **[DESIGN-GUIDELINES.md](DESI
 ```
 
 → See [plugins/agent-customizer/README.md](plugins/agent-customizer/README.md) for scope flags and full options.
+
+### Claude Code — orchestrate
+
+```bash
+/plugin marketplace add rodrigorjsf/agent-engineering-toolkit
+/plugin install orchestrate@agent-engineering-toolkit
+```
+
+→ See [plugins/orchestrate/README.md](plugins/orchestrate/README.md) for prerequisites and the configuration reference.
 
 ### Cursor IDE — cursor-initializer
 
@@ -118,12 +128,21 @@ agent-engineering-toolkit/
 │   │   ├── docs-drift-manifest.md   # Registry: reference files → source docs
 │   │   ├── agents/                  # artifact-analyzer + per-type evaluators (Cursor-native format)
 │   │   └── skills/                  # 8 skills: create-{type} and improve-{type}
-│   └── agent-customizer/            # Claude Code plugin — artifact creation and improvement
+│   ├── agent-customizer/            # Claude Code plugin — artifact creation and improvement
+│   │   ├── .claude-plugin/plugin.json
+│   │   ├── README.md                # Full plugin documentation
+│   │   ├── docs-drift-manifest.md   # Registry: reference files → 12 source docs
+│   │   ├── agents/                  # 6 subagents: artifact-analyzer, evaluators, drift-checker
+│   │   └── skills/                  # 8 skills: create-{type} and improve-{type}
+│   └── orchestrate/                 # Claude Code plugin — autonomous backlog orchestration
 │       ├── .claude-plugin/plugin.json
+│       ├── .mcp.json                # Registers the orchestrate-mcp server
 │       ├── README.md                # Full plugin documentation
-│       ├── docs-drift-manifest.md   # Registry: reference files → 12 source docs
-│       ├── agents/                  # 6 subagents: artifact-analyzer, evaluators, drift-checker
-│       └── skills/                  # 8 skills: create-{type} and improve-{type}
+│       ├── hooks/                   # context-watchdog PostToolUse hook
+│       ├── skills/                  # 1 skill: orchestrate
+│       ├── agents/                  # 8 subagents: {investigator,implementer,reviewer,conflict-resolver}-{standard,deep}
+│       ├── templates/               # commands.json, routing.json, handoff.json
+│       └── orchestrate-mcp/         # MCP server (worktree, capability, routing, render, search tools)
 ├── skills/                          # Standalone distribution — npx skills add compatible
 │   ├── README.md                    # Full standalone documentation
 │   └── {init,improve}-{agents,claude,skill,hook,rule,subagent}/

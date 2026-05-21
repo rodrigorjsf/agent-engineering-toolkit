@@ -2,7 +2,7 @@
 
 **Summary**: Specialized assistants running in isolated context windows with custom system prompts and restricted tool sets — the primary mechanism for keeping main agent context clean while enabling complex parallel work across both Claude Code and Cursor platforms.
 **Sources**: creating-custom-subagents.md, subagents-guide.md, research-subagent-best-practices.md, analysis-creating-custom-subagents.md, analysis-research-subagent-best-practices.md, research-plan-implement-rpi.md, skill-issue-harness-engineering-for-coding-agents.md
-**Last updated**: 2026-05-01
+**Last updated**: 2026-05-21
 
 ---
 
@@ -22,7 +22,7 @@ Subagents are the workhorse of [[agent-workflows]]. They receive only their syst
 | Locations        | session, project, user, plugin       | project, user, compatibility dirs                              |
 | Max turns        | `maxTurns` field (15–20 typical)     | Not available                                                  |
 | Hooks            | Frontmatter-scoped hooks supported   | Not available                                                  |
-| Effort           | `effort` field (low/medium/high/max) | Not available                                                  |
+| Effort           | `effort` field (low/medium/high/xhigh/max) | Not available                                            |
 
 ## Common Tool Profiles
 
@@ -39,10 +39,13 @@ Subagents are the workhorse of [[agent-workflows]]. They receive only their syst
 Both platforms provide built-in subagents:
 
 - **Explore** — Fast, read-only codebase search (Haiku model in Claude Code)
-- **Bash/Terminal** — Shell command execution with output isolation
-- **Browser** — Web automation and visual testing (Cursor)
 - **Plan** — Research-focused read-only agent (Claude Code)
 - **general-purpose** — Full tool access (Claude Code)
+- **statusline-setup**, **claude-code-guide** — Claude Code helper agents for `/statusline` setup and feature questions (source: creating-custom-subagents.md)
+- **Bash** — Shell command execution with output isolation (Cursor)
+- **Browser** — Web automation and visual testing (Cursor)
+
+The Claude Code built-in subagents documentation no longer lists a `Bash` built-in — its "Other" tab now lists only `statusline-setup` and `claude-code-guide` (source: creating-custom-subagents.md). See [[claude-code-subagents]] for the full Claude Code built-in table and [[cursor-subagents]] for Cursor built-ins.
 
 ## System Prompt Structure
 
@@ -68,12 +71,15 @@ Keep prompts focused and under 2000 words. Longer prompts are slower to process 
 
 ## Effort Levels (Claude Code Only)
 
-| Level    | Behavior                             | Availability  |
-| -------- | ------------------------------------ | ------------- |
-| `low`    | Quick, shallow analysis              | All models    |
-| `medium` | Standard depth                       | All models    |
-| `high`   | Thorough analysis                    | All models    |
-| `max`    | Deepest reasoning, extended thinking | Opus 4.6 only |
+| Level    | Behavior                             | Availability                         |
+| -------- | ------------------------------------ | ------------------------------------ |
+| `low`    | Quick, shallow analysis              | available levels depend on the model |
+| `medium` | Standard depth                       | available levels depend on the model |
+| `high`   | Thorough analysis                    | available levels depend on the model |
+| `xhigh`  | Extended-depth reasoning             | available levels depend on the model |
+| `max`    | Deepest reasoning, extended thinking | available levels depend on the model |
+
+Which `effort` levels are accepted depends on the model in use (source: creating-custom-subagents.md).
 
 ## Plugin Security (Claude Code)
 
