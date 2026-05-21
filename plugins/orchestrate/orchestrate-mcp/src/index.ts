@@ -36,10 +36,19 @@ import {
   type ResolveRoutingInput,
   type ResolveRoutingOutput,
 } from "./tools/routing.js";
+import {
+  renderDashboardArtifact,
+  renderGraphArtifact,
+  renderReportArtifact,
+  renderInputSchema,
+  renderOutputSchema,
+  type RenderInput,
+  type RenderOutput,
+} from "./tools/render.js";
 
 const server = new McpServer({
   name: "orchestrate",
-  version: "0.8.0",
+  version: "0.10.0",
 });
 
 /**
@@ -324,6 +333,76 @@ registerTool(
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleResolveRouting as unknown as AnyToolHandler
 );
+
+// ─── render_dashboard / render_graph / render_report ─────────────────────────
+// Three HTML-rendering tools. Each reads .orchestrate/run-state.json,
+// generates a deterministic HTML artifact, writes it to disk, and returns
+// only the artifact path — no HTML is returned in the tool response.
+
+const RENDER_TOOLS: {
+  name: string;
+  title: string;
+  description: string;
+  run: (input: RenderInput) => Promise<RenderOutput>;
+}[] = [
+  {
+    name: "render_dashboard",
+    title: "Render Run Dashboard",
+    description:
+      "Reads .orchestrate/run-state.json and writes a standalone HTML dashboard " +
+      "showing the live run state: run id, status, wave progress, and a " +
+      "color-coded slice table. Returns only the artifact path — the HTML is " +
+      "written to disk, never returned in the response.",
+    run: renderDashboardArtifact,
+  },
+  {
+    name: "render_graph",
+    title: "Render Dependency Graph",
+    description:
+      "Reads .orchestrate/run-state.json and writes a standalone HTML dependency " +
+      "graph: waves as columns, slices as nodes, blockedBy edges as SVG lines. " +
+      "Layout is deterministic (x = wave index, y = slice index in wave). Returns " +
+      "only the artifact path.",
+    run: renderGraphArtifact,
+  },
+  {
+    name: "render_report",
+    title: "Render Run Report",
+    description:
+      "Reads .orchestrate/run-state.json and writes a standalone HTML final " +
+      "report: run duration, outcome counts (passed/failed/skipped), the final " +
+      "pull request link, and a per-slice outcome table. Returns only the " +
+      "artifact path.",
+    run: renderReportArtifact,
+  },
+];
+
+for (const tool of RENDER_TOOLS) {
+  const handle: ToolHandler<RenderInput, RenderOutput> = async (input) => {
+    const result = await tool.run(input);
+    const text =
+      result.status === "ok"
+        ? `Artifact written to ${result.artifactPath}`
+        : `Render failed [${result.errorCode}]: ${result.errorMessage}`;
+    return {
+      structuredContent: result,
+      content: [{ type: "text" as const, text }],
+    };
+  };
+
+  registerTool(
+    tool.name,
+    {
+      title: tool.title,
+      description: tool.description,
+      inputSchema: renderInputSchema.shape,
+      outputSchema: renderOutputSchema.shape,
+    },
+    // Handler is typed against its concrete input/output contract;
+    // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+    handle as unknown as AnyToolHandler
+  );
+}
 
 // ─── Start server ─────────────────────────────────────────────────────────────
 

@@ -3226,8 +3226,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path4) {
-      let input = path4;
+    function removeDotSegments(path5) {
+      let input = path5;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3479,8 +3479,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path4, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
+        const [path5, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path5 && path5 !== "/" ? path5 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs4, exportName) {
+    function addFormats(ajv, list, fs5, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs4[f]);
+        ajv.addFormat(f, fs5[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -7364,8 +7364,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path4, errorMaps, issueData } = params;
-  const fullPath = [...path4, ...issueData.path || []];
+  const { data, path: path5, errorMaps, issueData } = params;
+  const fullPath = [...path5, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7481,11 +7481,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path4, key) {
+  constructor(parent, value, path5, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path4;
+    this._path = path5;
     this._key = key;
   }
   get path() {
@@ -11123,10 +11123,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path4) {
-  if (!path4)
+function getElementAtPath(obj, path5) {
+  if (!path5)
     return obj;
-  return path4.reduce((acc, key) => acc?.[key], obj);
+  return path5.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11446,11 +11446,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path4, issues) {
+function prefixIssues(path5, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path4);
+    iss.path.unshift(path5);
     return iss;
   });
 }
@@ -21167,14 +21167,14 @@ function optionInjectionError(field, value) {
 }
 function cleanGitError(err) {
   if (err instanceof GitExecError && err.stderr.trim().length > 0) {
-    const firstLine4 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-    if (firstLine4) {
-      return firstLine4;
+    const firstLine5 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+    if (firstLine5) {
+      return firstLine5;
     }
   }
   const message = err instanceof Error ? err.message : String(err);
-  const firstLine3 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-  return firstLine3 ?? "Unknown git error";
+  const firstLine4 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return firstLine4 ?? "Unknown git error";
 }
 
 // src/tools/worktree.ts
@@ -21868,10 +21868,627 @@ function resolveRoutingFromConfig(input) {
   };
 }
 
+// src/tools/render.ts
+var path4 = __toESM(require("path"));
+var fs4 = __toESM(require("fs"));
+var sliceStateEnum = external_exports.enum(["pending", "in-progress", "passed", "failed", "skipped"]);
+var tierEnum = external_exports.enum(["trivial", "standard", "complex"]);
+var sliceSchema = external_exports.object({
+  issue: external_exports.number().int(),
+  title: external_exports.string(),
+  wave: external_exports.number().int(),
+  tier: tierEnum,
+  blockedBy: external_exports.array(external_exports.string()),
+  state: sliceStateEnum,
+  sliceBranch: external_exports.string(),
+  worktreePath: external_exports.string().nullable(),
+  pullRequest: external_exports.string().nullable(),
+  failureReason: external_exports.string().nullable(),
+  updatedAt: external_exports.string()
+});
+var runStateSchema = external_exports.object({
+  runId: external_exports.string(),
+  status: external_exports.enum(["in-progress", "completed"]),
+  umbrellaBranch: external_exports.string(),
+  integrationBase: external_exports.string(),
+  parentIssue: external_exports.number().int().nullable(),
+  startedAt: external_exports.string(),
+  updatedAt: external_exports.string(),
+  waves: external_exports.array(external_exports.array(external_exports.string())),
+  completedWaves: external_exports.number().int(),
+  finalPullRequest: external_exports.string().nullable(),
+  slices: external_exports.record(external_exports.string(), sliceSchema)
+});
+var renderInputSchema = external_exports.object({
+  repoPath: external_exports.string().optional().describe(
+    "Path to the project root that holds the .orchestrate/run-state.json file. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default."
+  ),
+  outputPath: external_exports.string().optional().describe(
+    "Override the default output path for the HTML artifact. When omitted the artifact is written under <repoPath>/.orchestrate/ with a fixed filename per tool (dashboard.html, graph.html, report.html)."
+  )
+});
+var renderOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe("Outcome discriminant. 'ok' = artifact written; 'error' = could not complete."),
+  artifactPath: external_exports.string().optional().describe("Absolute path to the written HTML artifact. Present when status='ok'."),
+  errorCode: external_exports.enum(["RUN_STATE_NOT_FOUND", "RUN_STATE_INVALID", "WRITE_FAILED"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'RUN_STATE_NOT_FOUND' = no .orchestrate/run-state.json; 'RUN_STATE_INVALID' = malformed JSON or schema mismatch; 'WRITE_FAILED' = could not write the HTML artifact."
+  ),
+  errorMessage: external_exports.string().optional().describe("Human-readable failure description. Present when status='error'.")
+});
+var ARTIFACT_DEFAULTS = {
+  dashboard: ".orchestrate/dashboard.html",
+  graph: ".orchestrate/graph.html",
+  report: ".orchestrate/report.html"
+};
+function firstLine3(message) {
+  const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return line ?? message.trim();
+}
+function esc2(value) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function formatDuration(startedAt, updatedAt) {
+  const start = new Date(startedAt).getTime();
+  const end = new Date(updatedAt).getTime();
+  const ms = end - start;
+  if (isNaN(ms) || ms < 0) return "unknown";
+  const secs = Math.floor(ms / 1e3);
+  const mins = Math.floor(secs / 60);
+  const hours = Math.floor(mins / 60);
+  if (hours > 0) return `${hours}h ${mins % 60}m`;
+  if (mins > 0) return `${mins}m ${secs % 60}s`;
+  return `${secs}s`;
+}
+function readAndValidateRunState(repoPath) {
+  const statePath = path4.join(repoPath, ".orchestrate", "run-state.json");
+  let raw;
+  try {
+    raw = fs4.readFileSync(statePath, "utf8");
+  } catch {
+    return {
+      ok: false,
+      response: {
+        status: "error",
+        errorCode: "RUN_STATE_NOT_FOUND",
+        errorMessage: `No .orchestrate/run-state.json found in ${repoPath}.`
+      }
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      ok: false,
+      response: {
+        status: "error",
+        errorCode: "RUN_STATE_INVALID",
+        errorMessage: `.orchestrate/run-state.json is not valid JSON: ${firstLine3(
+          err instanceof Error ? err.message : String(err)
+        )}`
+      }
+    };
+  }
+  const result = runStateSchema.safeParse(parsed);
+  if (!result.success) {
+    const detail = result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+    return {
+      ok: false,
+      response: {
+        status: "error",
+        errorCode: "RUN_STATE_INVALID",
+        errorMessage: `.orchestrate/run-state.json does not match the expected shape: ${detail}`
+      }
+    };
+  }
+  return { ok: true, state: result.data };
+}
+function writeArtifact(html, outputPath) {
+  try {
+    fs4.mkdirSync(path4.dirname(outputPath), { recursive: true });
+    fs4.writeFileSync(outputPath, html, "utf8");
+    return void 0;
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "WRITE_FAILED",
+      errorMessage: `Could not write artifact to ${outputPath}: ${firstLine3(
+        err instanceof Error ? err.message : String(err)
+      )}`
+    };
+  }
+}
+var SHARED_CSS = `
+  :root {
+    --bg: #ffffff;
+    --bg-card: #f8f9fa;
+    --bg-table-alt: #f1f3f5;
+    --text: #1a1a2e;
+    --text-muted: #6c757d;
+    --border: #dee2e6;
+    --accent: #0056b3;
+    --accent-hover: #004494;
+
+    --state-passed-bg: #d4edda;
+    --state-passed-text: #155724;
+    --state-failed-bg: #f8d7da;
+    --state-failed-text: #721c24;
+    --state-in-progress-bg: #cce5ff;
+    --state-in-progress-text: #004085;
+    --state-skipped-bg: #fff3cd;
+    --state-skipped-text: #856404;
+    --state-pending-bg: #e2e3e5;
+    --state-pending-text: #383d41;
+
+    --node-bg: #e9ecef;
+    --node-border: #adb5bd;
+    --edge-color: #6c757d;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --bg-card: #161b22;
+      --bg-table-alt: #1c2128;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --border: #30363d;
+      --accent: #58a6ff;
+      --accent-hover: #79c0ff;
+
+      --state-passed-bg: #1a3a26;
+      --state-passed-text: #56d364;
+      --state-failed-bg: #3a1a1e;
+      --state-failed-text: #ff7b72;
+      --state-in-progress-bg: #1a2a3a;
+      --state-in-progress-text: #58a6ff;
+      --state-skipped-bg: #3a2e1a;
+      --state-skipped-text: #d29922;
+      --state-pending-bg: #2a2d30;
+      --state-pending-text: #8b949e;
+
+      --node-bg: #21262d;
+      --node-border: #30363d;
+      --edge-color: #8b949e;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+    line-height: 1.5;
+  }
+
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  h2 { font-size: 16px; font-weight: 600; margin: 20px 0 10px; }
+
+  .meta { color: var(--text-muted); font-size: 13px; margin-bottom: 20px; }
+  .meta span { margin-right: 16px; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .badge-passed    { background: var(--state-passed-bg);      color: var(--state-passed-text); }
+  .badge-failed    { background: var(--state-failed-bg);      color: var(--state-failed-text); }
+  .badge-in-progress { background: var(--state-in-progress-bg); color: var(--state-in-progress-text); }
+  .badge-skipped   { background: var(--state-skipped-bg);     color: var(--state-skipped-text); }
+  .badge-pending   { background: var(--state-pending-bg);     color: var(--state-pending-text); }
+  /* Run status 'completed' reuses the green 'passed' palette \u2014 both light and */
+  /* dark variants come from --state-passed-* which has a dark-mode override. */
+  .badge-completed { background: var(--state-passed-bg);      color: var(--state-passed-text); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+  }
+  thead th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    border-bottom: 2px solid var(--border);
+  }
+  tbody td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  tbody tr:nth-child(even) { background: var(--bg-table-alt); }
+  tbody tr:hover { background: var(--bg-card); }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { color: var(--accent-hover); text-decoration: underline; }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    text-align: center;
+  }
+  .stat-value { font-size: 28px; font-weight: 700; line-height: 1.2; }
+  .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+`;
+function stateBadge(state) {
+  return `<span class="badge badge-${esc2(state)}">${esc2(state)}</span>`;
+}
+function renderDashboard(state) {
+  const totalWaves = state.waves.length;
+  const sliceList = state.waves.flatMap(
+    (wave, wIdx) => wave.map((id) => ({ id, wave: wIdx, slice: state.slices[id] })).filter((e) => e.slice)
+  );
+  const counts = { passed: 0, failed: 0, skipped: 0, "in-progress": 0, pending: 0 };
+  for (const s of Object.values(state.slices)) {
+    counts[s.state] = (counts[s.state] ?? 0) + 1;
+  }
+  const total = Object.values(state.slices).length;
+  const rows = sliceList.map(({ id, wave, slice }) => {
+    const pr = slice.pullRequest ? `<a href="${esc2(slice.pullRequest)}" target="_blank">#PR</a>` : "\u2014";
+    return `
+      <tr>
+        <td>#${esc2(String(slice.issue))}</td>
+        <td>${esc2(slice.title)}</td>
+        <td>${esc2(String(wave))}</td>
+        <td><span class="badge">${esc2(slice.tier)}</span></td>
+        <td>${stateBadge(slice.state)}</td>
+        <td>${pr}</td>
+      </tr>`;
+  }).join("");
+  const progressPct = totalWaves > 0 ? Math.round(state.completedWaves / totalWaves * 100) : 0;
+  const finalPr = state.finalPullRequest ? `<a href="${esc2(state.finalPullRequest)}" target="_blank">${esc2(state.finalPullRequest)}</a>` : "\u2014";
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orchestrate Dashboard \u2014 ${esc2(state.runId)}</title>
+  <style>${SHARED_CSS}
+    .progress-bar-track {
+      background: var(--border);
+      border-radius: 4px;
+      height: 8px;
+      margin: 8px 0 4px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      background: var(--accent);
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+    .progress-label { font-size: 13px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <h1>Orchestrate Dashboard</h1>
+  <div class="meta">
+    <span><strong>Run ID:</strong> ${esc2(state.runId)}</span>
+    <span><strong>Status:</strong> ${stateBadge(state.status)}</span>
+    <span><strong>Base:</strong> ${esc2(state.integrationBase)}</span>
+    ${state.parentIssue ? `<span><strong>Parent Issue:</strong> #${esc2(String(state.parentIssue))}</span>` : ""}
+    <span><strong>Final PR:</strong> ${finalPr}</span>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-value" style="color: var(--state-passed-text)">${counts.passed}</div>
+      <div class="stat-label">Passed</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color: var(--state-failed-text)">${counts.failed}</div>
+      <div class="stat-label">Failed</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color: var(--state-in-progress-text)">${counts["in-progress"]}</div>
+      <div class="stat-label">In Progress</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color: var(--state-skipped-text)">${counts.skipped}</div>
+      <div class="stat-label">Skipped</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color: var(--text-muted)">${counts.pending}</div>
+      <div class="stat-label">Pending</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <strong>Wave Progress</strong>
+    <div class="progress-bar-track">
+      <div class="progress-bar-fill" style="width: ${progressPct}%"></div>
+    </div>
+    <div class="progress-label">${esc2(String(state.completedWaves))} / ${esc2(String(totalWaves))} waves completed (${progressPct}%) \u2014 ${esc2(String(total))} total slices</div>
+  </div>
+
+  <h2>Slices</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Issue</th>
+        <th>Title</th>
+        <th>Wave</th>
+        <th>Tier</th>
+        <th>State</th>
+        <th>PR</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows}
+    </tbody>
+  </table>
+
+  <p style="margin-top: 20px; font-size: 12px; color: var(--text-muted);">
+    Generated ${(/* @__PURE__ */ new Date()).toISOString()} \xB7 ${esc2(state.umbrellaBranch)}
+  </p>
+</body>
+</html>`;
+}
+function renderGraph(state) {
+  const NODE_W = 180;
+  const NODE_H = 56;
+  const COL_GAP = 60;
+  const ROW_GAP = 20;
+  const PAD_X = 40;
+  const PAD_Y = 40;
+  const waveColumns = state.waves.map((w) => [...w]);
+  const numWaves = waveColumns.length;
+  const pos = {};
+  for (let wIdx = 0; wIdx < waveColumns.length; wIdx++) {
+    const col = waveColumns[wIdx];
+    for (let rIdx = 0; rIdx < col.length; rIdx++) {
+      const id = col[rIdx];
+      const x = PAD_X + wIdx * (NODE_W + COL_GAP);
+      const y = PAD_Y + rIdx * (NODE_H + ROW_GAP);
+      pos[id] = { x, y, cx: x + NODE_W / 2, cy: y + NODE_H / 2 };
+    }
+  }
+  const maxRows = waveColumns.reduce((m, c) => Math.max(m, c.length), 0);
+  const svgW = PAD_X * 2 + numWaves * NODE_W + (numWaves - 1) * COL_GAP;
+  const svgH = PAD_Y * 2 + maxRows * NODE_H + (maxRows - 1) * ROW_GAP;
+  const headers = waveColumns.map((_, wIdx) => {
+    const hx = PAD_X + wIdx * (NODE_W + COL_GAP) + NODE_W / 2;
+    return `<text x="${hx}" y="20" text-anchor="middle" class="wave-label">Wave ${wIdx}</text>`;
+  }).join("\n    ");
+  const edges = Object.entries(state.slices).flatMap(
+    ([id, slice]) => slice.blockedBy.filter((bid) => bid in pos && id in pos).map((bid) => {
+      const from = pos[bid];
+      const to = pos[id];
+      const x1 = from.x + NODE_W;
+      const y1 = from.cy;
+      const x2 = to.x;
+      const y2 = to.cy;
+      const cpOffset = Math.max(20, (x2 - x1) / 2);
+      return `<path d="M${x1},${y1} C${x1 + cpOffset},${y1} ${x2 - cpOffset},${y2} ${x2},${y2}" class="edge"/>`;
+    })
+  ).join("\n    ");
+  const nodes = Object.entries(pos).map(([id, { x, y }]) => {
+    const slice = state.slices[id];
+    if (!slice) return "";
+    const stateClass = `node-${slice.state.replace("-", "")}`;
+    const codePoints = Array.from(slice.title);
+    const label = codePoints.length > 22 ? codePoints.slice(0, 20).join("") + "\u2026" : slice.title;
+    return `
+    <g class="node ${stateClass}" transform="translate(${x}, ${y})">
+      <rect width="${NODE_W}" height="${NODE_H}" rx="6"/>
+      <text x="${NODE_W / 2}" y="18" text-anchor="middle" class="node-id">#${esc2(String(slice.issue))}</text>
+      <text x="${NODE_W / 2}" y="36" text-anchor="middle" class="node-title">${esc2(label)}</text>
+      <text x="${NODE_W - 8}" y="${NODE_H - 8}" text-anchor="end" class="node-state">${esc2(slice.state)}</text>
+    </g>`;
+  }).join("");
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orchestrate Graph \u2014 ${esc2(state.runId)}</title>
+  <style>${SHARED_CSS}
+    .graph-container {
+      overflow-x: auto;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    svg { display: block; min-width: 100%; }
+    .wave-label { fill: var(--text-muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    .edge { fill: none; stroke: var(--edge-color); stroke-width: 1.5; marker-end: url(#arrow); opacity: 0.7; }
+    .node rect { stroke-width: 1.5; }
+    .node-passed    rect { fill: var(--state-passed-bg);      stroke: var(--state-passed-text); }
+    .node-failed    rect { fill: var(--state-failed-bg);      stroke: var(--state-failed-text); }
+    .node-inprogress rect { fill: var(--state-in-progress-bg); stroke: var(--state-in-progress-text); }
+    .node-skipped   rect { fill: var(--state-skipped-bg);     stroke: var(--state-skipped-text); }
+    .node-pending   rect { fill: var(--node-bg);              stroke: var(--node-border); }
+    .node-id    { fill: var(--text); font-size: 12px; font-weight: 600; }
+    .node-title { fill: var(--text); font-size: 11px; }
+    .node-state { fill: var(--text-muted); font-size: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Orchestrate Dependency Graph</h1>
+  <div class="meta">
+    <span><strong>Run ID:</strong> ${esc2(state.runId)}</span>
+    <span><strong>Status:</strong> ${stateBadge(state.status)}</span>
+    <span><strong>${esc2(String(numWaves))} waves</strong></span>
+    <span><strong>${esc2(String(Object.keys(state.slices).length))} slices</strong></span>
+  </div>
+
+  <div class="graph-container">
+    <svg width="${svgW}" height="${svgH}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="var(--edge-color)"/>
+        </marker>
+      </defs>
+      ${headers}
+      ${edges}
+      ${nodes}
+    </svg>
+  </div>
+
+  <p style="margin-top: 16px; font-size: 12px; color: var(--text-muted);">
+    Generated ${(/* @__PURE__ */ new Date()).toISOString()} \xB7 Edges represent blockedBy dependencies (source \u2192 dependent)
+  </p>
+</body>
+</html>`;
+}
+function renderReport(state) {
+  const duration3 = formatDuration(state.startedAt, state.updatedAt);
+  const counts = { passed: 0, failed: 0, skipped: 0, "in-progress": 0, pending: 0 };
+  for (const s of Object.values(state.slices)) {
+    counts[s.state] = (counts[s.state] ?? 0) + 1;
+  }
+  const sliceList = state.waves.flatMap(
+    (wave) => wave.map((id) => state.slices[id]).filter(Boolean)
+  );
+  const rows = sliceList.map((slice) => {
+    const pr = slice.pullRequest ? `<a href="${esc2(slice.pullRequest)}" target="_blank">PR</a>` : "\u2014";
+    const reason = slice.failureReason ? esc2(slice.failureReason) : "\u2014";
+    return `
+      <tr>
+        <td>#${esc2(String(slice.issue))}</td>
+        <td>${esc2(slice.title)}</td>
+        <td>${esc2(String(slice.wave))}</td>
+        <td>${stateBadge(slice.state)}</td>
+        <td>${pr}</td>
+        <td style="color: var(--state-failed-text); font-size: 12px;">${reason}</td>
+      </tr>`;
+  }).join("");
+  const finalPr = state.finalPullRequest ? `<a href="${esc2(state.finalPullRequest)}" target="_blank">${esc2(state.finalPullRequest)}</a>` : "Not yet created";
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orchestrate Report \u2014 ${esc2(state.runId)}</title>
+  <style>${SHARED_CSS}</style>
+</head>
+<body>
+  <h1>Orchestrate Run Report</h1>
+  <div class="meta">
+    <span><strong>Run ID:</strong> ${esc2(state.runId)}</span>
+    <span><strong>Status:</strong> ${stateBadge(state.status)}</span>
+    <span><strong>Base:</strong> ${esc2(state.integrationBase)}</span>
+    <span><strong>Duration:</strong> ${esc2(duration3)}</span>
+    ${state.parentIssue ? `<span><strong>Parent Issue:</strong> #${esc2(String(state.parentIssue))}</span>` : ""}
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-value" style="color: var(--state-passed-text)">${counts.passed}</div>
+      <div class="stat-label">Passed</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color: var(--state-failed-text)">${counts.failed}</div>
+      <div class="stat-label">Failed</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color: var(--state-skipped-text)">${counts.skipped}</div>
+      <div class="stat-label">Skipped</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color: var(--text-muted)">${counts.pending + counts["in-progress"]}</div>
+      <div class="stat-label">Not Terminal</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <strong>Final Pull Request:</strong> ${finalPr}
+  </div>
+
+  <div class="card">
+    <strong>Timeline:</strong>
+    <div style="margin-top: 8px; font-size: 13px; color: var(--text-muted);">
+      <div>Started: ${esc2(state.startedAt)}</div>
+      <div>Updated: ${esc2(state.updatedAt)}</div>
+      <div>Duration: ${esc2(duration3)}</div>
+    </div>
+  </div>
+
+  <h2>Per-Slice Outcomes</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Issue</th>
+        <th>Title</th>
+        <th>Wave</th>
+        <th>State</th>
+        <th>PR</th>
+        <th>Failure Reason</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows}
+    </tbody>
+  </table>
+
+  <p style="margin-top: 20px; font-size: 12px; color: var(--text-muted);">
+    Generated ${(/* @__PURE__ */ new Date()).toISOString()} \xB7 ${esc2(state.umbrellaBranch)}
+  </p>
+</body>
+</html>`;
+}
+async function renderDashboardArtifact(input) {
+  const repoPath = input.repoPath ?? process.cwd();
+  const read = readAndValidateRunState(repoPath);
+  if (!read.ok) return read.response;
+  const html = renderDashboard(read.state);
+  const artifactPath = input.outputPath ?? path4.join(repoPath, ARTIFACT_DEFAULTS.dashboard);
+  const writeErr = writeArtifact(html, artifactPath);
+  if (writeErr) return writeErr;
+  return { status: "ok", artifactPath };
+}
+async function renderGraphArtifact(input) {
+  const repoPath = input.repoPath ?? process.cwd();
+  const read = readAndValidateRunState(repoPath);
+  if (!read.ok) return read.response;
+  const html = renderGraph(read.state);
+  const artifactPath = input.outputPath ?? path4.join(repoPath, ARTIFACT_DEFAULTS.graph);
+  const writeErr = writeArtifact(html, artifactPath);
+  if (writeErr) return writeErr;
+  return { status: "ok", artifactPath };
+}
+async function renderReportArtifact(input) {
+  const repoPath = input.repoPath ?? process.cwd();
+  const read = readAndValidateRunState(repoPath);
+  if (!read.ok) return read.response;
+  const html = renderReport(read.state);
+  const artifactPath = input.outputPath ?? path4.join(repoPath, ARTIFACT_DEFAULTS.report);
+  const writeErr = writeArtifact(html, artifactPath);
+  if (writeErr) return writeErr;
+  return { status: "ok", artifactPath };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
-  version: "0.8.0"
+  version: "0.10.0"
 });
 var registerTool = server.registerTool.bind(server);
 var handleCreateWorktree = async (input) => {
@@ -22026,6 +22643,48 @@ registerTool(
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleResolveRouting
 );
+var RENDER_TOOLS = [
+  {
+    name: "render_dashboard",
+    title: "Render Run Dashboard",
+    description: "Reads .orchestrate/run-state.json and writes a standalone HTML dashboard showing the live run state: run id, status, wave progress, and a color-coded slice table. Returns only the artifact path \u2014 the HTML is written to disk, never returned in the response.",
+    run: renderDashboardArtifact
+  },
+  {
+    name: "render_graph",
+    title: "Render Dependency Graph",
+    description: "Reads .orchestrate/run-state.json and writes a standalone HTML dependency graph: waves as columns, slices as nodes, blockedBy edges as SVG lines. Layout is deterministic (x = wave index, y = slice index in wave). Returns only the artifact path.",
+    run: renderGraphArtifact
+  },
+  {
+    name: "render_report",
+    title: "Render Run Report",
+    description: "Reads .orchestrate/run-state.json and writes a standalone HTML final report: run duration, outcome counts (passed/failed/skipped), the final pull request link, and a per-slice outcome table. Returns only the artifact path.",
+    run: renderReportArtifact
+  }
+];
+for (const tool of RENDER_TOOLS) {
+  const handle = async (input) => {
+    const result = await tool.run(input);
+    const text = result.status === "ok" ? `Artifact written to ${result.artifactPath}` : `Render failed [${result.errorCode}]: ${result.errorMessage}`;
+    return {
+      structuredContent: result,
+      content: [{ type: "text", text }]
+    };
+  };
+  registerTool(
+    tool.name,
+    {
+      title: tool.title,
+      description: tool.description,
+      inputSchema: renderInputSchema.shape,
+      outputSchema: renderOutputSchema.shape
+    },
+    // Handler is typed against its concrete input/output contract;
+    // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+    handle
+  );
+}
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
