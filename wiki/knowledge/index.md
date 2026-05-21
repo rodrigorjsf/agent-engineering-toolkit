@@ -34,7 +34,7 @@ Total pages: **41**
 | [[claude-code-hooks]]     | Lifecycle events, hook types, exit codes, matchers            |
 | [[claude-code-plugins]]   | Plugin structure, manifest, distribution, namespacing         |
 | [[claude-code-memory]]    | CLAUDE.md hierarchy, path-scoped rules, imports, auto memory  |
-| [[claude-code-subagents]] | Definition format, frontmatter fields, agent teams            |
+| [[claude-code-subagents]] | Definition format, frontmatter fields, fork mode, agent teams  |
 
 ## Cursor IDE Platform
 
