@@ -173,9 +173,13 @@ gh pr create --base development --head orchestrate/umbrella-<runId> \
 ```
 
 Record its URL as `finalPullRequest` in `run-state.json`, set
-`status: "completed"`, and checkpoint. If `parentIssue` is set, post a final
-summary comment on it. Report to the user: the umbrella branch, the final pull
-request URL, and — per slice — its final state and pull request.
+`status: "completed"`, and checkpoint. Then render the run's HTML artifacts
+from the final checkpoint — call the `render_dashboard`, `render_graph`, and
+`render_report` MCP tools, each with the repository root as `repoPath` — so a
+developer has a visual summary of the run. If `parentIssue` is set, post a
+final summary comment on it. Report to the user: the umbrella branch, the
+final pull request URL, the paths of the three rendered artifacts, and — per
+slice — its final state and pull request.
 
 ## 3. Processing one slice
 
