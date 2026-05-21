@@ -451,6 +451,15 @@ describe("renderDashboard — safeHref scheme allowlist", () => {
     expect(html).not.toMatch(/href="data:/i);
     expect(html).toContain('href="#"');
   });
+
+  it("preserves a mixed-case HTTPS:// URL — the scheme allowlist is case-insensitive", () => {
+    // Witnesses the /i flag on safeHref: without it, an uppercase scheme on
+    // an otherwise-valid URL would be wrongly rewritten to "#".
+    const state = JSON.parse(JSON.stringify(VALID_STATE)) as RunState;
+    state.slices["101"].pullRequest = "HTTPS://github.com/owner/repo/pull/201";
+    const html = renderDashboard(state);
+    expect(html).toContain('href="HTTPS://github.com/owner/repo/pull/201"');
+  });
 });
 
 describe("renderReport — safeHref scheme allowlist", () => {
