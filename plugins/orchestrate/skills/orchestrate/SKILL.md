@@ -81,7 +81,10 @@ Then check for `.orchestrate/run-state.json` (its schema is in
   finishing: discard its partial artifacts so it re-processes cleanly — if it
   has a `worktreePath`, call `remove_worktree` (`force: true`); delete its
   `sliceBranch` if it exists (locally, and on the remote if it was pushed) —
-  then coerce that slice back to `pending`. Skip to section 2.
+  deleting the remote branch also auto-closes any orphaned slice pull request
+  GitHub opened for it, so re-processing produces a clean branch and PR with no
+  manual PR cleanup needed — then coerce that slice back to `pending`. Skip to
+  section 2.
 - **It is absent, or `status` is `completed`** — start a fresh run below.
 
 ### Fresh run
@@ -273,16 +276,20 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
 
    2. List the conflicted files:
       `git -C <worktree-path> diff --name-only --diff-filter=U`.
-   3. Spawn the `conflict-resolver-<effort>` subagent — `<effort>` and the
+   3. If the conflicted-file list is **EMPTY**, the merge applied cleanly —
+      do NOT spawn the conflict-resolver. The merge commit already exists;
+      skip straight to pushing and merging the slice PR:
+      `git -C <worktree-path> push` then `gh pr merge <pr-number> --squash`.
+   4. Spawn the `conflict-resolver-<effort>` subagent — `<effort>` and the
       `model` override from `routing.conflict-resolver`. Its prompt must carry
       the issue, the worktree path, and the list of conflicted files.
-   4. If it returns `failed`, abort and the slice has **FAILED**:
+   5. If it returns `failed`, abort and the slice has **FAILED**:
       `git -C <worktree-path> merge --abort`.
-   5. If it returns `resolved`, stage the resolved files and **confirm no
+   6. If it returns `resolved`, stage the resolved files and **confirm no
       conflict markers remain** — inspect `git -C <worktree-path> diff --cached`
-      for leftover `<<<<<<<` or `>>>>>>>` lines. If any remain, the resolution
-      is incomplete: `git -C <worktree-path> merge --abort` and the slice has
-      **FAILED**. Otherwise complete the merge, push, and merge the pull
+      for leftover `<<<<<<<`, `=======`, or `>>>>>>>` lines. If any remain, the
+      resolution is incomplete: `git -C <worktree-path> merge --abort` and the
+      slice has **FAILED**. Otherwise complete the merge, push, and merge the pull
       request — if `gh pr merge` fails (the resolution did not make the pull
       request mergeable), the slice has **FAILED**; the one attempt is spent.
 
@@ -353,10 +360,11 @@ Other stop conditions: an empty backlog is a clean no-op; a `plan_waves`
 
 The orchestrator is the **single writer** of GitHub tracker state — the
 subagents never touch issues, labels, or pull requests. Tracker writes happen
-only at the points described above: a slice's label transitions at its terminal
-state (`ready-for-human` on a pass, `needs-triage` on a failure, unchanged on a
-skip), and the parent PRD issue receives a progress comment after each wave and
-a final summary when the run completes.
+only at a slice's terminal state (see section 3 step 9 for the pass label
+command and *Failure handling* for the failure label command) and as PRD
+progress/summary comments (see section 2 steps 5 and the final-PR paragraph).
+The parent PRD issue receives a progress comment after each wave and a final
+summary when the run completes.
 
 The orchestrator does not close issues. The `Closes #N` trailers on the slice
 commits close them when a developer merges the final umbrella pull request into

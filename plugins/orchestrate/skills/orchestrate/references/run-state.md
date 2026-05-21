@@ -89,6 +89,7 @@ re-processed on resume.
 
 On startup the orchestrator reads `.orchestrate/run-state.json`. If it exists
 and `status` is `in-progress`, the run resumes: every slice already in a
-terminal state is left untouched, and processing continues — in wave order —
-with the slices still `pending` or `in-progress`. A run with no state file, or
-one whose `status` is `completed`, starts fresh.
+terminal state is left untouched; every `in-progress` slice has its partial
+artifacts discarded (worktree removed, slice branch deleted) and is coerced back
+to `pending` before re-processing — it is not merely continued. A run with no
+state file, or one whose `status` is `completed`, starts fresh.
