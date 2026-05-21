@@ -1,6 +1,6 @@
 {
   "name": "@orchestrate/mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MCP server providing worktree lifecycle tools for orchestrating parallel Claude Code agents.",
   "main": "dist/index.js",
   "scripts": {

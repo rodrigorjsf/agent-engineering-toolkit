@@ -21660,10 +21660,119 @@ var runTypecheck = (input, opts) => runConfiguredCommand("typecheck", input, opt
 var runBuild = (input, opts) => runConfiguredCommand("build", input, opts);
 var runLint = (input, opts) => runConfiguredCommand("lint", input, opts);
 
+// src/tools/plan-waves.ts
+var planWavesInputSchema = external_exports.object({
+  issues: external_exports.array(
+    external_exports.object({
+      id: external_exports.string().min(1).describe(
+        "Unique identifier of the issue \u2014 e.g. a GitHub issue number rendered as a string."
+      ),
+      blockedBy: external_exports.array(external_exports.string()).optional().describe(
+        "Ids of the issues this issue is blocked by. A blocker not present in the input set is treated as already satisfied (it is assumed done). Omit, or pass [], for an unblocked issue."
+      )
+    })
+  ).describe(
+    "The set of issues to schedule. Each carries its own id and the ids of the issues that block it."
+  )
+});
+var planWavesOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the issues were scheduled into waves; 'error' = the graph could not be scheduled."
+  ),
+  waves: external_exports.array(external_exports.array(external_exports.string())).optional().describe(
+    "Dependency-ordered waves of issue ids. Wave 0 holds every issue with no in-set blockers; each later wave holds issues whose in-set blockers all resolve in an earlier wave. Issue order within a wave follows input order. Present when status='ok' (an empty issue set yields an empty array)."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT", "CYCLE_DETECTED"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'INVALID_INPUT' = the issue set is malformed (e.g. a duplicate id); 'CYCLE_DETECTED' = the dependency graph contains a cycle and cannot be topologically ordered."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Human-readable failure description. Present when status='error'."
+  ),
+  cycle: external_exports.array(external_exports.string()).optional().describe(
+    "The detected dependency cycle as an ordered path of issue ids, with the entry id repeated at the end to close the loop. Present when errorCode='CYCLE_DETECTED'."
+  )
+});
+function findCycle(remaining, deps) {
+  const WHITE = 0;
+  const GRAY = 1;
+  const BLACK = 2;
+  const color = /* @__PURE__ */ new Map();
+  for (const id of remaining) color.set(id, WHITE);
+  const stack = [];
+  function dfs(node) {
+    color.set(node, GRAY);
+    stack.push(node);
+    for (const dep of deps.get(node) ?? []) {
+      if (!remaining.has(dep)) continue;
+      if (color.get(dep) === GRAY) {
+        return [...stack.slice(stack.indexOf(dep)), dep];
+      }
+      if (color.get(dep) === WHITE) {
+        const found = dfs(dep);
+        if (found) return found;
+      }
+    }
+    stack.pop();
+    color.set(node, BLACK);
+    return null;
+  }
+  for (const id of remaining) {
+    if (color.get(id) === WHITE) {
+      const found = dfs(id);
+      if (found) return found;
+    }
+  }
+  return [];
+}
+function planWaves(input) {
+  const { issues } = input;
+  const idSet = /* @__PURE__ */ new Set();
+  for (const issue2 of issues) {
+    if (idSet.has(issue2.id)) {
+      return {
+        status: "error",
+        errorCode: "INVALID_INPUT",
+        errorMessage: `Duplicate issue id in the input set: "${issue2.id}".`
+      };
+    }
+    idSet.add(issue2.id);
+  }
+  const deps = /* @__PURE__ */ new Map();
+  for (const issue2 of issues) {
+    const inSet = (issue2.blockedBy ?? []).filter((b) => idSet.has(b));
+    deps.set(issue2.id, new Set(inSet));
+  }
+  const remaining = new Set(issues.map((i) => i.id));
+  const resolved = /* @__PURE__ */ new Set();
+  const waves = [];
+  while (remaining.size > 0) {
+    const wave = [];
+    for (const id of remaining) {
+      const ready = [...deps.get(id)].every((dep) => resolved.has(dep));
+      if (ready) wave.push(id);
+    }
+    if (wave.length === 0) {
+      const cycle = findCycle(remaining, deps);
+      return {
+        status: "error",
+        errorCode: "CYCLE_DETECTED",
+        errorMessage: `Dependency cycle detected: ${cycle.join(" -> ")}.`,
+        cycle
+      };
+    }
+    waves.push(wave);
+    for (const id of wave) {
+      remaining.delete(id);
+      resolved.add(id);
+    }
+  }
+  return { status: "ok", waves };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
-  version: "0.2.0"
+  version: "0.3.0"
 });
 var registerTool = server.registerTool.bind(server);
 var handleCreateWorktree = async (input) => {
@@ -21765,6 +21874,32 @@ for (const tool of RUN_TOOLS) {
     handleRun(tool.run)
   );
 }
+var handlePlanWaves = async (input) => {
+  const result = planWaves(input);
+  let text;
+  if (result.status === "ok") {
+    const total = result.waves.reduce((n, w) => n + w.length, 0);
+    text = `Planned ${result.waves.length} wave(s) for ${total} issue(s).`;
+  } else {
+    text = `Wave planning failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "plan_waves",
+  {
+    title: "Plan Dependency Waves",
+    description: "Groups a set of issues into dependency-ordered waves. Each issue carries the ids of the issues that block it; the tool topologically sorts them so every issue's blockers resolve in an earlier wave. Blockers outside the input set are treated as already satisfied. A dependency cycle is returned as a structured 'error' with errorCode 'CYCLE_DETECTED', never a hang.",
+    inputSchema: planWavesInputSchema.shape,
+    outputSchema: planWavesOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handlePlanWaves
+);
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);

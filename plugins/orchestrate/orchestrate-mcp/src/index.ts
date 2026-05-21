@@ -22,10 +22,17 @@ import {
   type RunCommandInput,
   type RunCommandOutput,
 } from "./tools/run-command.js";
+import {
+  planWaves,
+  planWavesInputSchema,
+  planWavesOutputSchema,
+  type PlanWavesInput,
+  type PlanWavesOutput,
+} from "./tools/plan-waves.js";
 
 const server = new McpServer({
   name: "orchestrate",
-  version: "0.2.0",
+  version: "0.3.0",
 });
 
 /**
@@ -227,6 +234,44 @@ for (const tool of RUN_TOOLS) {
     handleRun(tool.run) as unknown as AnyToolHandler
   );
 }
+
+// ─── plan_waves ────────────────────────────────────────────────────────────────
+
+const handlePlanWaves: ToolHandler<PlanWavesInput, PlanWavesOutput> = async (
+  input
+) => {
+  const result = planWaves(input);
+  let text: string;
+  if (result.status === "ok") {
+    const total = result.waves!.reduce((n, w) => n + w.length, 0);
+    text = `Planned ${result.waves!.length} wave(s) for ${total} issue(s).`;
+  } else {
+    text = `Wave planning failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "plan_waves",
+  {
+    title: "Plan Dependency Waves",
+    description:
+      "Groups a set of issues into dependency-ordered waves. Each issue " +
+      "carries the ids of the issues that block it; the tool topologically " +
+      "sorts them so every issue's blockers resolve in an earlier wave. " +
+      "Blockers outside the input set are treated as already satisfied. A " +
+      "dependency cycle is returned as a structured 'error' with errorCode " +
+      "'CYCLE_DETECTED', never a hang.",
+    inputSchema: planWavesInputSchema.shape,
+    outputSchema: planWavesOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handlePlanWaves as unknown as AnyToolHandler
+);
 
 // ─── Start server ─────────────────────────────────────────────────────────────
 
