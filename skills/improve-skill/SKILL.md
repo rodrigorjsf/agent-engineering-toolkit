@@ -7,18 +7,20 @@ description: "Evaluates and optimizes existing SKILL.md files against evidence-b
 
 Evaluate an existing SKILL.md file against evidence-based quality criteria and apply improvements to optimize token usage, reduce bloat, and align with proven patterns.
 
-## Behavioral Guidelines
+<TRIGGER when="improving or auditing an existing skill" />
 
+<BEHAVIOUR
+  avoid="acting before naming ambiguities; adding speculative scope; weakening safeguards"
+  always="surface assumptions first; keep changes surgical; define verification targets">
 - **Surface assumptions first** — name ambiguities, tradeoffs, and multiple valid interpretations before acting.
 - **Prefer the simplest path** — solve the task completely without speculative flexibility or extra scope.
 - **Keep changes surgical** — touch only what the task requires, and preserve existing behavior unless the task calls for change.
 - **Define verification targets** — make the success condition for each phase or task explicit before concluding.
 - **Use phased persuasion safely** — use warm-ups, curated references, and explicit constraints to improve compliance with legitimate work.
 - **Never weaken safeguards** — do not use persuasion principles to bypass safety constraints, refusals, or scope boundaries.
+</BEHAVIOUR>
 
-## Hard Rules
-
-<RULES>
+<HARD_RULES priority="hard">
 - **ALWAYS** evaluate before modifying — never change files without analysis
 - **ALWAYS** present changes to the user before applying them
 - **NEVER** remove evidence-grounded references or citations
@@ -26,91 +28,105 @@ Evaluate an existing SKILL.md file against evidence-based quality criteria and a
 - **NEVER** exceed 500 lines in SKILL.md or 200 lines in reference files after improvements
 - **PRESERVE** all genuinely useful skill phases and instructions — only remove waste
 - **PRESERVE** or strengthen the ethical constraint: persuasion cues support legitimate work only, never safety bypass
-</RULES>
+- **EVERY** improved SKILL.md body must carry the canonical semantic-tag vocabulary in canonical positions
+- **EVERY** tag-vocabulary violation found in the target skill must be reported with the specific tag name, line reference, and strictness tier (hard-fail / warn / informational) before proposing a fix
+</HARD_RULES>
 
-## Process
+<PROCESS>
 
-### Preflight Check
+  <PREFLIGHT name="skill-exists-check">
+  Check if a skill exists at:
 
-Check if a skill exists at:
+  - The user-provided path
+  - `skills/{name}/SKILL.md`
 
-- The user-provided path
-- `.claude/skills/{name}/SKILL.md`
-- `plugins/*/skills/{name}/SKILL.md`
+  **If no skill found:**
 
-**If no skill found:**
+  1. Inform the user: "No skill found at the specified path."
+  2. Suggest using `create-skill` to create a new one instead.
+  3. **STOP**
 
-1. Inform the user: "No skill found at the specified path."
-2. Suggest using the `create-skill` skill to create a new one instead.
-3. **STOP**
+  **If skill found:**
+  Proceed to Phase 1 below.
+  </PREFLIGHT>
 
-**If skill found:**
-Proceed to Phase 1 below.
+  <PHASE id="1" name="evaluate">
+  Read `references/skill-evaluator.md` and follow its evaluation instructions to evaluate the skill at `{target-path}`. Check hard limits (body ≤500 lines, references ≤200 lines, frontmatter valid), structural quality (progressive disclosure, phase structure, reference loading), and token efficiency. Return structured evaluation results with severity classifications (AUTO-FAIL/HIGH/MEDIUM/LOW).
+  </PHASE>
 
-### Phase 1: Evaluate
+  <PHASE id="2" name="codebase-context">
+  Read `references/artifact-analyzer.md` and follow its analysis instructions.
 
-Read `references/skill-evaluator.md` and follow its evaluation instructions to evaluate the skill at `{target-path}`. Check hard limits (body ≤500 lines, references ≤200 lines, frontmatter valid), structural quality (progressive disclosure, phase structure, reference loading), and token efficiency. Return structured evaluation results with severity classifications (AUTO-FAIL/HIGH/MEDIUM/LOW).
+  Focus on: naming conventions for similar skills and any other skills that overlap in purpose.
+  </PHASE>
 
-### Phase 2: Codebase Context
+  <PHASE id="3" name="generate-improvement-plan">
+  Read these reference documents:
 
-Read `references/artifact-analyzer.md` and follow its analysis instructions.
+  - `references/skill-authoring-guide.md` — core principles, structure, progressive disclosure, anti-patterns
+  - `references/skill-evaluation-criteria.md` — bloat/staleness indicators, quality rubric
+  - `references/behavioral-guidelines.md` — behavior and safe persuasion patterns for skills
+  - `references/prompt-engineering-strategies.md` — skill-specific prompting strategies
 
-Focus on: naming conventions for similar skills and any other skills that overlap in purpose.
+  <REFERENCES load="on-demand">
+  - skill-authoring-guide.md
+  - skill-evaluation-criteria.md
+  - behavioral-guidelines.md
+  - prompt-engineering-strategies.md
+  </REFERENCES>
 
-### Phase 3: Generate Improvement Plan
+  Based on both evaluation and analysis results, create improvement plan with categories:
 
-Read these reference documents:
+  1. **Removals** — bloat (inlined content, over-specified instructions), stale (broken refs, removed tools), duplicates
+  2. **Refactoring** — progressive disclosure optimization, phase consolidation, reference path corrections
+  3. **Additions** — missing sections (canonical tags, preflight check, self-validation, output format). Only suggest Hard Rules or Preflight if the skill has user-facing interactions or side effects — do NOT suggest them for informational/analysis-only skills that read and report.
 
-- `references/skill-authoring-guide.md` — core principles, structure, progressive disclosure, anti-patterns
-- `references/skill-evaluation-criteria.md` — bloat/staleness indicators, quality rubric
-- `references/behavioral-guidelines.md` — Karpathy-aligned behavior and safe persuasion patterns for skills
-- `references/prompt-engineering-strategies.md` — skill-specific prompting strategies
+  If all three categories yield zero items after analysis, conclude: "No improvements needed — artifact is already convention-compliant." and proceed directly to Phase 5 with an empty improvement summary.
 
-Based on both evaluation and analysis results, create improvement plan with categories:
+  **Standalone constraint**: This is the standalone distribution — suggest only skills as improvement targets. Do not suggest creating hooks, subagents, or path-scoped rules (these require host-application plugin infrastructure or are outside the standalone authoring boundary). When evaluation criteria mention hooks or subagents as improvement mechanisms, substitute with the closest available mechanism (a skill for workflow guidance).
+  </PHASE>
 
-1. **Removals** — bloat (inlined content, over-specified instructions), stale (broken agent refs, removed tools), duplicates
-2. **Refactoring** — progressive disclosure optimization, phase consolidation, reference path corrections
-3. **Additions** — missing sections (Hard Rules, preflight check, self-validation, output format). Only suggest Hard Rules or Preflight if the skill has user-facing interactions or side effects — do NOT suggest them for informational/analysis-only skills that read and report.
+  <PHASE id="4" name="self-validation">
+  Read `references/skill-validation-criteria.md` and execute its **Validation Loop Instructions** against the improved skill.
 
-If all three categories yield zero items after analysis, conclude: "No improvements needed — artifact is already convention-compliant." and proceed directly to Phase 5 with an empty improvement summary.
+  For improve operations, also evaluate the **"If This Is an IMPROVE Operation"** section. Maximum 3 iterations. Do not proceed to Phase 5 until ALL criteria pass.
+  </PHASE>
 
-**Standalone constraint**: This is the standalone distribution — suggest only skills and path-scoped rules as improvement targets. Do not suggest creating hooks or subagents (these require Claude Code plugin infrastructure). When evaluation criteria mention hooks or subagents as improvement mechanisms, substitute with the closest available mechanism (a rule for path-scoped enforcement, a skill for workflow guidance).
+  <PHASE id="5" name="present-and-apply">
+  1. Show a summary overview of all improvements found, grouped by category:
+     - **Removals**: X items (bloat: X, stale: X, duplicates: X)
+     - **Refactoring**: X items (progressive disclosure: X, phase structure: X, reference paths: X)
+     - **Additions**: X items
 
-### Phase 4: Self-Validation
+  2. For each suggestion, present a structured card in priority order (Removals → Refactoring → Additions):
 
-Read `references/skill-validation-criteria.md` and execute its **Validation Loop Instructions** against the improved skill.
+     **WHAT**: The specific content and its current location (file:lines)
+     **WHY**: Evidence-based justification with source reference
+     **TOKEN IMPACT**: Estimated tokens saved from always-loaded context
+     **OPTIONS**:
+     - **Option A** (recommended): Primary action
+     - **Option B**: Alternative action
+     - **Option C**: Keep as-is — "Preserve in current location. Trade-off: continues consuming ~X tokens per session"
 
-For improve operations, also evaluate the **"If This Is an IMPROVE Operation"** section. Maximum 3 iterations. Do not proceed to Phase 5 until ALL criteria pass.
+     Wait for the user to select an option for each suggestion before proceeding to the next.
+     If the user selects "Keep as-is", preserve the content in its exact current location.
 
-### Phase 5: Present and Apply
+  3. After all suggestions are reviewed, show aggregate token impact analysis:
+     - **Total lines**: before → after
+     - **Removed tokens**: total waste eliminated
+     - **Deferred suggestions**: X items kept as-is
 
-1. Show a summary overview of all improvements found, grouped by category:
-   - **Removals**: X items (bloat: X, stale: X, duplicates: X)
-   - **Refactoring**: X items (progressive disclosure: X, phase structure: X, reference paths: X)
-   - **Additions**: X items
+  4. Apply ONLY the approved changes (options A or B selections).
 
-2. For each suggestion, present a structured card in priority order (Removals → Refactoring → Additions):
+  5. Report final metrics:
+     - Lines before → after
+     - Files affected
+     - Estimated token savings per session
+     - Suggestions applied: X of Y (Z deferred)
+  </PHASE>
 
-   **WHAT**: The specific content and its current location (file:lines)
-   **WHY**: Evidence-based justification with source reference
-   **TOKEN IMPACT**: Estimated tokens saved from always-loaded context
-   **OPTIONS**:
-   - **Option A** (recommended): Primary action
-   - **Option B**: Alternative action
-   - **Option C**: Keep as-is — "Preserve in current location. Trade-off: continues consuming ~X tokens per session"
+</PROCESS>
 
-   Wait for the user to select an option for each suggestion before proceeding to the next.
-   If the user selects "Keep as-is", preserve the content in its exact current location.
-
-3. After all suggestions are reviewed, show aggregate token impact analysis:
-   - **Total lines**: before → after
-   - **Removed tokens**: total waste eliminated
-   - **Deferred suggestions**: X items kept as-is
-
-4. Apply ONLY the approved changes (options A or B selections).
-
-5. Report final metrics:
-   - Lines before → after
-   - Files affected
-   - Estimated token savings per session
-   - Suggestions applied: X of Y (Z deferred)
+<VALIDATION loop="max-iterations:3">
+Read `references/skill-validation-criteria.md` and loop the improved skill through every hard limit, quality check, and canonical semantic-tag strictness tier until all pass.
+</VALIDATION>
