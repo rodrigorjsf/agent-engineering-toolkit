@@ -57,10 +57,11 @@ falls back to the `-standard` variant of every role with no model override.
 On startup, check for `.orchestrate/run-state.json` (its schema is in
 `references/run-state.md`).
 
-- **It exists and `status` is `in-progress`** — resume. Load it; keep its
-  `runId`, `umbrellaBranch`, `waves`, and `slices`. Every slice in a terminal
-  state (`passed`, `failed`, `skipped`) is left untouched — completed work is
-  never redone. Every slice still `in-progress` was interrupted before
+- **It exists and `status` is `in-progress`** — resume. Load the whole file,
+  preserving every top-level field — `runId`, `umbrellaBranch`, `parentIssue`,
+  `waves`, `completedWaves`, `finalPullRequest`, and `slices`. Every slice in a
+  terminal state (`passed`, `failed`, `skipped`) is left untouched — completed
+  work is never redone. Every slice still `in-progress` was interrupted before
   finishing: discard its partial artifacts so it re-processes cleanly — if it
   has a `worktreePath`, call `remove_worktree` (`force: true`); delete its
   `sliceBranch` if it exists (locally, and on the remote if it was pushed) —
@@ -91,7 +92,10 @@ On startup, check for `.orchestrate/run-state.json` (its schema is in
    tier** — `trivial` (a small, localized change), `standard` (an ordinary
    feature or fix), or `complex` (broad, cross-cutting, or high-risk work).
    Base the tier on the issue's scope, the number of files it likely touches,
-   and its risk. The tier drives routing in section 3.
+   and its risk. The tier drives routing in section 3. Also note the parent
+   PRD from each issue's **Parent** section (the `PRD #NNN` line): use the PRD
+   shared by all backlog issues as `parentIssue`, or `null` if they name
+   differing parents or none.
 4. Call the `plan_waves` MCP tool with one entry per issue
    (`{ id: "<number>", blockedBy: ["<number>", ...] }`). If it returns
    `status: "error"` with `errorCode: "CYCLE_DETECTED"`, report the cycle and
@@ -107,9 +111,9 @@ On startup, check for `.orchestrate/run-state.json` (its schema is in
 6. Write the initial `.orchestrate/run-state.json` with **every field the
    schema declares** (see `references/run-state.md`):
    - Top level: `runId`, `status: "in-progress"`, `umbrellaBranch`,
-     `integrationBase: "development"`, `startedAt` and `updatedAt` (current UTC
-     time), the `waves` from `plan_waves`, `completedWaves: 0`,
-     `finalPullRequest: null`.
+     `integrationBase: "development"`, `parentIssue` (the parent PRD number, or
+     null), `startedAt` and `updatedAt` (current UTC time), the `waves` from
+     `plan_waves`, `completedWaves: 0`, `finalPullRequest: null`.
    - One `slices` entry per issue: `issue`, `title`, `wave` (its index in
      `waves`), `tier`, `blockedBy`, `state: "pending"`, `sliceBranch:
      "orchestrate/slice-<N>"`, `worktreePath: null`, `pullRequest: null`,
@@ -134,6 +138,9 @@ Process waves in order, starting at index `completedWaves`. For each wave:
    umbrella branch must not race each other.
 4. **Checkpoint the wave.** Set `completedWaves` to this wave's index + 1 and
    write `run-state.json`.
+5. **Report wave progress to the PRD.** If `parentIssue` is set, post a comment
+   on it summarizing this wave's outcomes — which child issues passed, failed,
+   or were skipped: `gh issue comment <parentIssue> --body "..."`.
 
 When the last wave is done, open the **final integration pull request** — one
 pull request from the umbrella branch into `development`, left **unmerged** for
@@ -146,8 +153,9 @@ gh pr create --base development --head orchestrate/umbrella-<runId> \
 ```
 
 Record its URL as `finalPullRequest` in `run-state.json`, set
-`status: "completed"`, checkpoint, and report to the user: the umbrella branch,
-the final pull request URL, and — per slice — its final state and pull request.
+`status: "completed"`, and checkpoint. If `parentIssue` is set, post a final
+summary comment on it. Report to the user: the umbrella branch, the final pull
+request URL, and — per slice — its final state and pull request.
 
 ## 3. Processing one slice
 
@@ -261,9 +269,11 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
       gh pr merge <pr-number> --squash
       ```
 
-9. **Finish the slice.** Set the slice `state` to `passed`, then remove its
-   worktree with the `remove_worktree` MCP tool (`worktreePath`, `repoPath`,
-   `force: true` — the worktree may hold untracked build artifacts).
+9. **Finish the slice.** Set the slice `state` to `passed` and transition the
+   issue's tracker label — it is done and awaiting human review:
+   `gh issue edit <N> --remove-label ready-for-agent --add-label ready-for-human`.
+   Then remove its worktree with the `remove_worktree` MCP tool (`worktreePath`,
+   `repoPath`, `force: true` — the worktree may hold untracked build artifacts).
 
 ## Failure handling
 
@@ -271,7 +281,9 @@ A slice **FAILS** when `create_worktree` errors, the implementer returns
 `blocked`, the reviewer returns `failed`, the staged changeset is empty, or a
 merge conflict the `conflict-resolver` cannot fix. On a FAILED slice:
 
-- Set its `state` to `failed` with a `failureReason`, and checkpoint.
+- Set its `state` to `failed` with a `failureReason`, checkpoint, and
+  transition the issue's tracker label:
+  `gh issue edit <N> --remove-label ready-for-agent --add-label needs-triage`.
 - Do **not** merge it. **Preserve its worktree** — leave it on disk for a
   developer to inspect. Do not call `remove_worktree`.
 - **Continue the wave.** A failed slice never cancels the other slices in its
@@ -279,10 +291,24 @@ merge conflict the `conflict-resolver` cannot fix. On a FAILED slice:
 
 A slice is **SKIPPED** (state `skipped`) when one of its blockers did not reach
 `passed` — it cannot be built on a missing dependency. Record the blocker in
-`failureReason` and checkpoint.
+`failureReason` and checkpoint. Its tracker label stays `ready-for-agent` so a
+later run can retry it once the blocker is resolved.
 
 Other stop conditions: an empty backlog is a clean no-op; a `plan_waves`
 `CYCLE_DETECTED` result stops the run before any branch is created.
+
+## Tracker updates
+
+The orchestrator is the **single writer** of GitHub tracker state — the
+subagents never touch issues, labels, or pull requests. Tracker writes happen
+only at the points described above: a slice's label transitions at its terminal
+state (`ready-for-human` on a pass, `needs-triage` on a failure, unchanged on a
+skip), and the parent PRD issue receives a progress comment after each wave and
+a final summary when the run completes.
+
+The orchestrator does not close issues. The `Closes #N` trailers on the slice
+commits close them when a developer merges the final umbrella pull request into
+`development`.
 
 ## Checkpointing
 

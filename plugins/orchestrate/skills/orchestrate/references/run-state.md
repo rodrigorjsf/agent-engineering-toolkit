@@ -15,6 +15,7 @@ metadata, not source — the target project should gitignore it.
   "status": "in-progress",
   "umbrellaBranch": "orchestrate/umbrella-20260521-015143",
   "integrationBase": "development",
+  "parentIssue": 153,
   "startedAt": "2026-05-21T01:51:43Z",
   "updatedAt": "2026-05-21T02:14:09Z",
   "waves": [["157", "158"], ["159"]],
@@ -44,6 +45,8 @@ metadata, not source — the target project should gitignore it.
 - `status` — `in-progress` while waves remain, `completed` when the run finishes.
 - `umbrellaBranch` — the branch all slice pull requests merge into.
 - `integrationBase` — the branch the umbrella was cut from (always `development`).
+- `parentIssue` — the parent PRD issue number the run reports progress to, or
+  `null` if the backlog issues name no parent.
 - `startedAt` / `updatedAt` — ISO-8601 UTC timestamps.
 - `waves` — the `plan_waves` output: an ordered array of waves, each an array of
   issue-id strings.

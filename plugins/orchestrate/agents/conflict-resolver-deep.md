@@ -47,6 +47,7 @@ with higher risk.
   push, or run shell commands — the orchestrator completes or aborts the merge
   based on your result.
 - Edit files **only** inside the worktree path you were given.
+- Do not edit the issue, open pull requests, or change tracker labels.
 - Resolve only what you can resolve **correctly**. A conflict whose correct
   merge is genuinely ambiguous is a `failed` result — never guess and ship a
   silently-wrong merge.
