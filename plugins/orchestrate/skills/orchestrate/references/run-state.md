@@ -19,6 +19,7 @@ metadata, not source — the target project should gitignore it.
   "updatedAt": "2026-05-21T02:14:09Z",
   "waves": [["157", "158"], ["159"]],
   "completedWaves": 1,
+  "finalPullRequest": null,
   "slices": {
     "157": {
       "issue": 157,
@@ -47,6 +48,8 @@ metadata, not source — the target project should gitignore it.
   issue-id strings.
 - `completedWaves` — the count of waves fully processed; resume continues from
   this index.
+- `finalPullRequest` — the umbrella-to-`development` pull request URL, set when
+  the run completes; `null` until then.
 - `slices` — a map keyed by issue-id string; one entry per backlog issue.
 
 ### Slice fields

@@ -20,8 +20,11 @@ of restarting.
 - **Reviewer** — the `reviewer` subagent. It reviews the implemented slice in
   the same worktree, fixes issues inline, re-runs the capability tools, and
   gates the auto-merge.
+- **Conflict-resolver** — the `conflict-resolver` subagent. When a slice
+  conflicts with the umbrella branch, it edits the conflicted files to a
+  correct merged state. It is spawned once per conflicting slice.
 
-Both subagents have **no Bash and no git access** — they are sandboxed to file
+These subagents have **no Bash and no git access** — they are sandboxed to file
 edits inside one worktree. Only the orchestrator touches branches, remotes, and
 the tracker.
 
@@ -93,7 +96,8 @@ On startup, check for `.orchestrate/run-state.json` (its schema is in
    schema declares** (see `references/run-state.md`):
    - Top level: `runId`, `status: "in-progress"`, `umbrellaBranch`,
      `integrationBase: "development"`, `startedAt` and `updatedAt` (current UTC
-     time), the `waves` from `plan_waves`, `completedWaves: 0`.
+     time), the `waves` from `plan_waves`, `completedWaves: 0`,
+     `finalPullRequest: null`.
    - One `slices` entry per issue: `issue`, `title`, `wave` (its index in
      `waves`), `blockedBy`, `state: "pending"`, `sliceBranch:
      "orchestrate/slice-<N>"`, `worktreePath: null`, `pullRequest: null`,
@@ -122,8 +126,19 @@ Process waves in order, starting at index `completedWaves`. For each wave:
 5. **Checkpoint the wave.** Set `completedWaves` to this wave's index + 1 and
    write `run-state.json`.
 
-When the last wave is done, set `status: "completed"`, checkpoint, and report:
-the umbrella branch and, per slice, its final state and pull request URL.
+When the last wave is done, open the **final integration pull request** — one
+pull request from the umbrella branch into `development`, left **unmerged** for
+a developer to review and merge:
+
+```
+gh pr create --base development --head orchestrate/umbrella-<runId> \
+  --title "orchestrate run <runId>" \
+  --body "<summary of the run — slices passed, failed, and skipped>"
+```
+
+Record its URL as `finalPullRequest` in `run-state.json`, set
+`status: "completed"`, checkpoint, and report to the user: the umbrella branch,
+the final pull request URL, and — per slice — its final state and pull request.
 
 ## 3. Processing one slice
 
@@ -180,15 +195,44 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
    gh pr view <pr-number> --json mergeable,mergeStateStatus
    ```
 
-   `UNKNOWN` — GitHub is still computing; wait a moment and re-check, up to a
-   few attempts. If it never resolves, the slice has **FAILED** (mergeability
-   could not be determined). `CONFLICTING` — the slice has **FAILED** (merge
-   conflict). `MERGEABLE` — merge it, squashing to one commit per slice on the
-   umbrella branch:
+   - `UNKNOWN` — GitHub is still computing; wait a moment and re-check, up to a
+     few attempts. If it never resolves, the slice has **FAILED**.
+   - `MERGEABLE` — merge it, squashing to one commit per slice on the umbrella
+     branch: `gh pr merge <pr-number> --squash`.
+   - `CONFLICTING` — resolve the conflict once, per step 6a. Do not FAIL a
+     slice on a conflict without attempting resolution.
 
-   ```
-   gh pr merge <pr-number> --squash
-   ```
+6a. **Resolve a merge conflict (once).** Attempt resolution exactly once — a
+   conflict the resolver cannot fix is a FAILED slice.
+
+   1. In the slice's worktree, fetch and merge the current umbrella branch so
+      the conflict markers surface in the files:
+
+      ```
+      git -C <worktree-path> fetch origin orchestrate/umbrella-<runId>
+      git -C <worktree-path> merge origin/orchestrate/umbrella-<runId>
+      ```
+
+   2. List the conflicted files:
+      `git -C <worktree-path> diff --name-only --diff-filter=U`.
+   3. Spawn the `conflict-resolver` subagent. Its prompt must carry the issue,
+      the worktree path, and the list of conflicted files.
+   4. If it returns `failed`, abort and the slice has **FAILED**:
+      `git -C <worktree-path> merge --abort`.
+   5. If it returns `resolved`, stage the resolved files and **confirm no
+      conflict markers remain** — inspect `git -C <worktree-path> diff --cached`
+      for leftover `<<<<<<<` or `>>>>>>>` lines. If any remain, the resolution
+      is incomplete: `git -C <worktree-path> merge --abort` and the slice has
+      **FAILED**. Otherwise complete the merge, push, and merge the pull
+      request — if `gh pr merge` fails (the resolution did not make the pull
+      request mergeable), the slice has **FAILED**; the one attempt is spent.
+
+      ```
+      git -C <worktree-path> add -- <resolved file> ...
+      git -C <worktree-path> commit --no-edit
+      git -C <worktree-path> push
+      gh pr merge <pr-number> --squash
+      ```
 
 7. **Finish the slice.** Set the slice `state` to `passed`, then remove its
    worktree with the `remove_worktree` MCP tool (`worktreePath`, `repoPath`,
@@ -197,8 +241,8 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
 ## Failure handling
 
 A slice **FAILS** when `create_worktree` errors, the implementer returns
-`blocked`, the reviewer returns `failed`, the staged changeset is empty, or the
-merge conflicts. On a FAILED slice:
+`blocked`, the reviewer returns `failed`, the staged changeset is empty, or a
+merge conflict the `conflict-resolver` cannot fix. On a FAILED slice:
 
 - Set its `state` to `failed` with a `failureReason`, and checkpoint.
 - Do **not** merge it. **Preserve its worktree** — leave it on disk for a
@@ -220,5 +264,3 @@ every wave. Every write refreshes the top-level `updatedAt`, and a slice's own
 `updatedAt` whenever its entry changes, so an artifact rendered from the file
 has accurate timestamps. The checkpoint is what makes a run resumable: an
 interrupted run, re-invoked, skips every terminal-state slice and continues.
-Conflict resolution and a final umbrella-to-development pull request are added
-by later capability.
