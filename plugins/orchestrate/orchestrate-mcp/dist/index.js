@@ -22822,18 +22822,18 @@ async function searchStructural(input, opts = {}) {
         errorMessage: `The 'ast-grep' binary is not available (${e.code}). Fall back to text search.`
       };
     }
+    if (e.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+      return {
+        status: "error",
+        errorCode: "ASTGREP_FAILED",
+        errorMessage: `ast-grep output exceeded the ${maxBuffer}-byte capture limit.`
+      };
+    }
     if (e.killed) {
       return {
         status: "error",
         errorCode: "TIMEOUT",
         errorMessage: `Structural search exceeded the ${timeoutMs} ms time limit.`
-      };
-    }
-    if (e.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
-      return {
-        status: "error",
-        errorCode: "ASTGREP_FAILED",
-        errorMessage: `ast-grep output exceeded the ${MAX_CAPTURE_BYTES2}-byte capture limit.`
       };
     }
     if (typeof e.code === "number") {
