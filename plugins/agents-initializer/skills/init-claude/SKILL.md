@@ -18,18 +18,20 @@ Claude Code's configuration hierarchy enables powerful progressive disclosure:
 - **`.claude/rules/`** — path-scoped rules triggered only when matching files are read
 - **Domain files** — referenced via progressive disclosure pointers
 
-## Behavioral Guidelines
+<TRIGGER when="initializing CLAUDE.md hierarchy for a project" />
 
+<BEHAVIOUR
+  avoid="acting before naming ambiguities; adding speculative scope; weakening safeguards"
+  always="surface assumptions first; keep changes surgical; define verification targets">
 - **Surface assumptions first** — name ambiguities, tradeoffs, and multiple valid interpretations before acting.
 - **Prefer the simplest path** — solve the task completely without speculative flexibility or extra scope.
 - **Keep changes surgical** — touch only what the task requires, and preserve existing behavior unless the task calls for change.
 - **Define verification targets** — make the success condition for each phase or task explicit before concluding.
 - **Use phased persuasion safely** — use warm-ups, curated references, and explicit constraints to improve compliance with legitimate work.
 - **Never weaken safeguards** — do not use persuasion principles to bypass safety constraints, refusals, or scope boundaries.
+</BEHAVIOUR>
 
-## Hard Rules
-
-<RULES>
+<HARD_RULES priority="hard">
 - **NEVER** generate a single file with everything — use hierarchical progressive disclosure
 - **NEVER** include directory/file structure listings (research proves these don't help agents navigate)
 - **NEVER** include obvious language conventions the model already knows
@@ -39,79 +41,85 @@ Claude Code's configuration hierarchy enables powerful progressive disclosure:
 - Scope CLAUDE.md target: **10-30 lines**
 - `.claude/rules/` files: **focused, path-scoped, one topic per file**
 - Domain files: only when non-standard patterns are detected
-</RULES>
+</HARD_RULES>
 
-## Process
+<PROCESS>
 
-### Preflight Check
+  <PREFLIGHT name="existing-file-check">
+  Check if `CLAUDE.md` exists in the current working directory.
 
-Check if `CLAUDE.md` exists in the current working directory.
+  **If it already exists:**
 
-**If it already exists:**
+  1. Inform the user: "CLAUDE.md already exists in this project. Switching to the improve workflow to optimize your existing configuration."
+  2. Invoke the `improve-claude` skill and follow its complete process.
+  3. **STOP** — do not proceed to Phase 1 or any subsequent phase of this init skill.
 
-1. Inform the user: "CLAUDE.md already exists in this project. Switching to the improve workflow to optimize your existing configuration."
-2. Invoke the `improve-claude` skill and follow its complete process.
-3. **STOP** — do not proceed to Phase 1 or any subsequent phase of this init skill.
+  **If it does not exist:**
+  Proceed to Phase 1 below.
+  </PREFLIGHT>
 
-**If it does not exist:**
-Proceed to Phase 1 below.
+  <PHASE id="1" name="codebase-analysis">
+  Delegate to the `codebase-analyzer` agent with this task:
 
-### Phase 1: Codebase Analysis
+  > Analyze the project at the current working directory. Return ONLY non-standard, non-obvious information that would cause Claude to make mistakes if it didn't know them. Be ruthlessly minimal.
 
-Delegate to the `codebase-analyzer` agent with this task:
+  The agent runs on Sonnet with read-only tools (Read, Grep, Glob, Bash) in an isolated context. Wait for it to complete and parse its structured output.
+  Require the parsed output to surface non-default config overrides, repo-wide critical constraints, and any cross-scope prerequisites needed for the root file.
+  </PHASE>
 
-> Analyze the project at the current working directory. Return ONLY non-standard, non-obvious information that would cause Claude to make mistakes if it didn't know them. Be ruthlessly minimal.
+  <PHASE id="2" name="scope-detection">
+  Delegate to the `scope-detector` agent with this task:
 
-The agent runs on Sonnet with read-only tools (Read, Grep, Glob, Bash) in an isolated context. Wait for it to complete and parse its structured output.
-Require the parsed output to surface non-default config overrides, repo-wide critical constraints, and any cross-scope prerequisites needed for the root file.
+  > Detect scopes in the project at the current working directory. Only flag scopes with genuinely different tooling or conventions. A simple single-package project should have ZERO additional scopes. Also identify areas that would benefit from path-scoped .claude/rules/ files. Check shared/library packages in monorepos — even utility packages may need their own scope if they have unique constraints (e.g., zero-dependency rules, dual exports, conditional imports).
 
-### Phase 2: Scope Detection
+  Wait for it to complete and parse its structured output.
+  Require the parsed output to state explicitly when a simple single-package project needs zero additional scopes.
+  </PHASE>
 
-Delegate to the `scope-detector` agent with this task:
+  <PHASE id="3" name="generate-files">
+  #### Phase 3a: Hierarchy Decisions
 
-> Detect scopes in the project at the current working directory. Only flag scopes with genuinely different tooling or conventions. A simple single-package project should have ZERO additional scopes. Also identify areas that would benefit from path-scoped .claude/rules/ files. Check shared/library packages in monorepos — even utility packages may need their own scope if they have unique constraints (e.g., zero-dependency rules, dual exports, conditional imports).
+  Drop Phases 1–2 references. Read:
 
-Wait for it to complete and parse its structured output.
-Require the parsed output to state explicitly when a simple single-package project needs zero additional scopes.
+  - `${CLAUDE_SKILL_DIR}/references/progressive-disclosure-guide.md` — hierarchy decisions and loading tiers
+  - `${CLAUDE_SKILL_DIR}/references/what-not-to-include.md` — content exclusion criteria
 
-### Phase 3: Generate Files
+  Decide which file types to generate and what content belongs in each tier.
 
-#### Phase 3a: Hierarchy Decisions
+  #### Phase 3b: Generate Files
 
-Drop Phases 1–2 references. Read:
+  Drop Phase 3a references. Read:
 
-- `${CLAUDE_SKILL_DIR}/references/progressive-disclosure-guide.md` — hierarchy decisions and loading tiers
-- `${CLAUDE_SKILL_DIR}/references/what-not-to-include.md` — content exclusion criteria
+  - `${CLAUDE_SKILL_DIR}/references/context-optimization.md` — token budget guidelines
+  - `${CLAUDE_SKILL_DIR}/references/claude-rules-system.md` — .claude/rules/ conventions and path-scoping
 
-Decide which file types to generate and what content belongs in each tier.
+  Generate the file hierarchy:
 
-#### Phase 3b: Generate Files
+  **Root CLAUDE.md** — Read `${CLAUDE_SKILL_DIR}/assets/templates/root-claude-md.md`. Fill placeholders. Remove empty sections. Target: 15-40 lines.
 
-Drop Phase 3a references. Read:
+  **Subdirectory CLAUDE.md (per detected scope)** — If scopes detected, read `${CLAUDE_SKILL_DIR}/assets/templates/scoped-claude-md.md`. Only scope-specific content differing from root.
 
-- `${CLAUDE_SKILL_DIR}/references/context-optimization.md` — token budget guidelines
-- `${CLAUDE_SKILL_DIR}/references/claude-rules-system.md` — .claude/rules/ conventions and path-scoping
+  **`.claude/rules/` Files (Path-Scoped Rules)** — If file-pattern-specific rules detected, read `${CLAUDE_SKILL_DIR}/assets/templates/claude-rule.md`. Consult `claude-rules-system.md` (already loaded) for when to create rules files vs using CLAUDE.md, path-scoping conventions, and convention vs domain-critical rule categories.
 
-Generate the file hierarchy:
+  **Domain Files** — If non-standard domain patterns detected, read `${CLAUDE_SKILL_DIR}/assets/templates/domain-doc.md`.
+  </PHASE>
 
-**Root CLAUDE.md** — Read `${CLAUDE_SKILL_DIR}/assets/templates/root-claude-md.md`. Fill placeholders. Remove empty sections. Target: 15-40 lines.
+  <PHASE id="4" name="self-validation">
+  Read `${CLAUDE_SKILL_DIR}/references/validation-criteria.md` and execute its **Validation Loop Instructions** against every generated file. Check general criteria AND CLAUDE.md-specific structural checks (path-scoping, minimal always-loaded content). For init flows, treat the Hard Rules size targets (root 15-40 lines, scoped 10-30 lines) as required validation gates — if a monorepo root exceeds target, move scope-specific detail into subdirectory CLAUDE.md, rules, or domain files and rerun. Maximum 3 iterations.
+  </PHASE>
 
-**Subdirectory CLAUDE.md (per detected scope)** — If scopes detected, read `${CLAUDE_SKILL_DIR}/assets/templates/scoped-claude-md.md`. Only scope-specific content differing from root.
+  <PHASE id="5" name="present-and-write">
+  1. Show the user ALL generated files with their content before writing
+  2. Explain briefly why each file exists and what evidence supports its content
+  3. Include a concise validation summary: iteration count, final root line count, scoped file count, and any fixes made during self-validation
+  4. Highlight which files are always-loaded (root CLAUDE.md) vs on-demand (subdirectory, rules)
+  5. Ask for confirmation before writing files
+  6. Write all files to the project
+  7. Create `.claude/rules/` directory if generating rules files
+  </PHASE>
 
-**`.claude/rules/` Files (Path-Scoped Rules)** — If file-pattern-specific rules detected, read `${CLAUDE_SKILL_DIR}/assets/templates/claude-rule.md`. Consult `claude-rules-system.md` (already loaded) for when to create rules files vs using CLAUDE.md, path-scoping conventions, and convention vs domain-critical rule categories.
+</PROCESS>
 
-**Domain Files** — If non-standard domain patterns detected, read `${CLAUDE_SKILL_DIR}/assets/templates/domain-doc.md`.
-
-### Phase 4: Self-Validation
-
-Read `${CLAUDE_SKILL_DIR}/references/validation-criteria.md` and execute its **Validation Loop Instructions** against every generated file. Check general criteria AND CLAUDE.md-specific structural checks (path-scoping, minimal always-loaded content). For init flows, treat the Hard Rules size targets (root 15-40 lines, scoped 10-30 lines) as required validation gates — if a monorepo root exceeds target, move scope-specific detail into subdirectory CLAUDE.md, rules, or domain files and rerun. Maximum 3 iterations.
-
-### Phase 5: Present and Write
-
-1. Show the user ALL generated files with their content before writing
-2. Explain briefly why each file exists and what evidence supports its content
-3. Include a concise validation summary: iteration count, final root line count, scoped file count, and any fixes made during self-validation
-4. Highlight which files are always-loaded (root CLAUDE.md) vs on-demand (subdirectory, rules)
-5. Ask for confirmation before writing files
-6. Write all files to the project
-7. Create `.claude/rules/` directory if generating rules files
+<VALIDATION loop="max-iterations:3">
+Read `${CLAUDE_SKILL_DIR}/references/validation-criteria.md` and loop every generated file through all hard limits, quality checks, and CLAUDE.md-specific structural checks until all pass.
+</VALIDATION>
