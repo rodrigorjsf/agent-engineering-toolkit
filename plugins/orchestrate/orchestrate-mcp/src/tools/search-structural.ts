@@ -132,11 +132,13 @@ export type SearchStructuralOutput = z.infer<typeof searchStructuralOutputSchema
 /**
  * Internal execution overrides. NOT exposed as an MCP tool input — the only
  * caller-facing input is {@link SearchStructuralInput}. Used by tests to
- * shorten the timeout and substitute a fake `ast-grep` binary.
+ * shorten the timeout, substitute a fake `ast-grep` binary, or lower the
+ * maxBuffer ceiling to exercise the overflow branch without 16 MB of output.
  */
 export interface SearchStructuralOptions {
   timeoutMs?: number;
   binary?: string;
+  maxBufferBytes?: number;
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -234,13 +236,15 @@ export async function searchStructural(
   const cwd = input.repoPath ?? process.cwd();
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const binary = opts.binary ?? ASTGREP_BINARY;
+  const maxBuffer = opts.maxBufferBytes ?? MAX_CAPTURE_BYTES;
   const searchPath = input.path ?? ".";
 
   // `--json` is placed before the value-taking flags so it can never consume
-  // the positional search path; the path is always the final argument.
+  // the positional path. `--` terminates option parsing so a leading `-` in
+  // the search path is never misparsed as a flag; the path is always last.
   const args = ["run", "--json", "--pattern", input.pattern];
   if (input.language) args.push("--lang", input.language);
-  args.push(searchPath);
+  args.push("--", searchPath);
 
   try {
     const { stdout } = await execFileAsync(binary, args, {
@@ -248,7 +252,7 @@ export async function searchStructural(
       encoding: "utf8",
       timeout: timeoutMs,
       killSignal: "SIGKILL",
-      maxBuffer: MAX_CAPTURE_BYTES,
+      maxBuffer,
       windowsHide: true,
     });
     const parsed = parseAstGrepJson(stdout.toString());

@@ -231,6 +231,45 @@ describe("searchStructural", () => {
     expect(result.matchCount).toBe(1);
   });
 
+  it("passes '--' end-of-options separator immediately before a dash-prefixed search path", async () => {
+    // A path beginning with '-' would be misparsed as a flag without '--'.
+    // The fake binary writes each argv token to a tmp file so we can inspect
+    // the exact args searchStructural passed, regardless of stdout handling.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-argv-"));
+    created.push(dir);
+    const argvFile = path.join(dir, "argv.txt");
+    const scriptPath = path.join(dir, "fake-ast-grep");
+    fs.writeFileSync(
+      scriptPath,
+      [
+        "#!/bin/sh",
+        `for a in "$@"; do printf '%s\\n' "$a"; done > '${argvFile}'`,
+        "exit 0",
+      ].join("\n") + "\n",
+      { mode: 0o755 }
+    );
+    await searchStructural(
+      { pattern: "x", path: "--dashy-path", repoPath },
+      { binary: scriptPath }
+    );
+    const argv = fs.readFileSync(argvFile, "utf8").trim().split("\n");
+    const sepIdx = argv.indexOf("--");
+    expect(sepIdx).toBeGreaterThanOrEqual(0);
+    expect(argv[sepIdx + 1]).toBe("--dashy-path");
+  });
+
+  it("reports unavailable when the binary exists but is not executable (EACCES)", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-astgrep-"));
+    created.push(dir);
+    const nonExec = path.join(dir, "not-executable");
+    fs.writeFileSync(nonExec, "#!/bin/sh\nexit 0\n", { mode: 0o644 });
+    const result = await searchStructural(
+      { pattern: "console.log($A)", repoPath },
+      { binary: nonExec }
+    );
+    expect(result.status).toBe("unavailable");
+  });
+
   it("returns TIMEOUT when ast-grep exceeds the time limit", async () => {
     const binary = fakeAstGrep({ sleepSeconds: 5, exit: 0 });
     const result = await searchStructural(
@@ -239,6 +278,18 @@ describe("searchStructural", () => {
     );
     expect(result.status).toBe("error");
     expect(result.errorCode).toBe("TIMEOUT");
+  });
+
+  it("returns ASTGREP_FAILED when ast-grep output exceeds the maxBuffer limit", async () => {
+    // The real 16 MB ceiling is impractical to exercise. A tiny maxBufferBytes
+    // override with output longer than that triggers ERR_CHILD_PROCESS_STDIO_MAXBUFFER.
+    const binary = fakeAstGrep({ stdout: "x".repeat(20), exit: 0 });
+    const result = await searchStructural(
+      { pattern: "x", repoPath },
+      { binary, maxBufferBytes: 8 }
+    );
+    expect(result.status).toBe("error");
+    expect(result.errorCode).toBe("ASTGREP_FAILED");
   });
 
   it("caps the match list and sets truncated when ast-grep returns more than 100", async () => {
