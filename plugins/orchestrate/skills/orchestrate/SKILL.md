@@ -276,10 +276,16 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
 
    2. List the conflicted files:
       `git -C <worktree-path> diff --name-only --diff-filter=U`.
-   3. If the conflicted-file list is **EMPTY**, the merge applied cleanly —
-      do NOT spawn the conflict-resolver. The merge commit already exists;
-      skip straight to pushing and merging the slice PR:
-      `git -C <worktree-path> push` then `gh pr merge <pr-number> --squash`.
+   3. If the conflicted-file list is **EMPTY**, the umbrella merge applied
+      cleanly with no conflicts to resolve — do not spawn the
+      conflict-resolver. A clean textual merge is not proof of a correct one:
+      Git auto-merges non-overlapping hunks that may still be semantically
+      broken. Re-verify the merged worktree before integrating — run the
+      `run_tests`, `run_typecheck`, `run_build`, and `run_lint` capability
+      tools with the worktree path as `repoPath`. If any reports failure, the
+      slice has **FAILED**. If all pass, the merge commit already exists —
+      push and merge the slice PR: `git -C <worktree-path> push` then
+      `gh pr merge <pr-number> --squash`.
    4. Spawn the `conflict-resolver-<effort>` subagent — `<effort>` and the
       `model` override from `routing.conflict-resolver`. Its prompt must carry
       the issue, the worktree path, and the list of conflicted files.
