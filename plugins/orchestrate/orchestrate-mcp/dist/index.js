@@ -3226,8 +3226,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path5) {
-      let input = path5;
+    function removeDotSegments(path6) {
+      let input = path6;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3479,8 +3479,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path5, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path5 && path5 !== "/" ? path5 : void 0;
+        const [path6, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path6 && path6 !== "/" ? path6 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs5, exportName) {
+    function addFormats(ajv, list, fs6, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs5[f]);
+        ajv.addFormat(f, fs6[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -7364,8 +7364,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path5, errorMaps, issueData } = params;
-  const fullPath = [...path5, ...issueData.path || []];
+  const { data, path: path6, errorMaps, issueData } = params;
+  const fullPath = [...path6, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7481,11 +7481,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path5, key) {
+  constructor(parent, value, path6, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path5;
+    this._path = path6;
     this._key = key;
   }
   get path() {
@@ -11123,10 +11123,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path5) {
-  if (!path5)
+function getElementAtPath(obj, path6) {
+  if (!path6)
     return obj;
-  return path5.reduce((acc, key) => acc?.[key], obj);
+  return path6.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11446,11 +11446,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path5, issues) {
+function prefixIssues(path6, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path5);
+    iss.path.unshift(path6);
     return iss;
   });
 }
@@ -21167,14 +21167,14 @@ function optionInjectionError(field, value) {
 }
 function cleanGitError(err) {
   if (err instanceof GitExecError && err.stderr.trim().length > 0) {
-    const firstLine5 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-    if (firstLine5) {
-      return firstLine5;
+    const firstLine7 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+    if (firstLine7) {
+      return firstLine7;
     }
   }
   const message = err instanceof Error ? err.message : String(err);
-  const firstLine4 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-  return firstLine4 ?? "Unknown git error";
+  const firstLine6 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return firstLine6 ?? "Unknown git error";
 }
 
 // src/tools/worktree.ts
@@ -22485,10 +22485,221 @@ async function renderReportArtifact(input) {
   return { status: "ok", artifactPath };
 }
 
+// src/tools/spawn-successor.ts
+var import_child_process3 = require("child_process");
+
+// src/handoff-config.ts
+var path5 = __toESM(require("path"));
+var fs5 = __toESM(require("fs"));
+var watchdogConfigSchema = external_exports.object({
+  thresholdPercent: external_exports.number().min(1).max(100).default(40).describe(
+    "Raise the handoff flag once estimated context usage reaches this percentage of the context window. Default 40 \u2014 deliberately conservative so the run has room to finish a slice and hand off."
+  ),
+  contextWindowTokens: external_exports.number().int().positive().default(2e5).describe(
+    "Total context window the percentage is measured against. Default 200000 \u2014 raise to 1000000 for a 1M-context session."
+  )
+});
+var terminalEntrySchema = external_exports.object({
+  name: external_exports.string().min(1).describe("Human-readable terminal id, surfaced in the launch result."),
+  argv: external_exports.array(external_exports.string()).min(1).describe(
+    "The launch argv. argv[0] is the executable. Tokens may contain the {claudeCommand} and {repoPath} placeholders."
+  )
+});
+var successorConfigSchema = external_exports.object({
+  claudeArgs: external_exports.array(external_exports.string()).default(["--remote-control", "orchestrate-successor", "--permission-mode", "auto"]).describe(
+    "Arguments passed to the `claude` CLI for the successor session. The default starts an interactive session with Remote Control enabled (name 'orchestrate-successor') in auto permission mode."
+  ),
+  resumePrompt: external_exports.string().default("/orchestrate").describe(
+    "The initial prompt for the successor session \u2014 appended after claudeArgs as the final, positional argument so it is never consumed as the Remote Control session name."
+  ),
+  terminals: external_exports.array(terminalEntrySchema).default([
+    {
+      name: "windows-terminal",
+      argv: [
+        "wt.exe",
+        "new-tab",
+        "--title",
+        "orchestrate-successor",
+        "wsl.exe",
+        "--",
+        "bash",
+        "-lc",
+        "{claudeCommand}"
+      ]
+    },
+    {
+      name: "warp",
+      argv: ["warp-terminal", "--", "bash", "-lc", "{claudeCommand}"]
+    }
+  ]).describe(
+    "Ordered fallback chain of terminals. The launcher tries each in turn and stops at the first that spawns. The default targets a WSL2 environment: Windows Terminal first, Warp second."
+  )
+});
+var handoffConfigSchema = external_exports.object({
+  watchdog: watchdogConfigSchema.default({}),
+  successor: successorConfigSchema.default({})
+});
+function firstLine4(message) {
+  const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return line ?? message.trim();
+}
+function loadHandoffConfig(repoPath) {
+  const configPath = path5.join(repoPath, ".orchestrate", "handoff.json");
+  const defaults = handoffConfigSchema.parse({});
+  let raw;
+  try {
+    raw = fs5.readFileSync(configPath, "utf8");
+  } catch {
+    return { config: defaults, warning: null };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      config: defaults,
+      warning: `.orchestrate/handoff.json is not valid JSON (${firstLine4(
+        err instanceof Error ? err.message : String(err)
+      )}) \u2014 built-in defaults were used instead.`
+    };
+  }
+  const result = handoffConfigSchema.safeParse(parsed);
+  if (!result.success) {
+    const detail = result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+    return {
+      config: defaults,
+      warning: `.orchestrate/handoff.json does not match the expected shape (${detail}) \u2014 built-in defaults were used instead.`
+    };
+  }
+  return { config: result.data, warning: null };
+}
+
+// src/tools/spawn-successor.ts
+var spawnSuccessorInputSchema = external_exports.object({
+  repoPath: external_exports.string().optional().describe(
+    "Path to the repository root \u2014 the directory holding .orchestrate/. The successor session opens here and reads run-state.json to resume. Defaults to the MCP server process's current working directory; callers should pass it explicitly."
+  )
+});
+var launchAttemptSchema = external_exports.object({
+  terminal: external_exports.string().describe("The terminal entry's name."),
+  argv: external_exports.array(external_exports.string()).describe("The fully-substituted launch argv."),
+  outcome: external_exports.enum(["launched", "failed"]).describe("'launched' = the process spawned; 'failed' = it did not."),
+  error: external_exports.string().optional().describe("Failure description. Present when outcome='failed'.")
+});
+var spawnSuccessorOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = a successor terminal launched; 'error' = no terminal in the fallback chain could be launched."
+  ),
+  terminal: external_exports.string().optional().describe("Name of the terminal that launched. Present when status='ok'."),
+  command: external_exports.array(external_exports.string()).optional().describe("The argv that launched the successor. Present when status='ok'."),
+  attempts: external_exports.array(launchAttemptSchema).optional().describe(
+    "Every terminal tried, in order, with its outcome \u2014 so a failed handoff is diagnosable rather than silent."
+  ),
+  configWarning: external_exports.string().optional().describe(
+    "Set when .orchestrate/handoff.json was present but unreadable, so built-in defaults were used. The launch still proceeds."
+  ),
+  errorCode: external_exports.enum(["NO_TERMINALS", "ALL_TERMINALS_FAILED"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'NO_TERMINALS' = the config's terminal chain is empty; 'ALL_TERMINALS_FAILED' = every terminal failed to spawn."
+  ),
+  errorMessage: external_exports.string().optional().describe("Human-readable failure description. Present when status='error'.")
+});
+function firstLine5(message) {
+  const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return line ?? message.trim();
+}
+function shellQuote(token) {
+  return `'${token.replace(/'/g, `'\\''`)}'`;
+}
+function buildClaudeArgv(config2) {
+  return ["claude", ...config2.claudeArgs, config2.resumePrompt];
+}
+function buildClaudeCommand(config2, repoPath) {
+  const invocation = buildClaudeArgv(config2).map(shellQuote).join(" ");
+  return `cd ${shellQuote(repoPath)} && exec ${invocation}`;
+}
+function buildLaunchArgv(entry, subs) {
+  return entry.argv.map(
+    (token) => token.replace(/\{claudeCommand\}/g, subs.claudeCommand).replace(/\{repoPath\}/g, subs.repoPath)
+  );
+}
+var SPAWN_GRACE_MS = 300;
+function trySpawn(argv) {
+  return new Promise((resolve2) => {
+    let child;
+    try {
+      child = (0, import_child_process3.spawn)(argv[0], argv.slice(1), {
+        detached: true,
+        stdio: "ignore"
+      });
+    } catch (err) {
+      resolve2({
+        ok: false,
+        error: firstLine5(err instanceof Error ? err.message : String(err))
+      });
+      return;
+    }
+    let settled = false;
+    child.once("error", (err) => {
+      if (settled) return;
+      settled = true;
+      resolve2({ ok: false, error: firstLine5(err.message) });
+    });
+    setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.unref();
+      resolve2({ ok: true });
+    }, SPAWN_GRACE_MS);
+  });
+}
+async function spawnSuccessor(input) {
+  const repoPath = input.repoPath ?? process.cwd();
+  const { config: config2, warning } = loadHandoffConfig(repoPath);
+  const successor = config2.successor;
+  const configWarning = warning ?? void 0;
+  if (successor.terminals.length === 0) {
+    return {
+      status: "error",
+      errorCode: "NO_TERMINALS",
+      errorMessage: "No terminals are configured in .orchestrate/handoff.json \u2014 the successor cannot be launched.",
+      configWarning
+    };
+  }
+  const claudeCommand = buildClaudeCommand(successor, repoPath);
+  const attempts = [];
+  for (const entry of successor.terminals) {
+    const argv = buildLaunchArgv(entry, { claudeCommand, repoPath });
+    const result = await trySpawn(argv);
+    if (result.ok) {
+      attempts.push({ terminal: entry.name, argv, outcome: "launched" });
+      return {
+        status: "ok",
+        terminal: entry.name,
+        command: argv,
+        attempts,
+        configWarning
+      };
+    }
+    attempts.push({
+      terminal: entry.name,
+      argv,
+      outcome: "failed",
+      error: result.error
+    });
+  }
+  return {
+    status: "error",
+    errorCode: "ALL_TERMINALS_FAILED",
+    errorMessage: `Every terminal in the fallback chain failed to launch: ` + attempts.map((a) => `${a.terminal} (${a.error})`).join("; ") + ". Resume the run manually with /orchestrate in a new session.",
+    attempts,
+    configWarning
+  };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
-  version: "0.10.0"
+  version: "0.11.0"
 });
 var registerTool = server.registerTool.bind(server);
 var handleCreateWorktree = async (input) => {
@@ -22685,6 +22896,34 @@ for (const tool of RENDER_TOOLS) {
     handle
   );
 }
+var handleSpawnSuccessor = async (input) => {
+  const result = await spawnSuccessor(input);
+  let text;
+  if (result.status === "ok") {
+    text = `Successor session launched via ${result.terminal}.`;
+  } else {
+    text = `Failed to launch successor [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  if (result.configWarning) {
+    text += ` (${result.configWarning})`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "spawn_successor",
+  {
+    title: "Spawn Successor Session",
+    description: "Launches a fresh interactive Claude Code session that resumes an interrupted orchestration run from the .orchestrate/run-state.json checkpoint, then the predecessor exits. The successor opens in a new terminal window with Remote Control active and re-invokes /orchestrate \u2014 never print mode. The terminal fallback chain and claude flags are configured in .orchestrate/handoff.json; built-in defaults target a WSL2 environment. Returns a discriminated `status` of 'ok' or 'error'.",
+    inputSchema: spawnSuccessorInputSchema.shape,
+    outputSchema: spawnSuccessorOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleSpawnSuccessor
+);
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);

@@ -1,10 +1,10 @@
 {
   "name": "@orchestrate/mcp",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "MCP server providing worktree lifecycle tools for orchestrating parallel Claude Code agents.",
   "main": "dist/index.js",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.js",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.js && esbuild src/hooks/context-watchdog-cli.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/context-watchdog.js",
     "typecheck": "node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

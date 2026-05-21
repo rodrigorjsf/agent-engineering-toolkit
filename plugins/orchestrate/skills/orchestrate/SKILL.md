@@ -51,10 +51,24 @@ The target project should also have committed `.orchestrate/commands.json` and
 `commands.json` the capability tools return `not-configured`, which is
 tolerated. Without `routing.json` the `resolve_routing` tool errors and the run
 falls back to the `-standard` variant of every role with no model override.
+An optional `.orchestrate/handoff.json` tunes the context-watchdog threshold
+and the successor launcher; without it, built-in defaults apply (see
+`references/context-handoff.md`).
 
 ## 1. Start or resume the run
 
-On startup, check for `.orchestrate/run-state.json` (its schema is in
+On startup, set a completion goal with `/goal` so the session keeps working
+turn after turn and does not yield control before the run is done. Phrase it
+as a checkable end-state, e.g. `/goal the orchestrate run has opened its final
+integration pull request, or a successor session has been launched`. An
+autonomous run must not stop mid-wave.
+
+Also clear any stale handoff flag: if `.orchestrate/context-flag.json` exists,
+delete it. On a resumed run it is the predecessor's handoff trigger, now
+consumed; on a fresh run it is leftover from an earlier run. Either way,
+leaving it would make this session hand off immediately (section 2, step 3).
+
+Then check for `.orchestrate/run-state.json` (its schema is in
 `references/run-state.md`).
 
 - **It exists and `status` is `in-progress`** — resume. Load the whole file,
@@ -135,7 +149,11 @@ Process waves in order, starting at index `completedWaves`. For each wave:
    slice has its own worktree, so they never collide.
 3. **Integrate sequentially.** The commit, pull-request, and merge steps
    (section 3, steps 6–9) run **one slice at a time** — merges into the
-   umbrella branch must not race each other.
+   umbrella branch must not race each other. After each slice finishes
+   integrating, check for `.orchestrate/context-flag.json`: if it exists, the
+   context-watchdog has signalled that this session's context is filling. Do
+   not start the next slice — finish writing `run-state.json` for the slice
+   just integrated, then go to section 4 (Context handoff).
 4. **Checkpoint the wave.** Set `completedWaves` to this wave's index + 1 and
    write `run-state.json`.
 5. **Report wave progress to the PRD.** If `parentIssue` is set, post a comment
@@ -274,6 +292,34 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
    `gh issue edit <N> --remove-label ready-for-agent --add-label ready-for-human`.
    Then remove its worktree with the `remove_worktree` MCP tool (`worktreePath`,
    `repoPath`, `force: true` — the worktree may hold untracked build artifacts).
+
+## 4. Context handoff
+
+A long run can fill this session's context before every wave is done. The
+`context-watchdog` hook bundled with this plugin watches token usage and writes
+`.orchestrate/context-flag.json` past a configurable threshold. When the wave
+loop (section 2, step 3) sees that flag, hand the run off to a fresh Claude
+Code session instead of continuing — the successor resumes from the
+`run-state.json` checkpoint exactly as section 1 describes. See
+`references/context-handoff.md` for the full mechanism.
+
+To hand off:
+
+1. Make sure `run-state.json` is checkpointed and its `status` is still
+   `in-progress` — the successor resumes from it. Do **not** delete
+   `.orchestrate/context-flag.json`; the successor deletes it on startup once
+   it has consumed it.
+2. Call the `spawn_successor` MCP tool with the repository root as `repoPath`.
+   It launches a new interactive Claude Code session — terminal and `claude`
+   flags come from `.orchestrate/handoff.json`, defaults otherwise — that
+   re-invokes `/orchestrate` with Remote Control active.
+   - `status: "ok"` — the successor launched. Report to the user which terminal
+     opened (`terminal`) and that the run continues there, then **stop** — do
+     not process any further waves in this session.
+   - `status: "error"` — the launch failed. Do not retry blindly. Report the
+     `errorMessage` (and the `attempts`, if any), tell the user the run is
+     checkpointed and resumable by running `/orchestrate` in a new session,
+     then stop.
 
 ## Failure handling
 

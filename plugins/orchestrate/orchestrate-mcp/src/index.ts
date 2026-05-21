@@ -45,10 +45,17 @@ import {
   type RenderInput,
   type RenderOutput,
 } from "./tools/render.js";
+import {
+  spawnSuccessor,
+  spawnSuccessorInputSchema,
+  spawnSuccessorOutputSchema,
+  type SpawnSuccessorInput,
+  type SpawnSuccessorOutput,
+} from "./tools/spawn-successor.js";
 
 const server = new McpServer({
   name: "orchestrate",
-  version: "0.10.0",
+  version: "0.11.0",
 });
 
 /**
@@ -403,6 +410,48 @@ for (const tool of RENDER_TOOLS) {
     handle as unknown as AnyToolHandler
   );
 }
+
+// ─── spawn_successor ──────────────────────────────────────────────────────────
+
+const handleSpawnSuccessor: ToolHandler<
+  SpawnSuccessorInput,
+  SpawnSuccessorOutput
+> = async (input) => {
+  const result = await spawnSuccessor(input);
+  let text: string;
+  if (result.status === "ok") {
+    text = `Successor session launched via ${result.terminal}.`;
+  } else {
+    text = `Failed to launch successor [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  if (result.configWarning) {
+    text += ` (${result.configWarning})`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "spawn_successor",
+  {
+    title: "Spawn Successor Session",
+    description:
+      "Launches a fresh interactive Claude Code session that resumes an " +
+      "interrupted orchestration run from the .orchestrate/run-state.json " +
+      "checkpoint, then the predecessor exits. The successor opens in a new " +
+      "terminal window with Remote Control active and re-invokes /orchestrate " +
+      "— never print mode. The terminal fallback chain and claude flags are " +
+      "configured in .orchestrate/handoff.json; built-in defaults target a " +
+      "WSL2 environment. Returns a discriminated `status` of 'ok' or 'error'.",
+    inputSchema: spawnSuccessorInputSchema.shape,
+    outputSchema: spawnSuccessorOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleSpawnSuccessor as unknown as AnyToolHandler
+);
 
 // ─── Start server ─────────────────────────────────────────────────────────────
 
