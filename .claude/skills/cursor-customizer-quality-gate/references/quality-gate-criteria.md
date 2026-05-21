@@ -21,9 +21,10 @@ Source: `.claude/rules/cursor-plugin-skills.md`, `.claude/rules/reference-files.
 9. [Drift Manifest Completeness Checks](#drift-manifest-completeness-checks)
 10. [Product-Strict Textual Compliance](#product-strict-textual-compliance)
 11. [Known-Accepted Exceptions](#known-accepted-exceptions)
-12. [Severity Classification](#severity-classification)
-13. [Expected Results Checklist](#expected-results-checklist)
-14. [Report Template](#report-template)
+12. [Canonical Semantic-Tag Convention Checks](#canonical-semantic-tag-convention-checks)
+13. [Severity Classification](#severity-classification)
+14. [Expected Results Checklist](#expected-results-checklist)
+15. [Report Template](#report-template)
 
 ---
 
@@ -225,6 +226,72 @@ in sync.
 
 ---
 
+## Canonical Semantic-Tag Convention Checks
+
+Applies to all SKILL.md bodies under `plugins/cursor-customizer/skills/**/SKILL.md` and all
+subagent bodies under `plugins/cursor-customizer/agents/**/*.md`.
+Source: `wiki/knowledge/skill-body-convention.md`, `docs/adr/0007-skill-body-semantic-tag-convention.md`
+
+The tag vocabulary and strictness tiers are platform-agnostic. Cursor subagents differ from
+Claude Code subagents only in YAML frontmatter (`model: inherit`, `readonly: true`, no `tools:`
+or `maxTurns:` fields) — the body convention is identical.
+
+### Skill targets (`plugins/cursor-customizer/skills/**/SKILL.md`)
+
+Mandatory tags: `<TRIGGER>`, `<BEHAVIOUR>`, `<HARD_RULES>` (or legacy `<RULES>` alias), `<PROCESS>`
+containing at least one `<PHASE id="N" name="X">`.
+
+| # | Check | Tier | Severity |
+|---|-------|------|----------|
+| V1 | `<TRIGGER>` present in body | Hard-fail if absent | CRITICAL |
+| V2 | `<BEHAVIOUR>` present in body | Hard-fail if absent | CRITICAL |
+| V3 | `<HARD_RULES>` or `<RULES>` alias present in body | Hard-fail if absent | CRITICAL |
+| V4 | `<PROCESS>` present in body | Hard-fail if absent | CRITICAL |
+| V5 | `<PROCESS>` contains at least one `<PHASE>` | Hard-fail if zero `<PHASE>` | CRITICAL |
+| V6 | Every `<PHASE>` carries a mandatory `id=` attribute | Hard-fail if `id=` absent | CRITICAL |
+| V7 | All opened tags have a matching closing tag (no unbalanced open/close) | Hard-fail if unbalanced | CRITICAL |
+| V8 | All attribute values are properly quoted (no bare `=`, no unterminated quotes) | Hard-fail if malformed | CRITICAL |
+| V9 | All attribute names belong to the closed set: `avoid`, `always`, `when`, `name`, `id`, `priority` | Warn if non-canonical | MAJOR |
+| V10 | `<RULES>` occurrences reported as informational `<HARD_RULES>` alias candidates | Informational (not a fail or warn) | — |
+
+### Subagent targets (`plugins/cursor-customizer/agents/**/*.md`)
+
+Mandatory tags: `<BEHAVIOUR>`, `<HARD_RULES>` (or `<RULES>` alias), `<PROCESS>` with at least one
+`<PHASE id="N" name="X">`. `<TRIGGER>` is OPTIONAL for subagents — its absence is SILENT (never a
+finding).
+
+| # | Check | Tier | Severity |
+|---|-------|------|----------|
+| VA1 | `<BEHAVIOUR>` present in body | Hard-fail if absent | CRITICAL |
+| VA2 | `<HARD_RULES>` or `<RULES>` alias present in body | Hard-fail if absent | CRITICAL |
+| VA3 | `<PROCESS>` present in body | Hard-fail if absent | CRITICAL |
+| VA4 | `<PROCESS>` contains at least one `<PHASE>` | Hard-fail if zero `<PHASE>` | CRITICAL |
+| VA5 | Every `<PHASE>` carries a mandatory `id=` attribute | Hard-fail if `id=` absent | CRITICAL |
+| VA6 | All opened tags have a matching closing tag | Hard-fail if unbalanced | CRITICAL |
+| VA7 | All attribute values properly quoted | Hard-fail if malformed | CRITICAL |
+| VA8 | All attribute names in closed set | Warn if non-canonical | MAJOR |
+| VA9 | `<TRIGGER>` absence | Silent — no finding | — |
+| VA10 | `<RULES>` occurrences reported as informational `<HARD_RULES>` alias candidates | Informational (not a fail or warn) | — |
+
+### Fixture corpus
+
+The golden fixture corpus for these checks is the shared corpus at:
+`.claude/skills/agent-customizer-quality-gate/assets/fixtures/`
+
+- `skill/` — 10 fixtures for skill-body validation (see `skill/MANIFEST.md`)
+- `subagent/` — 10 fixtures for subagent-body validation (see `subagent/MANIFEST.md`)
+
+Note on subagent fixtures: fixture frontmatter uses Claude Code conventions; the body convention
+being validated is platform-agnostic, so the same fixtures apply.
+
+Running the checks above against the corpus MUST produce the verdict documented in each MANIFEST.
+Any mismatch means the strictness-tier text above is ambiguous and must be tightened.
+
+This gate also maintains redirect stubs at:
+`.claude/skills/cursor-customizer-quality-gate/assets/fixtures/`
+
+---
+
 ## Severity Classification
 
 | Severity | Meaning | Must Fix Before Release? |
@@ -250,6 +317,7 @@ outputs to confirm full coverage. Every category heading below MUST appear in th
 - Plugin Manifest
 - Drift Manifest Completeness
 - Product-Strict Textual Compliance
+- Canonical Semantic-Tag Convention
 
 ---
 
@@ -273,6 +341,7 @@ Use this structure for `.specs/reports/cursor-customizer-quality-gate-[YYYY-MM-D
 | Plugin Manifest | 3 | [N] | [N] | PASS/FAIL |
 | Drift Manifest Completeness | 3 | [N] | [N] | PASS/FAIL |
 | Product-Strict Textual Compliance | 1 | [N] | [N] | PASS/FAIL |
+| Canonical Semantic-Tag Convention | [N] | [N] | [N] | PASS/FAIL |
 | **OVERALL** | [N] | [N] | [N] | **FAIL** |
 
 ## Findings

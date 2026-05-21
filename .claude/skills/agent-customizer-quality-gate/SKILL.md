@@ -85,15 +85,60 @@ combine the evaluator instructions with this appended instruction:
 
 ---
 
-## Phase 5: Findings Synthesis
+## Phase 5: Canonical Semantic-Tag Convention Checks
 
-Aggregate all outputs from Phases 1–4.
+Read `.claude/skills/agent-customizer-quality-gate/references/quality-gate-criteria.md`
+Section `## Canonical Semantic-Tag Convention Checks`.
+
+**Skill targets** — for each file matching `plugins/agent-customizer/skills/**/SKILL.md`:
+
+1. Parse the body (everything after the closing `---` of the YAML frontmatter).
+2. Apply checks V1–V9 from the criteria reference using the strictness tiers below.
+3. For any `<RULES>` occurrence, record it as an **informational alias candidate** (not a fail,
+   not a warn — surface it in the summary as: "File X uses `<RULES>`; consider renaming to
+   `<HARD_RULES>` on next touch (legacy alias — satisfies the V3 check)").
+
+**Subagent targets** — for each file matching `plugins/agent-customizer/agents/**/*.md`:
+
+1. Parse the body after the YAML frontmatter.
+2. Apply checks VA1–VA8. `<TRIGGER>` absence is **silent** — do not record it as a finding.
+3. For any `<RULES>` occurrence, record as informational (same rule as above).
+
+**Strictness tiers (apply verbatim):**
+
+| Tier | Trigger | Action |
+|------|---------|--------|
+| Hard-fail | Any mandatory tag missing; unbalanced open/close tag; malformed attribute syntax (`id=` absent on `<PHASE>`, unquoted attribute value, stray `=`, unterminated quote) | Record as CRITICAL finding; counts toward FAIL |
+| Warn | Non-canonical attribute name (outside `avoid`, `always`, `when`, `name`, `id`, `priority`) | Record as MAJOR warning; does not block PASS |
+| Silent | Absence of optional tag; `<TRIGGER>` absent in subagent body | No finding |
+| Informational | `<RULES>` present (legacy alias) | Surface as alias candidate note; no verdict impact |
+
+**Fixture corpus validation** — after checking the live plugin files, validate the gate's own
+fixture corpus at `.claude/skills/agent-customizer-quality-gate/assets/fixtures/`:
+
+- Run each `skill/*.md` fixture through V1–V9 checks and confirm the verdict matches
+  `skill/MANIFEST.md`.
+- Run each `subagent/*.md` fixture through VA1–VA8 checks and confirm the verdict matches
+  `subagent/MANIFEST.md`.
+- Any mismatch between observed verdict and MANIFEST verdict is itself a CRITICAL finding
+  (the strictness-tier text is ambiguous).
+
+Collect structured output as `tag_convention_report`, which contains:
+- Per-file check results for each skill and subagent body
+- Informational `<RULES>` alias candidate list
+- Fixture corpus validation results (pass/mismatch per fixture)
+
+---
+
+## Phase 6: Findings Synthesis
+
+Aggregate all outputs from Phases 1–5.
 
 Read `.claude/skills/agent-customizer-quality-gate/references/quality-gate-criteria.md`
 Sections `## Plugin SKILL.md Checks`, `## Agent File Checks`, `## Reference File Checks`,
-`## Shared-Copy Parity Checks`, `## Docs Drift Checks`, `## Scenario Checks`, and
-`## Plugin Manifest Checks`. Cross-reference those category headings against Phase 1–4
-results to confirm full coverage.
+`## Shared-Copy Parity Checks`, `## Docs Drift Checks`, `## Scenario Checks`,
+`## Plugin Manifest Checks`, and `## Canonical Semantic-Tag Convention Checks`.
+Cross-reference those category headings against Phase 1–5 results to confirm full coverage.
 
 Compute and display the **Quality Gate Dashboard**:
 
@@ -107,6 +152,7 @@ Intra-Plugin Parity                  14    [N]     [N]   [PASS/FAIL]
 Docs Drift                          [N]    [N]     [N]   [PASS/FAIL]
 Red-Green Scenario Coverage          16    [N]     [N]   [PASS/FAIL]
 Plugin Manifest                       3    [N]     [N]   [PASS/FAIL]
+Canonical Semantic-Tag Convention   [N]    [N]     [N]   [PASS/FAIL]
 ─────────────────────────────────────────────────────────────
 OVERALL                             [N]    [N]     [N]   [PASS/FAIL]
 ═══════════════════════════════════════════════════════════

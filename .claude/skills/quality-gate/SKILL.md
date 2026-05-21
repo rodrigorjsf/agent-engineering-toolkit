@@ -83,26 +83,66 @@ Read `.claude/skills/quality-gate/agents/scenario-evaluator.md`. Skip the YAML f
 
 ---
 
-## Phase 5: Findings Synthesis
+## Phase 5: Canonical Semantic-Tag Convention Checks
 
-Aggregate all outputs from Phases 1, 2, 3, and 4.
+Read `.claude/skills/quality-gate/references/quality-gate-criteria.md`
+Section `## Canonical Semantic-Tag Convention Checks`.
 
-Read `.claude/skills/quality-gate/references/quality-gate-criteria.md` Section `## Expected Results Checklist`. Cross-reference the category headings in the checklist against the Phase 1–4 results to confirm every category was covered. Note any categories with no corresponding results.
+**Skill targets** — apply to both distributions:
+- Plugin: each file matching `plugins/agents-initializer/skills/**/SKILL.md`
+- Standalone: each file matching `skills/**/SKILL.md`
+
+For each file:
+
+1. Parse the body (everything after the closing `---` of the YAML frontmatter).
+2. Apply checks V1–V9 from the criteria reference using the strictness tiers below.
+3. For any `<RULES>` occurrence, record it as an **informational alias candidate** (not a fail,
+   not a warn — surface it as: "File X uses `<RULES>`; consider renaming to `<HARD_RULES>` on
+   next touch (legacy alias — satisfies the V3 check)").
+
+**Strictness tiers (apply verbatim):**
+
+| Tier | Trigger | Action |
+|------|---------|--------|
+| Hard-fail | Any mandatory tag missing; unbalanced open/close tag; malformed attribute syntax (`id=` absent on `<PHASE>`, unquoted attribute value, stray `=`, unterminated quote) | Record as CRITICAL finding; counts toward FAIL |
+| Warn | Non-canonical attribute name (outside `avoid`, `always`, `when`, `name`, `id`, `priority`) | Record as MAJOR warning; does not block PASS |
+| Silent | Absence of optional tag | No finding |
+| Informational | `<RULES>` present (legacy alias) | Surface as alias candidate note; no verdict impact |
+
+**Fixture corpus validation** — after checking the live plugin and standalone files, validate the
+golden corpus at `.claude/skills/agent-customizer-quality-gate/assets/fixtures/skill/`:
+
+- Run each fixture through V1–V9 checks and confirm the verdict matches `MANIFEST.md` there.
+- Any mismatch between observed verdict and MANIFEST verdict is itself a CRITICAL finding.
+
+Collect structured output as `tag_convention_report`, which contains:
+- Per-file check results for each plugin skill body and each standalone skill body
+- Informational `<RULES>` alias candidate list
+- Fixture corpus validation results (pass/mismatch per fixture)
+
+---
+
+## Phase 6: Findings Synthesis
+
+Aggregate all outputs from Phases 1, 2, 3, 4, and 5.
+
+Read `.claude/skills/quality-gate/references/quality-gate-criteria.md` Section `## Expected Results Checklist`. Cross-reference the category headings in the checklist against the Phase 1–5 results to confirm every category was covered. Note any categories with no corresponding results.
 
 Compute and display the **Quality Gate Dashboard**:
 
 ```
 Quality Gate Dashboard — agents-initializer [DATE]
-═══════════════════════════════════════════════════
-Category                    Checks  Passed  Failed  Status
-─────────────────────────────────────────────────────────
-Static Artifact Compliance    [N]     [N]     [N]   [PASS/FAIL]
-Cross-Distribution Parity     [N]     [N]     [N]   [PASS/FAIL]
-Docs Drift                    [N]     [N]     [N]   [PASS/FAIL]
-Red-Green Test Coverage         4     [N]     [N]   [PASS/FAIL]
-─────────────────────────────────────────────────────────
-OVERALL                       [N]     [N]     [N]   [PASS/FAIL]
-═══════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════
+Category                        Checks  Passed  Failed  Status
+──────────────────────────────────────────────────────────
+Static Artifact Compliance        [N]     [N]     [N]   [PASS/FAIL]
+Cross-Distribution Parity         [N]     [N]     [N]   [PASS/FAIL]
+Docs Drift                        [N]     [N]     [N]   [PASS/FAIL]
+Red-Green Test Coverage             4     [N]     [N]   [PASS/FAIL]
+Canonical Semantic-Tag Convention [N]     [N]     [N]   [PASS/FAIL]
+──────────────────────────────────────────────────────────
+OVERALL                           [N]     [N]     [N]   [PASS/FAIL]
+═══════════════════════════════════════════════════════════
 ```
 
 **If all checks pass:**
@@ -110,11 +150,11 @@ OVERALL                       [N]     [N]     [N]   [PASS/FAIL]
 
 **Stop here. Do NOT write any report file to `.specs/reports/`.**
 
-**If any checks fail:** Proceed to Phase 6.
+**If any checks fail:** Proceed to Phase 7.
 
 ---
 
-## Phase 6: Findings Report
+## Phase 7: Findings Report
 
 Generate `.specs/reports/quality-gate-[YYYY-MM-DD]-findings.md`.
 
