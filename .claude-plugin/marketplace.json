@@ -1,8 +1,8 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "agent-engineering-toolkit",
-  "version": "1.2.0",
-  "description": "Multi-plugin marketplace for evidence-based Claude Code artifact engineering. Provides plugins for configuration initialization (AGENTS.md, CLAUDE.md) and artifact creation/optimization (skills, hooks, rules, subagents).",
+  "version": "1.3.0",
+  "description": "Multi-plugin marketplace for evidence-based Claude Code artifact engineering. Provides plugins for configuration initialization (AGENTS.md, CLAUDE.md), artifact creation/optimization (skills, hooks, rules, subagents), and autonomous backlog orchestration.",
   "owner": {
     "name": "rodrigorjsf",
     "email": "rodrigo_rjsf@hotmail.com"
@@ -28,6 +28,17 @@
         "email": "rodrigo_rjsf@hotmail.com"
       },
       "source": "./plugins/agent-customizer",
+      "category": "developer-tools"
+    },
+    {
+      "name": "orchestrate",
+      "description": "Autonomously orchestrate a backlog of ready-for-agent GitHub issues — dependency-ordered waves, implementer and reviewer subagents in isolated git worktrees, checkpointed and resumable.",
+      "version": "1.0.0",
+      "author": {
+        "name": "rodrigorjsf",
+        "email": "rodrigo_rjsf@hotmail.com"
+      },
+      "source": "./plugins/orchestrate",
       "category": "developer-tools"
     }
   ]

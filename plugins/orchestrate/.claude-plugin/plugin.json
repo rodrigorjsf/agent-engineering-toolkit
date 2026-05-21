@@ -1,6 +1,6 @@
 {
   "name": "orchestrate",
-  "version": "0.13.0",
+  "version": "1.0.0",
   "description": "MCP server providing worktree lifecycle and orchestration tools for parallel Claude Code agents.",
   "author": {
     "name": "rodrigorjsf"
