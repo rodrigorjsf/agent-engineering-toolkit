@@ -29,6 +29,8 @@ Generates a new SKILL.md file with supporting references and templates, grounded
 - **EVERY** skill description must be third-person and include a "Use when..." trigger phrase
 - **EVERY** generated skill must preserve the ethical constraint: persuasion cues support legitimate work only, never safety bypass
 - **EVERY** generated SKILL.md body must carry the canonical semantic-tag vocabulary in canonical positions
+- **EVERY** new skill whose output is a human-rich agent-executable artifact (plan, PRD, spec, report, prototype, code-review writeup, custom editor) MUST default to an HTML output template — unless the user explicitly says "generate as markdown" (or equivalent), in which case that override always wins
+- **NEVER** default to HTML for agent-loaded or tooling-locked artifacts (`SKILL.md`, `AGENTS.md`, `CLAUDE.md`, rules files, wiki pages, ADRs, `CONTEXT.md`, `README.md`, commit messages, PR bodies, GitHub issues, code comments) — these are Markdown-mandatory regardless of user request phrasing
 </HARD_RULES>
 
 <PROCESS>
@@ -65,6 +67,14 @@ Generates a new SKILL.md file with supporting references and templates, grounded
 
   Decide skill structure: phases, reference file names, and whether `assets/templates/` is needed.
 
+  **Classify output artifact format.** Read `${CLAUDE_SKILL_DIR}/references/artifact-format-routing.md` and apply its routing table to the new skill being generated:
+
+  1. Identify what kind of artifact the new skill will produce (plan/PRD/spec/report/prototype vs. SKILL.md/rule/ADR/README/etc.).
+  2. Apply the routing table: human-rich agent-executable artifacts default to **HTML**; agent-loaded and tooling-locked artifacts are **Markdown-mandatory**.
+  3. Check for explicit override: if the user said "generate as markdown" (or equivalent), that override wins regardless of artifact type.
+  4. If the verdict is **HTML**: copy `${CLAUDE_SKILL_DIR}/assets/templates/html-artifact-skeleton.html` into the new skill's `assets/templates/` directory (rename to match the artifact type, e.g., `plan.html`). The new skill must instruct its own generation phase to populate the canonical semantic tags (`<TRIGGER>`, `<BEHAVIOUR>`, `<HARD_RULES>`, `<PROCESS>` with `<PHASE>`, plus relevant optional tags) inside the HTML `<body>`.
+  5. If the verdict is **Markdown**: use `${CLAUDE_SKILL_DIR}/assets/templates/skill-md.md` or a Markdown template appropriate to the artifact type.
+
   **Apply patterns.** Drop the load-context references above. Read these references:
 
   - `${CLAUDE_SKILL_DIR}/references/behavioral-guidelines.md` — Karpathy-aligned behavior and safe persuasion patterns for skills
@@ -73,11 +83,12 @@ Generates a new SKILL.md file with supporting references and templates, grounded
   <REFERENCES load="on-demand">
   - skill-authoring-guide.md
   - skill-format-reference.md
+  - artifact-format-routing.md
   - behavioral-guidelines.md
   - prompt-engineering-strategies.md
   </REFERENCES>
 
-  Read `${CLAUDE_SKILL_DIR}/assets/templates/skill-md.md` and fill its placeholders using:
+  Read the chosen output template (HTML skeleton or `skill-md.md`) and fill its placeholders using:
 
   - User requirements for the new skill
   - Phase 1 analysis output (naming conventions, existing patterns, plugin context)
@@ -89,9 +100,7 @@ Generates a new SKILL.md file with supporting references and templates, grounded
 
   1. `SKILL.md` — primary skill file with frontmatter and a body carrying the canonical semantic-tag vocabulary
   2. `references/` — create only reference files that include initial source attribution sections (no empty stubs without attribution)
-  3. `assets/templates/` — create stub template files if the skill generates output files
-
-     For validator-type skills that only report findings without generating output files, `assets/templates/` may be omitted.
+  3. `assets/templates/` — create the appropriate output template (HTML or Markdown per the routing verdict above); for validator-type skills that only report findings without generating output files, `assets/templates/` may be omitted
   </PHASE>
 
   <PHASE id="3" name="self-validation">
