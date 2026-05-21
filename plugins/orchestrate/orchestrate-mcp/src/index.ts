@@ -12,10 +12,20 @@ import {
   type CreateWorktreeInput,
   type RemoveWorktreeInput,
 } from "./tools/worktree.js";
+import {
+  runTests,
+  runTypecheck,
+  runBuild,
+  runLint,
+  runCommandInputSchema,
+  runCommandOutputSchema,
+  type RunCommandInput,
+  type RunCommandOutput,
+} from "./tools/run-command.js";
 
 const server = new McpServer({
   name: "orchestrate",
-  version: "0.1.0",
+  version: "0.2.0",
 });
 
 /**
@@ -149,6 +159,74 @@ registerTool(
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleRemoveWorktree as unknown as AnyToolHandler
 );
+
+// ─── run_tests / run_typecheck / run_build / run_lint ─────────────────────────
+// Four fixed-capability executors. Each runs the argv configured for its verb
+// in `.orchestrate/commands.json`; the caller selects the capability by
+// choosing the tool, never by passing a command string.
+
+function summarizeRun(r: RunCommandOutput): string {
+  switch (r.status) {
+    case "passed":
+      return `${r.capability} passed (exit 0, ${r.durationMs} ms).`;
+    case "failed":
+      return `${r.capability} failed (exit ${r.exitCode}, ${r.durationMs} ms).`;
+    case "not-configured":
+      return `${r.capability} is not configured: ${r.reason}`;
+    case "error":
+      return `${r.capability} could not run [${r.errorCode}]: ${r.errorMessage}`;
+  }
+}
+
+const handleRun = (
+  run: (input: RunCommandInput) => Promise<RunCommandOutput>
+): ToolHandler<RunCommandInput, RunCommandOutput> => {
+  return async (input) => {
+    const result = await run(input);
+    return {
+      structuredContent: result,
+      content: [{ type: "text" as const, text: summarizeRun(result) }],
+    };
+  };
+};
+
+const RUN_TOOLS: {
+  name: string;
+  title: string;
+  verb: string;
+  run: (input: RunCommandInput) => Promise<RunCommandOutput>;
+}[] = [
+  { name: "run_tests", title: "Run Tests", verb: "tests", run: runTests },
+  {
+    name: "run_typecheck",
+    title: "Run Typecheck",
+    verb: "typecheck",
+    run: runTypecheck,
+  },
+  { name: "run_build", title: "Run Build", verb: "build", run: runBuild },
+  { name: "run_lint", title: "Run Lint", verb: "lint", run: runLint },
+];
+
+for (const tool of RUN_TOOLS) {
+  registerTool(
+    tool.name,
+    {
+      title: tool.title,
+      description:
+        `Runs the project's "${tool.verb}" command exactly as configured in ` +
+        `.orchestrate/commands.json. The command is a fixed argv array read ` +
+        `from that file — this tool never accepts a command string from the ` +
+        `caller. Returns a discriminated status: 'passed' (exit 0), 'failed' ` +
+        `(non-zero exit), 'not-configured' (no "${tool.verb}" command set), ` +
+        `or 'error' (invalid config, timeout, or spawn failure).`,
+      inputSchema: runCommandInputSchema.shape,
+      outputSchema: runCommandOutputSchema.shape,
+    },
+    // Handlers are typed against their concrete input/output contracts;
+    // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+    handleRun(tool.run) as unknown as AnyToolHandler
+  );
+}
 
 // ─── Start server ─────────────────────────────────────────────────────────────
 

@@ -3226,8 +3226,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path2) {
-      let input = path2;
+    function removeDotSegments(path3) {
+      let input = path3;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3479,8 +3479,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path2, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path2 && path2 !== "/" ? path2 : void 0;
+        const [path3, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs2, exportName) {
+    function addFormats(ajv, list, fs3, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs2[f]);
+        ajv.addFormat(f, fs3[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -7364,8 +7364,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path2, errorMaps, issueData } = params;
-  const fullPath = [...path2, ...issueData.path || []];
+  const { data, path: path3, errorMaps, issueData } = params;
+  const fullPath = [...path3, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7481,11 +7481,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path2, key) {
+  constructor(parent, value, path3, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path2;
+    this._path = path3;
     this._key = key;
   }
   get path() {
@@ -11123,10 +11123,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path2) {
-  if (!path2)
+function getElementAtPath(obj, path3) {
+  if (!path3)
     return obj;
-  return path2.reduce((acc, key) => acc?.[key], obj);
+  return path3.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11446,11 +11446,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path2, issues) {
+function prefixIssues(path3, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path2);
+    iss.path.unshift(path3);
     return iss;
   });
 }
@@ -21167,14 +21167,14 @@ function optionInjectionError(field, value) {
 }
 function cleanGitError(err) {
   if (err instanceof GitExecError && err.stderr.trim().length > 0) {
-    const firstLine2 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-    if (firstLine2) {
-      return firstLine2;
+    const firstLine3 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+    if (firstLine3) {
+      return firstLine3;
     }
   }
   const message = err instanceof Error ? err.message : String(err);
-  const firstLine = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-  return firstLine ?? "Unknown git error";
+  const firstLine2 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return firstLine2 ?? "Unknown git error";
 }
 
 // src/tools/worktree.ts
@@ -21453,10 +21453,217 @@ function parsePorcelainZ(porcelain) {
   return paths;
 }
 
+// src/tools/run-command.ts
+var path2 = __toESM(require("path"));
+var fs2 = __toESM(require("fs"));
+var import_child_process2 = require("child_process");
+var import_util7 = require("util");
+var execFileAsync2 = (0, import_util7.promisify)(import_child_process2.execFile);
+var DEFAULT_TIMEOUT_MS = 6e5;
+var MAX_CAPTURE_BYTES = 16 * 1024 * 1024;
+var MAX_OUTPUT_CHARS = 64e3;
+var commandsConfigSchema = external_exports.object({
+  tests: external_exports.array(external_exports.string().min(1)).optional(),
+  typecheck: external_exports.array(external_exports.string().min(1)).optional(),
+  build: external_exports.array(external_exports.string().min(1)).optional(),
+  lint: external_exports.array(external_exports.string().min(1)).optional()
+});
+var runCommandInputSchema = external_exports.object({
+  repoPath: external_exports.string().optional().describe(
+    "Path to the project root that holds the .orchestrate/commands.json configuration file. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default, which is not guaranteed to be the project root."
+  )
+});
+var runCommandOutputSchema = external_exports.object({
+  status: external_exports.enum(["passed", "failed", "not-configured", "error"]).describe(
+    "Outcome discriminant. 'passed' = command exited 0; 'failed' = command exited non-zero; 'not-configured' = no command is configured for this verb (a clear, expected state \u2014 not a failure); 'error' = the command could not be run (invalid config, timeout, or spawn failure)."
+  ),
+  capability: external_exports.enum(["tests", "typecheck", "build", "lint"]).describe("The capability verb this result is for. Always present."),
+  command: external_exports.array(external_exports.string()).optional().describe(
+    "The exact argv array that was executed, read verbatim from .orchestrate/commands.json. Present when status is 'passed' or 'failed'. The caller never supplies this \u2014 it is fixed by config."
+  ),
+  exitCode: external_exports.number().optional().describe(
+    "Process exit code. 0 for 'passed', non-zero for 'failed'. Present when status is 'passed' or 'failed'."
+  ),
+  stdout: external_exports.string().optional().describe(
+    "Captured standard output, tail-truncated to 64,000 characters. Present when status is 'passed' or 'failed', and on a 'TIMEOUT' error (the output captured before the command was killed). See `truncated`."
+  ),
+  stderr: external_exports.string().optional().describe(
+    "Captured standard error, tail-truncated to 64,000 characters. Present when status is 'passed' or 'failed', and on a 'TIMEOUT' error. See `truncated`."
+  ),
+  truncated: external_exports.boolean().optional().describe(
+    "True when `stdout` or `stderr` was truncated to fit the size cap. Present whenever `stdout`/`stderr` are present."
+  ),
+  durationMs: external_exports.number().optional().describe(
+    "Wall-clock duration of the command in milliseconds. Present whenever a command was actually executed \u2014 status 'passed' or 'failed', or a 'TIMEOUT' / 'EXEC_ERROR' error. Absent for config-level failures."
+  ),
+  reason: external_exports.string().optional().describe(
+    "Human-readable explanation of why no command ran. Present when status is 'not-configured'."
+  ),
+  errorCode: external_exports.enum(["CONFIG_INVALID", "EXEC_ERROR", "TIMEOUT"]).optional().describe(
+    "Machine-readable failure category. Present when status is 'error'. 'CONFIG_INVALID' = commands.json is malformed JSON or the wrong shape; 'EXEC_ERROR' = the command binary could not be spawned; 'TIMEOUT' = the command exceeded the time limit and was killed."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status is 'error'."
+  )
+});
+function firstLine(message) {
+  const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return line ?? message.trim();
+}
+function capOutput(s) {
+  if (s.length <= MAX_OUTPUT_CHARS) {
+    return { text: s, truncated: false };
+  }
+  const tail = s.slice(s.length - MAX_OUTPUT_CHARS);
+  return {
+    text: `[... output truncated \u2014 showing the last ${MAX_OUTPUT_CHARS} characters ...]
+${tail}`,
+    truncated: true
+  };
+}
+async function execCommand(argv, cwd, timeoutMs) {
+  const start = Date.now();
+  try {
+    const { stdout, stderr } = await execFileAsync2(argv[0], argv.slice(1), {
+      cwd,
+      encoding: "utf8",
+      timeout: timeoutMs,
+      killSignal: "SIGKILL",
+      maxBuffer: MAX_CAPTURE_BYTES,
+      windowsHide: true
+    });
+    return {
+      kind: "exited",
+      exitCode: 0,
+      stdout: stdout.toString(),
+      stderr: stderr.toString(),
+      durationMs: Date.now() - start
+    };
+  } catch (err) {
+    const durationMs = Date.now() - start;
+    const e = err;
+    if (typeof e.code === "number") {
+      return {
+        kind: "exited",
+        exitCode: e.code,
+        stdout: e.stdout ? e.stdout.toString() : "",
+        stderr: e.stderr ? e.stderr.toString() : "",
+        durationMs
+      };
+    }
+    if (e.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+      return {
+        kind: "exec-error",
+        message: `Command output exceeded the ${MAX_CAPTURE_BYTES}-byte capture limit and was aborted.`,
+        durationMs
+      };
+    }
+    if (e.killed) {
+      return {
+        kind: "timeout",
+        stdout: e.stdout ? e.stdout.toString() : "",
+        stderr: e.stderr ? e.stderr.toString() : "",
+        durationMs
+      };
+    }
+    return {
+      kind: "exec-error",
+      message: firstLine(e.message ?? String(err)),
+      durationMs
+    };
+  }
+}
+async function runConfiguredCommand(verb, input, opts = {}) {
+  const cwd = input.repoPath ?? process.cwd();
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const configPath = path2.join(cwd, ".orchestrate", "commands.json");
+  let raw;
+  try {
+    raw = fs2.readFileSync(configPath, "utf8");
+  } catch {
+    return {
+      status: "not-configured",
+      capability: verb,
+      reason: `No .orchestrate/commands.json found in ${cwd}. Copy the orchestrate plugin's templates/commands.json to .orchestrate/commands.json and set the "${verb}" command.`
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      status: "error",
+      capability: verb,
+      errorCode: "CONFIG_INVALID",
+      errorMessage: `.orchestrate/commands.json is not valid JSON: ${firstLine(
+        err instanceof Error ? err.message : String(err)
+      )}`
+    };
+  }
+  const config2 = commandsConfigSchema.safeParse(parsed);
+  if (!config2.success) {
+    const detail = config2.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+    return {
+      status: "error",
+      capability: verb,
+      errorCode: "CONFIG_INVALID",
+      errorMessage: `.orchestrate/commands.json does not match the expected shape: ${detail}`
+    };
+  }
+  const argv = config2.data[verb];
+  if (!argv || argv.length === 0) {
+    return {
+      status: "not-configured",
+      capability: verb,
+      reason: `No "${verb}" command is configured in .orchestrate/commands.json.`
+    };
+  }
+  const exec = await execCommand(argv, cwd, timeoutMs);
+  if (exec.kind === "timeout") {
+    const out2 = capOutput(exec.stdout);
+    const errOut2 = capOutput(exec.stderr);
+    return {
+      status: "error",
+      capability: verb,
+      errorCode: "TIMEOUT",
+      errorMessage: `The "${verb}" command exceeded the ${timeoutMs} ms time limit and was killed.`,
+      stdout: out2.text,
+      stderr: errOut2.text,
+      truncated: out2.truncated || errOut2.truncated,
+      durationMs: exec.durationMs
+    };
+  }
+  if (exec.kind === "exec-error") {
+    return {
+      status: "error",
+      capability: verb,
+      errorCode: "EXEC_ERROR",
+      errorMessage: `The "${verb}" command could not be executed: ${exec.message}`,
+      durationMs: exec.durationMs
+    };
+  }
+  const out = capOutput(exec.stdout);
+  const errOut = capOutput(exec.stderr);
+  return {
+    status: exec.exitCode === 0 ? "passed" : "failed",
+    capability: verb,
+    command: argv,
+    exitCode: exec.exitCode,
+    stdout: out.text,
+    stderr: errOut.text,
+    truncated: out.truncated || errOut.truncated,
+    durationMs: exec.durationMs
+  };
+}
+var runTests = (input, opts) => runConfiguredCommand("tests", input, opts);
+var runTypecheck = (input, opts) => runConfiguredCommand("typecheck", input, opts);
+var runBuild = (input, opts) => runConfiguredCommand("build", input, opts);
+var runLint = (input, opts) => runConfiguredCommand("lint", input, opts);
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
-  version: "0.1.0"
+  version: "0.2.0"
 });
 var registerTool = server.registerTool.bind(server);
 var handleCreateWorktree = async (input) => {
@@ -21512,6 +21719,52 @@ registerTool(
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleRemoveWorktree
 );
+function summarizeRun(r) {
+  switch (r.status) {
+    case "passed":
+      return `${r.capability} passed (exit 0, ${r.durationMs} ms).`;
+    case "failed":
+      return `${r.capability} failed (exit ${r.exitCode}, ${r.durationMs} ms).`;
+    case "not-configured":
+      return `${r.capability} is not configured: ${r.reason}`;
+    case "error":
+      return `${r.capability} could not run [${r.errorCode}]: ${r.errorMessage}`;
+  }
+}
+var handleRun = (run) => {
+  return async (input) => {
+    const result = await run(input);
+    return {
+      structuredContent: result,
+      content: [{ type: "text", text: summarizeRun(result) }]
+    };
+  };
+};
+var RUN_TOOLS = [
+  { name: "run_tests", title: "Run Tests", verb: "tests", run: runTests },
+  {
+    name: "run_typecheck",
+    title: "Run Typecheck",
+    verb: "typecheck",
+    run: runTypecheck
+  },
+  { name: "run_build", title: "Run Build", verb: "build", run: runBuild },
+  { name: "run_lint", title: "Run Lint", verb: "lint", run: runLint }
+];
+for (const tool of RUN_TOOLS) {
+  registerTool(
+    tool.name,
+    {
+      title: tool.title,
+      description: `Runs the project's "${tool.verb}" command exactly as configured in .orchestrate/commands.json. The command is a fixed argv array read from that file \u2014 this tool never accepts a command string from the caller. Returns a discriminated status: 'passed' (exit 0), 'failed' (non-zero exit), 'not-configured' (no "${tool.verb}" command set), or 'error' (invalid config, timeout, or spawn failure).`,
+      inputSchema: runCommandInputSchema.shape,
+      outputSchema: runCommandOutputSchema.shape
+    },
+    // Handlers are typed against their concrete input/output contracts;
+    // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+    handleRun(tool.run)
+  );
+}
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
