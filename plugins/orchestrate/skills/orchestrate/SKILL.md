@@ -1,24 +1,26 @@
 ---
 name: orchestrate
-description: Implement one ready-for-agent GitHub issue end to end — create an umbrella branch off development, run an implementer subagent in an isolated worktree, verify, and open a slice pull request. Use when the user wants to autonomously orchestrate agent-driven implementation of a tracked issue, or invokes /orchestrate.
+description: Implement one ready-for-agent GitHub issue end to end — create an umbrella branch off development, run an implementer subagent in an isolated worktree, review it, and merge a slice pull request into the umbrella branch. Use when the user wants to autonomously orchestrate agent-driven implementation of a tracked issue, or invokes /orchestrate.
 ---
 
 # Orchestrate
 
-Drive one `ready-for-agent` GitHub issue from open to an opened pull request,
-with no human in the loop. This is the walking skeleton — a single issue, a
-single slice.
+Drive one `ready-for-agent` GitHub issue from open to a reviewed, merged slice,
+with no human in the loop. This is the single-issue path — one issue, one slice.
 
 ## Roles and the safety boundary
 
 - **Orchestrator** — you, running this skill. You own every git, GitHub, and
-  shell operation: branches, worktrees, commits, pushes, pull requests.
-- **Implementer** — the `implementer` subagent you spawn. It edits code in an
-  isolated worktree and verifies it through the orchestrate capability tools.
-  It has **no Bash and no git access**.
+  shell operation: branches, worktrees, commits, pushes, pull requests, merges.
+- **Implementer** — the `implementer` subagent. It edits code in an isolated
+  worktree and verifies it through the orchestrate capability tools.
+- **Reviewer** — the `reviewer` subagent. It reviews the implemented slice in
+  the same worktree, fixes clarity and consistency issues inline, re-runs the
+  capability tools, and gates the auto-merge.
 
-The safety model is that only the orchestrator touches branches, remotes, and
-the tracker; the implementer is sandboxed to file edits inside one worktree.
+Both subagents have **no Bash and no git access** — they are sandboxed to file
+edits inside one worktree. Only the orchestrator touches branches, remotes, and
+the tracker.
 
 ## Prerequisites
 
@@ -28,11 +30,13 @@ Check these before starting. If one is missing, report it and stop.
 - The repository's `origin` remote has a `development` branch — it is the
   integration base.
 - The orchestrate MCP server is available (its tools are used below).
+- Branch protection does not block merges into `orchestrate/umbrella-*` or
+  `orchestrate/slice-*` branches — the auto-merge in step 9 needs them open.
 
 The target project should also have a committed `.orchestrate/commands.json`
-(see the plugin's `templates/commands.json`) so the implementer can verify its
-work — without it the capability tools return `not-configured`, which is
-tolerated but means no automated verification.
+(see the plugin's `templates/commands.json`) so the implementer and reviewer can
+verify their work — without it the capability tools return `not-configured`,
+which is tolerated but means no automated verification.
 
 ## Procedure
 
@@ -102,27 +106,58 @@ Spawn the `implementer` subagent with the Agent tool. Its prompt must contain:
 - A reminder that it must not commit, push, or run git — the orchestrator does.
 
 When the implementer returns, read its structured summary. If its `status` is
-`blocked`, do **not** open a pull request: report the blocker, leave the
-worktree in place for inspection, and stop.
+`blocked`, the slice has **FAILED** — handle it per *Failure handling* below
+(do not review, commit, or merge).
 
-### 6. Commit and push the slice
+### 6. Review the slice
 
-The implementer cannot commit. You do, from outside the worktree with `git -C`:
+Spawn the `reviewer` subagent with the Agent tool, in the **same worktree**. Its
+prompt must contain:
 
-Pass the subject and body as two separate `-m` flags — git joins them with a
-blank line, which avoids embedding a newline in a single shell argument:
+- The issue number, title, and full body.
+- The **worktree path** from step 4.
+- The implementer's `filesChanged` list and `notes`.
+- An instruction to verify with the capability tools using the worktree path as
+  `repoPath`.
+
+The reviewer reviews the changed files, fixes clarity and consistency issues
+inline, and re-runs the capability tools. When it returns:
+
+- `status: "passed"` — continue to step 7.
+- `status: "failed"` — the reviewer found a blocker it could not safely fix.
+  The slice has **FAILED** — handle it per *Failure handling* below.
+
+### 7. Commit and push the slice
+
+The subagents cannot commit. You do, from outside the worktree with `git -C` —
+the commit captures both the implementer's and the reviewer's changes.
+
+Stage exactly the files the subagents reported changing — the union of the
+implementer's and the reviewer's `filesChanged` lists. Do **not** use
+`git add -A`: the capability tools leave untracked build artifacts (`dist/`,
+caches, coverage) in the worktree that must not enter the commit.
 
 ```
-git -C <worktree-path> add -A
+git -C <worktree-path> add -- <file> <file> ...
+```
+
+Confirm something was staged. If `git -C <worktree-path> diff --cached --quiet`
+exits 0, nothing changed and the slice has **FAILED** (the subagents produced no
+changes) — handle it per *Failure handling* below.
+
+Commit and push. Pass the subject and body as two separate `-m` flags — git
+joins them with a blank line, which avoids embedding a newline in a single
+shell argument:
+
+```
 git -C <worktree-path> commit -m "<type>(<scope>): <issue title>" -m "Closes #<N>"
 git -C <worktree-path> push -u origin orchestrate/slice-<N>
 ```
 
 Use a commit type that fits the change (`feat`, `fix`, `docs`, `refactor`,
-`chore`). If `git commit` reports nothing to commit, the implementer produced no
-changes — treat that as a blocked slice: report it and stop.
+`chore`).
 
-### 7. Open the slice pull request
+### 8. Open the slice pull request
 
 Open a pull request from the slice branch into the umbrella branch:
 
@@ -133,13 +168,36 @@ gh pr create \
   --title "<issue title>" \
   --body "Implements #<N>.
 
-<short summary of the implementer's changes and verification results>"
+<short summary of the implementer's and reviewer's changes and verification>"
 ```
 
-### 8. Remove the worktree
+### 9. Auto-merge the slice pull request
 
-The slice work is now safely captured in the branch and the pull request, so
-the worktree is disposable. Remove it with the `remove_worktree` MCP tool using
+The slice passed review, so merge its pull request into the umbrella branch.
+GitHub computes mergeability asynchronously — check it before merging rather
+than racing a freshly-opened pull request:
+
+```
+gh pr view <pr-number> --json mergeable,mergeStateStatus
+```
+
+- `mergeable: "UNKNOWN"` — GitHub is still computing; wait a moment and
+  re-check.
+- `mergeable: "CONFLICTING"` — the slice has **FAILED** (merge conflict) —
+  handle it per *Failure handling* below.
+- `mergeable: "MERGEABLE"` — merge it:
+
+```
+gh pr merge <pr-number> --squash
+```
+
+Squash keeps the umbrella history at one commit per slice. Do not delete the
+slice branch here — its worktree still holds it.
+
+### 10. Remove the worktree
+
+Only on a merged slice. The work is now captured in the umbrella branch, so the
+worktree is disposable. Remove it with the `remove_worktree` MCP tool using
 `force: true` — the worktree may hold untracked build artifacts, and forcing
 makes cleanup unconditional:
 
@@ -147,18 +205,25 @@ makes cleanup unconditional:
 - `repoPath`: the repository root
 - `force`: `true`
 
-### 9. Report
+### 11. Report
 
 Report the outcome to the user: the issue handled, the umbrella branch, the
-slice branch, and the slice pull request URL.
+slice branch, the slice pull request URL, and that it was merged.
 
 ## Failure handling
 
-This walking skeleton stops on the first failure rather than recovering:
+A slice **FAILS** when the implementer returns `blocked`, the reviewer returns
+`failed`, there are no changes to commit, or the merge conflicts. On a FAILED
+slice:
+
+- Do **not** commit, open, or merge a pull request for it.
+- **Preserve its worktree** — leave it in place so a developer can inspect the
+  partial work. Do not call `remove_worktree`.
+- Report the failure clearly: the issue, the stage that failed, and why.
+
+Other stop conditions:
 
 - No ready-for-agent issue → clean no-op (step 2).
 - `create_worktree` error → report and stop (step 4).
-- Implementer `blocked`, or no changes to commit → report, leave the worktree
-  for inspection, and stop (steps 5–6).
 
-Automated review, retry, and multi-issue waves are added by later capability.
+Retry, multi-issue waves, and conflict resolution are added by later capability.
