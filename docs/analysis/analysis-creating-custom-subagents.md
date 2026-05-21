@@ -32,10 +32,11 @@ Configuration capabilities are extensive: model selection (`haiku`, `sonnet`, `o
 ### 2.2 Scope Hierarchy
 
 ```
-Priority 1 (highest):  --agents CLI flag (single session, JSON)
-Priority 2:            .claude/agents/ (project, versionable)
-Priority 3:            ~/.claude/agents/ (user, all projects)
-Priority 4 (lowest):   Plugin agents/ (where plugin is enabled)
+Priority 1 (highest):  Managed settings (organization-wide, deployed by admins)
+Priority 2:            --agents CLI flag (single session, JSON)
+Priority 3:            .claude/agents/ (project, versionable)
+Priority 4:            ~/.claude/agents/ (user, all projects)
+Priority 5 (lowest):   Plugin agents/ (where plugin is enabled)
 ```
 
 When multiple subagents share the same name, the highest priority one wins.
@@ -72,8 +73,10 @@ The frontmatter defines metadata and configuration. The body becomes the system 
 | `hooks` | No | Scoped lifecycle hooks | -- |
 | `memory` | No | Persistent memory: `user`, `project`, or `local` | -- |
 | `background` | No | `true` to always run in background | `false` |
-| `effort` | No | Effort level: `low`, `medium`, `high`, `max` | Inherits from session |
+| `effort` | No | Effort level: `low`, `medium`, `high`, `xhigh`, `max` (available levels depend on the model) | Inherits from session |
 | `isolation` | No | `worktree` for isolated git worktree | -- |
+| `color` | No | Display color in the task list and transcript (`red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan`) | -- |
+| `initialPrompt` | No | Auto-submitted as the first user turn when run as the main session agent (via `--agent` or the `agent` setting) | -- |
 
 ### 2.5 Tool Control
 
@@ -416,7 +419,7 @@ The subagent context isolation concept is a direct implementation of LangChain's
 
 ### Strengths
 
-1. **Configuration flexibility**: 14 frontmatter fields cover most scenarios
+1. **Configuration flexibility**: 16 frontmatter fields cover most scenarios
 2. **Context isolation**: Protects the main conversation from verbose output
 3. **Scope hierarchy**: CLI > project > user > plugin allows granular override
 4. **Scoped MCP servers**: Plugin tools stay out of the main context

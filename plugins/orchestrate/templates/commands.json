@@ -1,0 +1,6 @@
+{
+  "tests": ["npm", "test"],
+  "typecheck": ["npm", "run", "typecheck"],
+  "build": ["npm", "run", "build"],
+  "lint": ["npm", "run", "lint"]
+}

@@ -1,0 +1,4 @@
+node_modules/
+
+# dist/ is intentionally committed — .mcp.json points at dist/index.js and the
+# bundle is part of the distributed deliverable. Regenerate via `npm run build`.
