@@ -1,22 +1,25 @@
 ---
 name: orchestrate
-description: Implement one ready-for-agent GitHub issue end to end — create an umbrella branch off development, run an implementer subagent in an isolated worktree, review it, and merge a slice pull request into the umbrella branch. Use when the user wants to autonomously orchestrate agent-driven implementation of a tracked issue, or invokes /orchestrate.
+description: Implement a backlog of ready-for-agent GitHub issues end to end — order them into dependency waves, run implementer and reviewer subagents in isolated worktrees, merge slice pull requests into an umbrella branch, and checkpoint progress so an interrupted run resumes. Use when the user wants to autonomously orchestrate agent-driven implementation of tracked issues, or invokes /orchestrate.
 ---
 
 # Orchestrate
 
-Drive one `ready-for-agent` GitHub issue from open to a reviewed, merged slice,
-with no human in the loop. This is the single-issue path — one issue, one slice.
+Drive a backlog of `ready-for-agent` GitHub issues from open to reviewed, merged
+slices — ordered by dependency, processed wave by wave, with no human in the
+loop. The run checkpoints after every step, so an interruption resumes instead
+of restarting.
 
 ## Roles and the safety boundary
 
 - **Orchestrator** — you, running this skill. You own every git, GitHub, and
-  shell operation: branches, worktrees, commits, pushes, pull requests, merges.
+  shell operation: branches, worktrees, commits, pushes, pull requests, merges,
+  and the `run-state.json` checkpoint.
 - **Implementer** — the `implementer` subagent. It edits code in an isolated
   worktree and verifies it through the orchestrate capability tools.
 - **Reviewer** — the `reviewer` subagent. It reviews the implemented slice in
-  the same worktree, fixes clarity and consistency issues inline, re-runs the
-  capability tools, and gates the auto-merge.
+  the same worktree, fixes issues inline, re-runs the capability tools, and
+  gates the auto-merge.
 
 Both subagents have **no Bash and no git access** — they are sandboxed to file
 edits inside one worktree. Only the orchestrator touches branches, remotes, and
@@ -31,199 +34,191 @@ Check these before starting. If one is missing, report it and stop.
   integration base.
 - The orchestrate MCP server is available (its tools are used below).
 - Branch protection does not block merges into `orchestrate/umbrella-*` or
-  `orchestrate/slice-*` branches — the auto-merge in step 9 needs them open.
+  `orchestrate/slice-*` branches — the auto-merge needs them open.
 
 The target project should also have a committed `.orchestrate/commands.json`
-(see the plugin's `templates/commands.json`) so the implementer and reviewer can
-verify their work — without it the capability tools return `not-configured`,
-which is tolerated but means no automated verification.
+(see the plugin's `templates/commands.json`) so subagents can verify their work
+— without it the capability tools return `not-configured`, which is tolerated
+but means no automated verification.
 
-## Procedure
+## 1. Start or resume the run
 
-### 1. Resolve the run context
+On startup, check for `.orchestrate/run-state.json` (its schema is in
+`references/run-state.md`).
 
-- Confirm the repository root: `git rev-parse --show-toplevel`.
-- Fetch so branch operations are based on current refs: `git fetch origin`.
-- Confirm the integration base exists: `git rev-parse --verify origin/development`.
-- Generate a run id from the current timestamp including seconds, e.g.
-  `20260521-015143`, so two runs in the same minute cannot collide.
+- **It exists and `status` is `in-progress`** — resume. Load it; keep its
+  `runId`, `umbrellaBranch`, `waves`, and `slices`. Every slice in a terminal
+  state (`passed`, `failed`, `skipped`) is left untouched — completed work is
+  never redone. Every slice still `in-progress` was interrupted before
+  finishing: discard its partial artifacts so it re-processes cleanly — if it
+  has a `worktreePath`, call `remove_worktree` (`force: true`); delete its
+  `sliceBranch` if it exists (locally, and on the remote if it was pushed) —
+  then coerce that slice back to `pending`. Skip to section 2.
+- **It is absent, or `status` is `completed`** — start a fresh run below.
 
-### 2. Select one ready-for-agent issue
+### Fresh run
 
-List open issues carrying the `ready-for-agent` label:
+1. Resolve the run context:
+   - Repository root: `git rev-parse --show-toplevel`.
+   - Fetch so branch operations use current refs: `git fetch origin`.
+   - Confirm the integration base: `git rev-parse --verify origin/development`.
+   - Generate a `runId` from the current timestamp including seconds, e.g.
+     `20260521-015143`.
+2. Read the whole backlog — every open issue with the `ready-for-agent` label.
+   Always use `--json`; plain `gh issue view` can fail on the projectCards
+   deprecation:
 
-```
-gh issue list --label ready-for-agent --state open --json number,title --limit 1
-```
+   ```
+   gh issue list --label ready-for-agent --state open --json number,title --limit 200
+   gh issue view <N> --json number,title,body,labels,state   # for each issue
+   ```
 
-- If the list is empty, report "no ready-for-agent issues" and stop — this is a
-  clean, successful no-op.
-- Otherwise take the single issue and read it in full. Always use `--json`;
-  plain `gh issue view` can fail on repos with the projectCards deprecation:
+   If the backlog is empty, report "no ready-for-agent issues" and stop — a
+   clean no-op.
+3. For each issue, parse the **Blocked by** section of its body into a list of
+   blocker issue numbers (the `- #NNN` lines).
+4. Call the `plan_waves` MCP tool with one entry per issue
+   (`{ id: "<number>", blockedBy: ["<number>", ...] }`). If it returns
+   `status: "error"` with `errorCode: "CYCLE_DETECTED"`, report the cycle and
+   stop — the backlog cannot be ordered.
+5. Create the umbrella branch from the fetched integration base and push it so
+   slice pull requests can target it:
 
-```
-gh issue view <N> --json number,title,body,labels,state
-```
+   ```
+   git branch orchestrate/umbrella-<runId> origin/development
+   git push -u origin orchestrate/umbrella-<runId>
+   ```
 
-Treat the issue body's **Acceptance criteria** section as the slice contract.
+6. Write the initial `.orchestrate/run-state.json` with **every field the
+   schema declares** (see `references/run-state.md`):
+   - Top level: `runId`, `status: "in-progress"`, `umbrellaBranch`,
+     `integrationBase: "development"`, `startedAt` and `updatedAt` (current UTC
+     time), the `waves` from `plan_waves`, `completedWaves: 0`.
+   - One `slices` entry per issue: `issue`, `title`, `wave` (its index in
+     `waves`), `blockedBy`, `state: "pending"`, `sliceBranch:
+     "orchestrate/slice-<N>"`, `worktreePath: null`, `pullRequest: null`,
+     `failureReason: null`, and `updatedAt`.
 
-### 3. Create the umbrella branch
+## 2. The wave loop
 
-The umbrella branch collects slice pull requests; it is created fresh from
-`origin/development` (the just-fetched integration base) and pushed so a slice
-PR can target it.
+Process waves in order, starting at index `completedWaves`. For each wave:
 
-```
-git branch orchestrate/umbrella-<run-id> origin/development
-git push -u origin orchestrate/umbrella-<run-id>
-```
+1. **Select the processable slices.** A slice in this wave is processable when
+   its state is `pending` and every id in its `blockedBy` that belongs to the
+   backlog reached `passed`. If any such blocker is `failed` or `skipped`, mark
+   this slice `skipped` with a `failureReason` naming the blocker, checkpoint,
+   and do not process it.
+2. **Implement in parallel.** Spawn the `implementer` subagent for every
+   processable slice. Issue all the Agent tool calls **in a single message** so
+   they run concurrently — each slice has its own worktree, so they do not
+   collide. First create each slice's worktree (section 3, step 1).
+3. **Review in parallel.** For every slice whose implementer returned
+   `completed`, spawn the `reviewer` subagent — again, all Agent calls in one
+   message.
+4. **Integrate sequentially.** For each slice whose review `passed`, run
+   section 3 steps 4–7 (commit, push, open pull request, merge, remove
+   worktree) **one slice at a time** — merges into the umbrella branch must not
+   race each other.
+5. **Checkpoint the wave.** Set `completedWaves` to this wave's index + 1 and
+   write `run-state.json`.
 
-### 4. Create the slice worktree
+When the last wave is done, set `status: "completed"`, checkpoint, and report:
+the umbrella branch and, per slice, its final state and pull request URL.
 
-Use the `create_worktree` MCP tool. Branch the slice from the umbrella branch
-into a worktree **outside** the repository working tree (e.g. a sibling
-`.orchestrate-worktrees/` directory):
+## 3. Processing one slice
 
-- `baseRef`: `orchestrate/umbrella-<run-id>`
-- `branch`: `orchestrate/slice-<N>`
-- `worktreePath`: an absolute path outside the repo, e.g.
-  `<repo-parent>/.orchestrate-worktrees/<run-id>/slice-<N>`
-- `repoPath`: the repository root
+These are the per-slice steps the wave loop invokes. Update the slice's entry in
+`run-state.json` and write the file at every state change.
 
-If `create_worktree` returns `status: "error"`, report the `errorCode` and
-`errorMessage` and stop. If `fetchStatus` is `failed`, note it — the slice may
-be based on a stale ref — but continue.
+1. **Create the worktree.** Set the slice `state` to `in-progress`, write its
+   `sliceBranch` (`orchestrate/slice-<N>`) and the `worktreePath` you will use
+   into the slice entry, and checkpoint — so an interruption here is resumable.
+   Use the `create_worktree` MCP tool: `baseRef` = `orchestrate/umbrella-<runId>`,
+   `branch` = `orchestrate/slice-<N>`, `worktreePath` = an absolute path outside
+   the repo (e.g. `<repo-parent>/.orchestrate-worktrees/<runId>/slice-<N>`),
+   `repoPath` = the repository root. On `status: "error"`, the slice has
+   **FAILED** (see *Failure handling*).
+2. **Run the implementer.** Spawn the `implementer` subagent. Its prompt must
+   carry the issue number/title/body, the worktree path (every change goes
+   there), an instruction to verify with the capability tools using the
+   worktree path as `repoPath`, and a reminder not to commit, push, or run git.
+   If it returns `blocked`, the slice has **FAILED**.
+3. **Run the reviewer.** Spawn the `reviewer` subagent in the same worktree.
+   Its prompt must carry the issue, the worktree path, and the implementer's
+   `filesChanged` list and `notes`. If it returns `failed`, the slice has
+   **FAILED**.
+4. **Commit and push.** Stage only the files the subagents reported changing —
+   the union of the implementer's and reviewer's `filesChanged` lists. Never
+   `git add -A`: the capability tools leave untracked build artifacts in the
+   worktree.
 
-### 5. Run the implementer subagent
+   ```
+   git -C <worktree-path> add -- <file> <file> ...
+   ```
 
-Spawn the `implementer` subagent with the Agent tool. Its prompt must contain:
+   If `git -C <worktree-path> diff --cached --quiet` exits 0, nothing changed —
+   the slice has **FAILED**. Otherwise commit and push (two `-m` flags keep a
+   newline out of the shell argument):
 
-- The issue number, title, and full body (the acceptance criteria are its
-  contract).
-- The **worktree path** from step 4 — tell it every file change goes there.
-- An instruction to verify with the capability tools (`run_typecheck`,
-  `run_build`, `run_tests`, `run_lint`) using the worktree path as `repoPath`.
-- A reminder that it must not commit, push, or run git — the orchestrator does.
+   ```
+   git -C <worktree-path> commit -m "<type>(<scope>): <issue title>" -m "Closes #<N>"
+   git -C <worktree-path> push -u origin orchestrate/slice-<N>
+   ```
 
-When the implementer returns, read its structured summary. If its `status` is
-`blocked`, the slice has **FAILED** — handle it per *Failure handling* below
-(do not review, commit, or merge).
+5. **Open the slice pull request.**
 
-### 6. Review the slice
+   ```
+   gh pr create --base orchestrate/umbrella-<runId> --head orchestrate/slice-<N> \
+     --title "<issue title>" --body "Implements #<N>. <summary>"
+   ```
 
-Spawn the `reviewer` subagent with the Agent tool, in the **same worktree**. Its
-prompt must contain:
+   Record the pull request URL in the slice's `run-state.json` entry.
+6. **Merge the slice.** GitHub computes mergeability asynchronously — check it
+   before merging:
 
-- The issue number, title, and full body.
-- The **worktree path** from step 4.
-- The implementer's `filesChanged` list and `notes`.
-- An instruction to verify with the capability tools using the worktree path as
-  `repoPath`.
+   ```
+   gh pr view <pr-number> --json mergeable,mergeStateStatus
+   ```
 
-The reviewer reviews the changed files, fixes clarity and consistency issues
-inline, and re-runs the capability tools. When it returns:
+   `UNKNOWN` — GitHub is still computing; wait a moment and re-check, up to a
+   few attempts. If it never resolves, the slice has **FAILED** (mergeability
+   could not be determined). `CONFLICTING` — the slice has **FAILED** (merge
+   conflict). `MERGEABLE` — merge it, squashing to one commit per slice on the
+   umbrella branch:
 
-- `status: "passed"` — continue to step 7.
-- `status: "failed"` — the reviewer found a blocker it could not safely fix.
-  The slice has **FAILED** — handle it per *Failure handling* below.
+   ```
+   gh pr merge <pr-number> --squash
+   ```
 
-### 7. Commit and push the slice
-
-The subagents cannot commit. You do, from outside the worktree with `git -C` —
-the commit captures both the implementer's and the reviewer's changes.
-
-Stage exactly the files the subagents reported changing — the union of the
-implementer's and the reviewer's `filesChanged` lists. Do **not** use
-`git add -A`: the capability tools leave untracked build artifacts (`dist/`,
-caches, coverage) in the worktree that must not enter the commit.
-
-```
-git -C <worktree-path> add -- <file> <file> ...
-```
-
-Confirm something was staged. If `git -C <worktree-path> diff --cached --quiet`
-exits 0, nothing changed and the slice has **FAILED** (the subagents produced no
-changes) — handle it per *Failure handling* below.
-
-Commit and push. Pass the subject and body as two separate `-m` flags — git
-joins them with a blank line, which avoids embedding a newline in a single
-shell argument:
-
-```
-git -C <worktree-path> commit -m "<type>(<scope>): <issue title>" -m "Closes #<N>"
-git -C <worktree-path> push -u origin orchestrate/slice-<N>
-```
-
-Use a commit type that fits the change (`feat`, `fix`, `docs`, `refactor`,
-`chore`).
-
-### 8. Open the slice pull request
-
-Open a pull request from the slice branch into the umbrella branch:
-
-```
-gh pr create \
-  --base orchestrate/umbrella-<run-id> \
-  --head orchestrate/slice-<N> \
-  --title "<issue title>" \
-  --body "Implements #<N>.
-
-<short summary of the implementer's and reviewer's changes and verification>"
-```
-
-### 9. Auto-merge the slice pull request
-
-The slice passed review, so merge its pull request into the umbrella branch.
-GitHub computes mergeability asynchronously — check it before merging rather
-than racing a freshly-opened pull request:
-
-```
-gh pr view <pr-number> --json mergeable,mergeStateStatus
-```
-
-- `mergeable: "UNKNOWN"` — GitHub is still computing; wait a moment and
-  re-check.
-- `mergeable: "CONFLICTING"` — the slice has **FAILED** (merge conflict) —
-  handle it per *Failure handling* below.
-- `mergeable: "MERGEABLE"` — merge it:
-
-```
-gh pr merge <pr-number> --squash
-```
-
-Squash keeps the umbrella history at one commit per slice. Do not delete the
-slice branch here — its worktree still holds it.
-
-### 10. Remove the worktree
-
-Only on a merged slice. The work is now captured in the umbrella branch, so the
-worktree is disposable. Remove it with the `remove_worktree` MCP tool using
-`force: true` — the worktree may hold untracked build artifacts, and forcing
-makes cleanup unconditional:
-
-- `worktreePath`: the worktree path from step 4
-- `repoPath`: the repository root
-- `force`: `true`
-
-### 11. Report
-
-Report the outcome to the user: the issue handled, the umbrella branch, the
-slice branch, the slice pull request URL, and that it was merged.
+7. **Finish the slice.** Set the slice `state` to `passed`, then remove its
+   worktree with the `remove_worktree` MCP tool (`worktreePath`, `repoPath`,
+   `force: true` — the worktree may hold untracked build artifacts).
 
 ## Failure handling
 
-A slice **FAILS** when the implementer returns `blocked`, the reviewer returns
-`failed`, there are no changes to commit, or the merge conflicts. On a FAILED
-slice:
+A slice **FAILS** when `create_worktree` errors, the implementer returns
+`blocked`, the reviewer returns `failed`, the staged changeset is empty, or the
+merge conflicts. On a FAILED slice:
 
-- Do **not** commit, open, or merge a pull request for it.
-- **Preserve its worktree** — leave it in place so a developer can inspect the
-  partial work. Do not call `remove_worktree`.
-- Report the failure clearly: the issue, the stage that failed, and why.
+- Set its `state` to `failed` with a `failureReason`, and checkpoint.
+- Do **not** merge it. **Preserve its worktree** — leave it on disk for a
+  developer to inspect. Do not call `remove_worktree`.
+- **Continue the wave.** A failed slice never cancels the other slices in its
+  wave — they are independent and proceed normally.
 
-Other stop conditions:
+A slice is **SKIPPED** (state `skipped`) when one of its blockers did not reach
+`passed` — it cannot be built on a missing dependency. Record the blocker in
+`failureReason` and checkpoint.
 
-- No ready-for-agent issue → clean no-op (step 2).
-- `create_worktree` error → report and stop (step 4).
+Other stop conditions: an empty backlog is a clean no-op; a `plan_waves`
+`CYCLE_DETECTED` result stops the run before any branch is created.
 
-Retry, multi-issue waves, and conflict resolution are added by later capability.
+## Checkpointing
+
+Write `.orchestrate/run-state.json` after every slice state change and after
+every wave. Every write refreshes the top-level `updatedAt`, and a slice's own
+`updatedAt` whenever its entry changes, so an artifact rendered from the file
+has accurate timestamps. The checkpoint is what makes a run resumable: an
+interrupted run, re-invoked, skips every terminal-state slice and continues.
+Conflict resolution and a final umbrella-to-development pull request are added
+by later capability.
