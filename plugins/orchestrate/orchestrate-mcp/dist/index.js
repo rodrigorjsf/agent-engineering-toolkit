@@ -3226,8 +3226,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path3) {
-      let input = path3;
+    function removeDotSegments(path4) {
+      let input = path4;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3479,8 +3479,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path3, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
+        const [path4, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs3, exportName) {
+    function addFormats(ajv, list, fs4, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs3[f]);
+        ajv.addFormat(f, fs4[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -7364,8 +7364,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path3, errorMaps, issueData } = params;
-  const fullPath = [...path3, ...issueData.path || []];
+  const { data, path: path4, errorMaps, issueData } = params;
+  const fullPath = [...path4, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7481,11 +7481,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path3, key) {
+  constructor(parent, value, path4, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path3;
+    this._path = path4;
     this._key = key;
   }
   get path() {
@@ -11123,10 +11123,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path3) {
-  if (!path3)
+function getElementAtPath(obj, path4) {
+  if (!path4)
     return obj;
-  return path3.reduce((acc, key) => acc?.[key], obj);
+  return path4.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11446,11 +11446,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path3, issues) {
+function prefixIssues(path4, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path3);
+    iss.path.unshift(path4);
     return iss;
   });
 }
@@ -21167,14 +21167,14 @@ function optionInjectionError(field, value) {
 }
 function cleanGitError(err) {
   if (err instanceof GitExecError && err.stderr.trim().length > 0) {
-    const firstLine3 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-    if (firstLine3) {
-      return firstLine3;
+    const firstLine4 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+    if (firstLine4) {
+      return firstLine4;
     }
   }
   const message = err instanceof Error ? err.message : String(err);
-  const firstLine2 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-  return firstLine2 ?? "Unknown git error";
+  const firstLine3 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return firstLine3 ?? "Unknown git error";
 }
 
 // src/tools/worktree.ts
@@ -21776,10 +21776,102 @@ function planWaves(input) {
   return { status: "ok", waves };
 }
 
+// src/tools/routing.ts
+var path3 = __toESM(require("path"));
+var fs3 = __toESM(require("fs"));
+var COMPLEXITY_TIERS = ["trivial", "standard", "complex"];
+var roleConfigSchema = external_exports.object({
+  model: external_exports.string().min(1).describe("Model id to spawn the role's subagent with (e.g. 'sonnet', 'opus')."),
+  effort: external_exports.enum(["standard", "deep"]).describe(
+    "Effort variant of the subagent to spawn \u2014 selects the '-standard' or '-deep' subagent definition."
+  )
+});
+var tierRoutingSchema = external_exports.object({
+  investigator: roleConfigSchema.nullable(),
+  implementer: roleConfigSchema,
+  reviewer: roleConfigSchema,
+  "conflict-resolver": roleConfigSchema
+});
+var routingConfigSchema = external_exports.object({
+  trivial: tierRoutingSchema,
+  standard: tierRoutingSchema,
+  complex: tierRoutingSchema
+});
+var resolveRoutingInputSchema = external_exports.object({
+  tier: external_exports.enum(COMPLEXITY_TIERS).describe(
+    "The complexity tier the orchestrator assessed the issue into. 'trivial' = a small, localized change; 'standard' = an ordinary feature or fix; 'complex' = broad, cross-cutting, or high-risk work."
+  ),
+  repoPath: external_exports.string().optional().describe(
+    "Path to the project root holding .orchestrate/routing.json. Defaults to the MCP server process's current working directory \u2014 callers should pass it explicitly."
+  )
+});
+var resolveRoutingOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the tier resolved; 'error' = routing.json is missing or malformed."
+  ),
+  tier: external_exports.enum(COMPLEXITY_TIERS).optional().describe("The tier that was resolved. Present when status='ok'."),
+  routing: tierRoutingSchema.optional().describe(
+    "The resolved per-role routing for the tier. `investigator` is null when this tier skips the investigation pass. Present when status='ok'."
+  ),
+  errorCode: external_exports.enum(["CONFIG_NOT_FOUND", "CONFIG_INVALID"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'CONFIG_NOT_FOUND' = no .orchestrate/routing.json; 'CONFIG_INVALID' = it is malformed JSON or does not match the expected shape."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='error'."
+  )
+});
+function resolveRouting(tier, config2) {
+  return config2[tier];
+}
+function firstLine2(message) {
+  const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return line ?? message.trim();
+}
+function resolveRoutingFromConfig(input) {
+  const cwd = input.repoPath ?? process.cwd();
+  const configPath = path3.join(cwd, ".orchestrate", "routing.json");
+  let raw;
+  try {
+    raw = fs3.readFileSync(configPath, "utf8");
+  } catch {
+    return {
+      status: "error",
+      errorCode: "CONFIG_NOT_FOUND",
+      errorMessage: `No .orchestrate/routing.json found in ${cwd}. Copy the orchestrate plugin's templates/routing.json to .orchestrate/routing.json.`
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "CONFIG_INVALID",
+      errorMessage: `.orchestrate/routing.json is not valid JSON: ${firstLine2(
+        err instanceof Error ? err.message : String(err)
+      )}`
+    };
+  }
+  const config2 = routingConfigSchema.safeParse(parsed);
+  if (!config2.success) {
+    const detail = config2.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+    return {
+      status: "error",
+      errorCode: "CONFIG_INVALID",
+      errorMessage: `.orchestrate/routing.json does not match the expected shape: ${detail}`
+    };
+  }
+  return {
+    status: "ok",
+    tier: input.tier,
+    routing: resolveRouting(input.tier, config2.data)
+  };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
-  version: "0.4.0"
+  version: "0.8.0"
 });
 var registerTool = server.registerTool.bind(server);
 var handleCreateWorktree = async (input) => {
@@ -21906,6 +21998,33 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handlePlanWaves
+);
+var handleResolveRouting = async (input) => {
+  const result = resolveRoutingFromConfig(input);
+  let text;
+  if (result.status === "ok") {
+    const r = result.routing;
+    const inv = r.investigator ? `investigator ${r.investigator.effort}` : "no investigator";
+    text = `Routing for tier '${result.tier}': ${inv}, implementer ${r.implementer.effort}/${r.implementer.model}, reviewer ${r.reviewer.effort}/${r.reviewer.model}.`;
+  } else {
+    text = `Routing resolution failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "resolve_routing",
+  {
+    title: "Resolve Complexity Routing",
+    description: "Resolves which model and effort variant to spawn for each role \u2014 investigator, implementer, reviewer, conflict-resolver \u2014 given an issue's assessed complexity tier. Reads the tier-to-role mapping from .orchestrate/routing.json. A null investigator means that tier skips the investigation pass. Returns a discriminated `status` of 'ok' or 'error' (routing.json missing or malformed).",
+    inputSchema: resolveRoutingInputSchema.shape,
+    outputSchema: resolveRoutingOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleResolveRouting
 );
 async function main() {
   const transport = new StdioServerTransport();

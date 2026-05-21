@@ -14,7 +14,11 @@ of restarting.
 
 - **Orchestrator** — you, running this skill. You own every git, GitHub, and
   shell operation: branches, worktrees, commits, pushes, pull requests, merges,
-  and the `run-state.json` checkpoint.
+  and the `run-state.json` checkpoint. You also assess each issue's complexity
+  tier and route each role accordingly.
+- **Investigator** — the `investigator` subagent. For higher-complexity issues
+  only, it explores the codebase read-only and returns a research brief the
+  implementer builds on.
 - **Implementer** — the `implementer` subagent. It edits code in an isolated
   worktree and verifies it through the orchestrate capability tools.
 - **Reviewer** — the `reviewer` subagent. It reviews the implemented slice in
@@ -24,9 +28,12 @@ of restarting.
   conflicts with the umbrella branch, it edits the conflicted files to a
   correct merged state. It is spawned once per conflicting slice.
 
-These subagents have **no Bash and no git access** — they are sandboxed to file
-edits inside one worktree. Only the orchestrator touches branches, remotes, and
-the tracker.
+Every role except the orchestrator exists in two effort variants — `-standard`
+and `-deep`. The `resolve_routing` tool picks the variant and model per role
+from the issue's complexity tier (section 3, step 2). All four subagents have
+**no Bash and no git access** — they are sandboxed to one worktree (the
+investigator is read-only). Only the orchestrator touches branches, remotes,
+and the tracker.
 
 ## Prerequisites
 
@@ -39,10 +46,11 @@ Check these before starting. If one is missing, report it and stop.
 - Branch protection does not block merges into `orchestrate/umbrella-*` or
   `orchestrate/slice-*` branches — the auto-merge needs them open.
 
-The target project should also have a committed `.orchestrate/commands.json`
-(see the plugin's `templates/commands.json`) so subagents can verify their work
-— without it the capability tools return `not-configured`, which is tolerated
-but means no automated verification.
+The target project should also have committed `.orchestrate/commands.json` and
+`.orchestrate/routing.json` (see the plugin's `templates/`). Without
+`commands.json` the capability tools return `not-configured`, which is
+tolerated. Without `routing.json` the `resolve_routing` tool errors and the run
+falls back to the `-standard` variant of every role with no model override.
 
 ## 1. Start or resume the run
 
@@ -79,7 +87,11 @@ On startup, check for `.orchestrate/run-state.json` (its schema is in
    If the backlog is empty, report "no ready-for-agent issues" and stop — a
    clean no-op.
 3. For each issue, parse the **Blocked by** section of its body into a list of
-   blocker issue numbers (the `- #NNN` lines).
+   blocker issue numbers (the `- #NNN` lines), and assess its **complexity
+   tier** — `trivial` (a small, localized change), `standard` (an ordinary
+   feature or fix), or `complex` (broad, cross-cutting, or high-risk work).
+   Base the tier on the issue's scope, the number of files it likely touches,
+   and its risk. The tier drives routing in section 3.
 4. Call the `plan_waves` MCP tool with one entry per issue
    (`{ id: "<number>", blockedBy: ["<number>", ...] }`). If it returns
    `status: "error"` with `errorCode: "CYCLE_DETECTED"`, report the cycle and
@@ -99,7 +111,7 @@ On startup, check for `.orchestrate/run-state.json` (its schema is in
      time), the `waves` from `plan_waves`, `completedWaves: 0`,
      `finalPullRequest: null`.
    - One `slices` entry per issue: `issue`, `title`, `wave` (its index in
-     `waves`), `blockedBy`, `state: "pending"`, `sliceBranch:
+     `waves`), `tier`, `blockedBy`, `state: "pending"`, `sliceBranch:
      "orchestrate/slice-<N>"`, `worktreePath: null`, `pullRequest: null`,
      `failureReason: null`, and `updatedAt`.
 
@@ -112,18 +124,15 @@ Process waves in order, starting at index `completedWaves`. For each wave:
    backlog reached `passed`. If any such blocker is `failed` or `skipped`, mark
    this slice `skipped` with a `failureReason` naming the blocker, checkpoint,
    and do not process it.
-2. **Implement in parallel.** Spawn the `implementer` subagent for every
-   processable slice. Issue all the Agent tool calls **in a single message** so
-   they run concurrently — each slice has its own worktree, so they do not
-   collide. First create each slice's worktree (section 3, step 1).
-3. **Review in parallel.** For every slice whose implementer returned
-   `completed`, spawn the `reviewer` subagent — again, all Agent calls in one
-   message.
-4. **Integrate sequentially.** For each slice whose review `passed`, run
-   section 3 steps 4–7 (commit, push, open pull request, merge, remove
-   worktree) **one slice at a time** — merges into the umbrella branch must not
-   race each other.
-5. **Checkpoint the wave.** Set `completedWaves` to this wave's index + 1 and
+2. **Process the slices.** Run section 3 for every processable slice. Slices in
+   a wave are independent, so parallelize: when several slices are at the same
+   subagent stage (investigation, implementation, review), spawn those
+   subagents by issuing all the Agent tool calls **in a single message**. Each
+   slice has its own worktree, so they never collide.
+3. **Integrate sequentially.** The commit, pull-request, and merge steps
+   (section 3, steps 6–9) run **one slice at a time** — merges into the
+   umbrella branch must not race each other.
+4. **Checkpoint the wave.** Set `completedWaves` to this wave's index + 1 and
    write `run-state.json`.
 
 When the last wave is done, open the **final integration pull request** — one
@@ -153,16 +162,33 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
    the repo (e.g. `<repo-parent>/.orchestrate-worktrees/<runId>/slice-<N>`),
    `repoPath` = the repository root. On `status: "error"`, the slice has
    **FAILED** (see *Failure handling*).
-2. **Run the implementer.** Spawn the `implementer` subagent. Its prompt must
-   carry the issue number/title/body, the worktree path (every change goes
-   there), an instruction to verify with the capability tools using the
-   worktree path as `repoPath`, and a reminder not to commit, push, or run git.
-   If it returns `blocked`, the slice has **FAILED**.
-3. **Run the reviewer.** Spawn the `reviewer` subagent in the same worktree.
-   Its prompt must carry the issue, the worktree path, and the implementer's
-   `filesChanged` list and `notes`. If it returns `failed`, the slice has
-   **FAILED**.
-4. **Commit and push.** Stage only the files the subagents reported changing —
+2. **Resolve routing.** Call the `resolve_routing` MCP tool with the slice's
+   `tier` and the repository root as `repoPath`. It returns, per role, the
+   `model` and effort variant to spawn:
+   - `status: "ok"` — use the returned `routing`.
+   - `errorCode: "CONFIG_NOT_FOUND"` — no routing is configured; fall back to
+     the `-standard` variant of every role with no `model` override (each
+     subagent's frontmatter model applies), and skip the investigator.
+   - `errorCode: "CONFIG_INVALID"` — the routing config is broken; the slice
+     has **FAILED**.
+3. **Run the investigator (higher tiers only).** If `routing.investigator` is
+   non-null, spawn the `investigator-<effort>` subagent — `<effort>` and the
+   Agent `model` override both come from `routing.investigator`. Its prompt
+   carries the issue and the repository root; keep its returned brief for the
+   implementer. If `routing.investigator` is null, skip this step.
+4. **Run the implementer.** Spawn the `implementer-<effort>` subagent —
+   `<effort>` and the `model` override from `routing.implementer`. Its prompt
+   must carry the issue number/title/body, the worktree path (every change goes
+   there), the investigator's brief if one was produced, an instruction to
+   verify with the capability tools using the worktree path as `repoPath`, and
+   a reminder not to commit, push, or run git. If it returns `blocked`, the
+   slice has **FAILED**.
+5. **Run the reviewer.** Spawn the `reviewer-<effort>` subagent — `<effort>`
+   and the `model` override from `routing.reviewer` — in the same worktree. Its
+   prompt must carry the issue, the worktree path, the implementer's
+   `filesChanged` list and `notes`, and the investigator's brief if one was
+   produced. If it returns `failed`, the slice has **FAILED**.
+6. **Commit and push.** Stage only the files the subagents reported changing —
    the union of the implementer's and reviewer's `filesChanged` lists. Never
    `git add -A`: the capability tools leave untracked build artifacts in the
    worktree.
@@ -180,7 +206,7 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
    git -C <worktree-path> push -u origin orchestrate/slice-<N>
    ```
 
-5. **Open the slice pull request.**
+7. **Open the slice pull request.**
 
    ```
    gh pr create --base orchestrate/umbrella-<runId> --head orchestrate/slice-<N> \
@@ -188,7 +214,7 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
    ```
 
    Record the pull request URL in the slice's `run-state.json` entry.
-6. **Merge the slice.** GitHub computes mergeability asynchronously — check it
+8. **Merge the slice.** GitHub computes mergeability asynchronously — check it
    before merging:
 
    ```
@@ -199,10 +225,10 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
      few attempts. If it never resolves, the slice has **FAILED**.
    - `MERGEABLE` — merge it, squashing to one commit per slice on the umbrella
      branch: `gh pr merge <pr-number> --squash`.
-   - `CONFLICTING` — resolve the conflict once, per step 6a. Do not FAIL a
+   - `CONFLICTING` — resolve the conflict once, per step 8a. Do not FAIL a
      slice on a conflict without attempting resolution.
 
-6a. **Resolve a merge conflict (once).** Attempt resolution exactly once — a
+8a. **Resolve a merge conflict (once).** Attempt resolution exactly once — a
    conflict the resolver cannot fix is a FAILED slice.
 
    1. In the slice's worktree, fetch and merge the current umbrella branch so
@@ -215,8 +241,9 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
 
    2. List the conflicted files:
       `git -C <worktree-path> diff --name-only --diff-filter=U`.
-   3. Spawn the `conflict-resolver` subagent. Its prompt must carry the issue,
-      the worktree path, and the list of conflicted files.
+   3. Spawn the `conflict-resolver-<effort>` subagent — `<effort>` and the
+      `model` override from `routing.conflict-resolver`. Its prompt must carry
+      the issue, the worktree path, and the list of conflicted files.
    4. If it returns `failed`, abort and the slice has **FAILED**:
       `git -C <worktree-path> merge --abort`.
    5. If it returns `resolved`, stage the resolved files and **confirm no
@@ -234,7 +261,7 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
       gh pr merge <pr-number> --squash
       ```
 
-7. **Finish the slice.** Set the slice `state` to `passed`, then remove its
+9. **Finish the slice.** Set the slice `state` to `passed`, then remove its
    worktree with the `remove_worktree` MCP tool (`worktreePath`, `repoPath`,
    `force: true` — the worktree may hold untracked build artifacts).
 

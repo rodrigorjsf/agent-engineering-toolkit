@@ -25,6 +25,7 @@ metadata, not source — the target project should gitignore it.
       "issue": 157,
       "title": "orchestrate S4: walking skeleton",
       "wave": 0,
+      "tier": "standard",
       "blockedBy": ["155"],
       "state": "passed",
       "sliceBranch": "orchestrate/slice-157",
@@ -57,6 +58,8 @@ metadata, not source — the target project should gitignore it.
 - `issue` — the GitHub issue number.
 - `title` — the issue title.
 - `wave` — the zero-based index of the wave this slice belongs to.
+- `tier` — the assessed complexity tier (`trivial`, `standard`, or `complex`),
+  which drives per-role subagent routing.
 - `blockedBy` — issue-id strings this slice depends on (drives the graph view).
 - `state` — see *Slice states* below.
 - `sliceBranch` — the slice's branch name (`orchestrate/slice-<issue>`).

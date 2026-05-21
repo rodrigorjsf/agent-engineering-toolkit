@@ -29,10 +29,17 @@ import {
   type PlanWavesInput,
   type PlanWavesOutput,
 } from "./tools/plan-waves.js";
+import {
+  resolveRoutingFromConfig,
+  resolveRoutingInputSchema,
+  resolveRoutingOutputSchema,
+  type ResolveRoutingInput,
+  type ResolveRoutingOutput,
+} from "./tools/routing.js";
 
 const server = new McpServer({
   name: "orchestrate",
-  version: "0.4.0",
+  version: "0.8.0",
 });
 
 /**
@@ -271,6 +278,51 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handlePlanWaves as unknown as AnyToolHandler
+);
+
+// ─── resolve_routing ──────────────────────────────────────────────────────────
+
+const handleResolveRouting: ToolHandler<
+  ResolveRoutingInput,
+  ResolveRoutingOutput
+> = async (input) => {
+  const result = resolveRoutingFromConfig(input);
+  let text: string;
+  if (result.status === "ok") {
+    const r = result.routing!;
+    const inv = r.investigator
+      ? `investigator ${r.investigator.effort}`
+      : "no investigator";
+    text =
+      `Routing for tier '${result.tier}': ${inv}, ` +
+      `implementer ${r.implementer.effort}/${r.implementer.model}, ` +
+      `reviewer ${r.reviewer.effort}/${r.reviewer.model}.`;
+  } else {
+    text = `Routing resolution failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "resolve_routing",
+  {
+    title: "Resolve Complexity Routing",
+    description:
+      "Resolves which model and effort variant to spawn for each role — " +
+      "investigator, implementer, reviewer, conflict-resolver — given an " +
+      "issue's assessed complexity tier. Reads the tier-to-role mapping from " +
+      ".orchestrate/routing.json. A null investigator means that tier skips " +
+      "the investigation pass. Returns a discriminated `status` of 'ok' or " +
+      "'error' (routing.json missing or malformed).",
+    inputSchema: resolveRoutingInputSchema.shape,
+    outputSchema: resolveRoutingOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleResolveRouting as unknown as AnyToolHandler
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────
