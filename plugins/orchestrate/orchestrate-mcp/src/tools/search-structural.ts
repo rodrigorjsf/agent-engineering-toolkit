@@ -281,20 +281,23 @@ export async function searchStructural(
           "Fall back to text search.",
       };
     }
+    // Output exceeded the capture ceiling. Checked before the `e.killed`
+    // timeout branch: a maxBuffer overflow also kills the child, so the
+    // specific error code must be matched first or an overflow would be
+    // misreported as a TIMEOUT.
+    if (e.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+      return {
+        status: "error",
+        errorCode: "ASTGREP_FAILED",
+        errorMessage: `ast-grep output exceeded the ${maxBuffer}-byte capture limit.`,
+      };
+    }
     // The timeout SIGKILLed the child.
     if (e.killed) {
       return {
         status: "error",
         errorCode: "TIMEOUT",
         errorMessage: `Structural search exceeded the ${timeoutMs} ms time limit.`,
-      };
-    }
-    // Output exceeded the capture ceiling.
-    if (e.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
-      return {
-        status: "error",
-        errorCode: "ASTGREP_FAILED",
-        errorMessage: `ast-grep output exceeded the ${MAX_CAPTURE_BYTES}-byte capture limit.`,
       };
     }
     // ast-grep ran and exited non-zero. It may still have emitted valid JSON

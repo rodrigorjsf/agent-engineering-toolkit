@@ -290,6 +290,8 @@ describe("searchStructural", () => {
     );
     expect(result.status).toBe("error");
     expect(result.errorCode).toBe("ASTGREP_FAILED");
+    // The message must report the ceiling actually in effect, not the default.
+    expect(result.errorMessage).toContain("8");
   });
 
   it("caps the match list and sets truncated when ast-grep returns more than 100", async () => {
