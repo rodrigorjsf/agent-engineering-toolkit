@@ -203,3 +203,28 @@
 | context-engineering.md      | 59     | 76    | Implementation strategies detail, Ball of Mud anti-pattern, instruction budget               |
 
 **Total:** 2138 → 2758 lines (+29%), 16 pages unchanged (already adequate)
+
+---
+
+## 2026-05-22 — Claude & Cursor docs re-sync
+
+**Reason:** The vendor-doc mirrors under `docs/claude/`, `docs/claude-code/`, and `docs/cursor/` were re-synced against current upstream after ~3 weeks of drift (see ADR-0010 — these mirrors are now living, not immutable). The 10 wiki pages compiled from them were refreshed to match.
+
+**Pages refreshed (10):**
+
+| Page                   | Key updates                                                                                          |
+| ---------------------- | ---------------------------------------------------------------------------------------------------- |
+| claude-code-hooks.md   | 7 new hook events (Setup, UserPromptExpansion, PostToolBatch, PermissionDenied, TaskCreated, CwdChanged, FileChanged), Windows PowerShell tool, `mcp_tool` hook type |
+| claude-code-memory.md  | `CLAUDE.local.md` layer, "When to add to CLAUDE.md", reordered load-order table                      |
+| claude-code-plugins.md | Background monitors, default settings, community-marketplace rename                                  |
+| claude-code-skills.md  | Bundled-skills set refreshed (`/code-review` added, `/simplify` dropped), new frontmatter fields      |
+| prompt-engineering.md  | "Prompting Claude Opus 4.7" section, `effort` parameter, adaptive thinking, prefill deprecation       |
+| cursor-hooks.md        | `workspaceOpen` App-lifecycle hook, Hook categories framing                                          |
+| cursor-plugins.md      | `workspaceOpen` hook usage, Hooks reference; Extension API removed upstream                           |
+| cursor-rules.md        | Glob pattern examples subsection                                                                     |
+| cursor-skills.md       | `paths` frontmatter field, file-scoping, nested directories, `/migrate-to-skills`                     |
+| cursor-tools.md        | Terminal AppArmor 0.6.0 + Landlock v3 + auto-run renames; worktrees Agents-Window restructure         |
+
+**Note:** `docs/claude/claude-interaction-guide.md` and `docs/claude/prompting-best-practices.md` were deleted — Anthropic consolidated its prompt-engineering pages upstream into one page; `docs/claude-code/claude-prompting-best-practices.md` is the surviving single mirror. The earlier log reference to the now-deleted file is left intact as historical record.
+
+**Method:** Two parallel subagents refreshed the 10 pages from the re-synced source docs following the `wiki-ingest` compile methodology; `**Sources**` lines reconciled against `docs/analysis/`.

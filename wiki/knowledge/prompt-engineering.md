@@ -2,7 +2,7 @@
 
 **Summary**: Comprehensive techniques for crafting effective LLM inputs, ranging from basic clarity principles to advanced reasoning strategies — with the critical insight that advanced reasoning models invert conventional wisdom about few-shot examples and explicit chain-of-thought.
 **Sources**: prompt-engineering-guide.md, claude-prompting-best-practices.md, analysis-prompt-engineering-guide.md, analysis-claude-prompting-best-practices.md
-**Last updated**: 2026-04-18
+**Last updated**: 2026-05-22
 
 ---
 
@@ -19,6 +19,18 @@ Advanced reasoning models (o1, R1, GPT-5) perform **worse** with classic techniq
 | **Reasoning** (o1, R1, GPT-5) | Harmful         | Harmful         | Zero-shot, no examples            |
 | **Frontier** (Claude, GPT-4)  | Beneficial      | Beneficial      | Few-shot CoT + XML tags           |
 | **Mid-tier** (<100B params)   | Very beneficial | Very beneficial | Extensive few-shot + explicit CoT |
+
+## Prompting Claude Opus 4.7
+
+The current Claude lineup is **Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 4.6, and Claude Haiku 4.5** (source: claude-prompting-best-practices.md). Opus 4.7 is the most capable generally available model and performs well out of the box on existing Opus 4.6 prompts; the behaviors below most often need tuning.
+
+- **Response length** is calibrated to judged task complexity rather than a fixed verbosity — shorter on lookups, longer on open-ended analysis. Tune with prompts if your product depends on a fixed style; positive concision examples beat negative instructions.
+- **Effort parameter** — start at the new `xhigh` level for coding and agentic use cases; use a minimum of `high` for intelligence-sensitive work. Opus 4.7 respects effort strictly, especially at the low end: at `low`/`medium` it scopes work to exactly what was asked. If reasoning looks shallow, raise effort rather than prompting around it.
+- **Tool-use triggering** — Opus 4.7 uses tools less often and reasons more. Raising effort (`high`/`xhigh`) is the lever to increase tool usage, especially in agentic search and coding.
+- **More literal instruction following** — it interprets prompts literally and will not silently generalize an instruction from one item to another. State scope explicitly ("apply to every section, not just the first").
+- **Tone** is more direct and opinionated, with less validation-forward phrasing and fewer emoji than Opus 4.6.
+- **Subagent spawning** — Opus 4.7 spawns fewer subagents by default; give explicit guidance when more are desirable.
+- **Code-review harnesses** tuned for earlier models may show lower measured recall, because Opus 4.7 follows "only report high-severity" instructions more faithfully — a harness effect, not a capability regression. Tell the finding stage its job is coverage, not filtering.
 
 ## Core Techniques
 
@@ -71,10 +83,19 @@ Advanced reasoning models (o1, R1, GPT-5) perform **worse** with classic techniq
 
 - Place long documents at the **top** of prompts (improves performance by ~30%)
 - Ask Claude to **quote relevant parts** before analyzing long documents
-- Use adaptive thinking: `thinking: {type: "adaptive"}` with `output_config: {effort: "high"}`
-- Effort parameter: `low`, `medium`, `high`, `max` (Opus 4.6 only)
 - Use explicit action directives: "Change this function" not "Can you suggest changes?"
 - Maximize parallel tool calling with explicit instructions
+- Wrap content types in XML tags (`<instructions>`, `<context>`, `<input>`); include 3–5 diverse `<example>` blocks for few-shot steering
+
+### Adaptive Thinking and the `effort` Parameter
+
+Claude 4.6 and 4.7 models use **adaptive thinking** (`thinking: {type: "adaptive"}`), where Claude dynamically decides when and how much to think based on the `effort` parameter and query complexity (source: claude-prompting-best-practices.md). It replaces manual extended thinking with `budget_tokens`, which is still functional on Opus 4.6 / Sonnet 4.6 but **deprecated** — prefer lowering `effort` or capping with `max_tokens`.
+
+The `effort` parameter has five levels: `max`, `xhigh` (new — best for coding/agentic), `high`, `medium`, `low`. Configure via `output_config: {effort: "high"}`. At `max`/`xhigh` set a large `max_tokens` budget (start at 64k). Sonnet 4.6 defaults to `high` effort; Sonnet 4.5 had no effort parameter.
+
+### Prefilling Is Deprecated
+
+Starting with Claude 4.6 models, **prefilled responses on the last assistant turn are no longer supported** — such requests return an HTTP 400 error (source: claude-prompting-best-practices.md). Migrate: use [[structured-outputs]] or tool calling to constrain format; use direct system-prompt instructions to eliminate preambles; move continuations into the user message. Earlier models still support prefills, and adding assistant messages elsewhere in the conversation is unaffected.
 
 ## State Tracking Patterns
 
@@ -115,7 +136,7 @@ Generate → evaluate → refine, applied to agent behavior across episodes:
 2. **Evaluate**: Outcome is assessed (test results, correctness checks)
 3. **Refine**: Agent reflects on failures and adjusts approach for next attempt
 
-This is the Evaluator-Optimizer workflow from Anthropic's agent patterns. Related to [[eval-driven-development]] — the same loop applied to [[skill-authoring]] instead of runtime behavior.
+This is the Evaluator-Optimizer workflow from Anthropic's agent patterns — the same generate-evaluate-refine loop can be applied to [[skill-authoring]] instead of runtime behavior.
 
 ## Related pages
 
