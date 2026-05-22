@@ -228,6 +228,21 @@ plugins/orchestrate/
     └── dist/                    # Bundled server + context-watchdog hook
 ```
 
+## Contributing to orchestrate-mcp
+
+The `orchestrate-mcp/` directory contains a TypeScript MCP server whose compiled output (`dist/`) is committed so the plugin works without a build step at install time. When you change any source file under `src/`, you **must** rebuild before committing:
+
+```bash
+cd plugins/orchestrate/orchestrate-mcp
+npm ci          # if node_modules is stale
+npm run build   # regenerates dist/index.js and dist/context-watchdog.js
+git add dist/
+```
+
+A CI job (`orchestrate-mcp bundle check`) runs on every PR that touches any file under `plugins/orchestrate/orchestrate-mcp/`. It rebuilds the bundle from scratch and fails if `git diff -- dist/` is non-empty. This means a PR that modifies source without rebuilding — or that edits `dist/` directly — will fail CI, not slip through silently.
+
+The vitest suite (`npm test`) imports from `src/`, so tests pass whether or not `dist/` is current. Do not rely on green tests as evidence that the committed bundle is fresh — the CI bundle check is the authoritative gate.
+
 ## License
 
 MIT
