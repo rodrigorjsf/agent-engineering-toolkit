@@ -3226,8 +3226,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path7) {
-      let input = path7;
+    function removeDotSegments(path8) {
+      let input = path8;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3479,8 +3479,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path7, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path7 && path7 !== "/" ? path7 : void 0;
+        const [path8, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path8 && path8 !== "/" ? path8 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs7, exportName) {
+    function addFormats(ajv, list, fs9, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs7[f]);
+        ajv.addFormat(f, fs9[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -7364,8 +7364,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path7, errorMaps, issueData } = params;
-  const fullPath = [...path7, ...issueData.path || []];
+  const { data, path: path8, errorMaps, issueData } = params;
+  const fullPath = [...path8, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7481,11 +7481,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path7, key) {
+  constructor(parent, value, path8, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path7;
+    this._path = path8;
     this._key = key;
   }
   get path() {
@@ -11123,10 +11123,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path7) {
-  if (!path7)
+function getElementAtPath(obj, path8) {
+  if (!path8)
     return obj;
-  return path7.reduce((acc, key) => acc?.[key], obj);
+  return path8.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11446,11 +11446,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path7, issues) {
+function prefixIssues(path8, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path7);
+    iss.path.unshift(path8);
     return iss;
   });
 }
@@ -21176,14 +21176,14 @@ function optionInjectionError(field, value) {
 }
 function cleanGitError(err) {
   if (err instanceof GitExecError && err.stderr.trim().length > 0) {
-    const firstLine8 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-    if (firstLine8) {
-      return firstLine8;
+    const firstLine9 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+    if (firstLine9) {
+      return firstLine9;
     }
   }
   const message = err instanceof Error ? err.message : String(err);
-  const firstLine7 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-  return firstLine7 ?? "Unknown git error";
+  const firstLine8 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return firstLine8 ?? "Unknown git error";
 }
 
 // src/tools/run-command.ts
@@ -23325,6 +23325,356 @@ async function recoverChangedFiles(input) {
   };
 }
 
+// src/tools/bootstrap-config.ts
+var path7 = __toESM(require("path"));
+var fs8 = __toESM(require("fs"));
+
+// src/tools/detect-project.ts
+var fs7 = __toESM(require("fs"));
+var DETECTION_RULES = [
+  { manifest: "package.json", type: "npm" },
+  { manifest: "Cargo.toml", type: "cargo" },
+  { manifest: "pyproject.toml", type: "python" },
+  { manifest: "Makefile", type: "make" }
+];
+var COMMAND_MAPS = {
+  npm: {
+    tests: ["npm", "test"],
+    typecheck: ["npm", "run", "typecheck"],
+    build: ["npm", "run", "build"],
+    lint: ["npm", "run", "lint"]
+  },
+  cargo: {
+    tests: ["cargo", "test"],
+    typecheck: ["cargo", "check"],
+    build: ["cargo", "build"],
+    lint: ["cargo", "clippy"]
+  },
+  python: {
+    tests: ["pytest"],
+    typecheck: ["mypy", "."],
+    build: ["python", "-m", "build"],
+    lint: ["ruff", "check", "."]
+  },
+  make: {
+    tests: ["make", "test"],
+    typecheck: ["make", "typecheck"],
+    build: ["make", "build"],
+    lint: ["make", "lint"]
+  }
+};
+function detectProjectType(manifestsPresent) {
+  const present = new Set(manifestsPresent);
+  for (const rule of DETECTION_RULES) {
+    if (present.has(rule.manifest)) {
+      return rule.type;
+    }
+  }
+  return "none";
+}
+function buildCommandMap(type) {
+  if (type === "none") {
+    return {};
+  }
+  return { ...COMMAND_MAPS[type] };
+}
+function detectCommandMap(repoRoot) {
+  let entries;
+  try {
+    entries = fs7.readdirSync(repoRoot);
+  } catch {
+    return {};
+  }
+  const manifests = DETECTION_RULES.map((r) => r.manifest);
+  const presentManifests = entries.filter((e) => manifests.includes(e));
+  const projectType = detectProjectType(presentManifests);
+  return buildCommandMap(projectType);
+}
+
+// src/tools/bootstrap-config.ts
+var DEFAULT_CONTEXT_WINDOW_TOKENS = 2e5;
+var ONE_MILLION_TOKENS = 1e6;
+var MODEL_CONTEXT_WINDOW = {
+  opus: DEFAULT_CONTEXT_WINDOW_TOKENS,
+  sonnet: DEFAULT_CONTEXT_WINDOW_TOKENS,
+  haiku: DEFAULT_CONTEXT_WINDOW_TOKENS,
+  "claude-opus-4-7[1m]": ONE_MILLION_TOKENS,
+  "claude-opus-4-1[1m]": ONE_MILLION_TOKENS,
+  "claude-sonnet-4-5[1m]": ONE_MILLION_TOKENS,
+  "claude-sonnet-4[1m]": ONE_MILLION_TOKENS
+};
+var DEFAULT_ROUTING_CONFIG = {
+  trivial: {
+    investigator: null,
+    implementer: { model: "sonnet", effort: "standard" },
+    reviewer: { model: "sonnet", effort: "standard" },
+    "conflict-resolver": { model: "sonnet", effort: "standard" }
+  },
+  standard: {
+    investigator: null,
+    implementer: { model: "sonnet", effort: "standard" },
+    reviewer: { model: "opus", effort: "standard" },
+    "conflict-resolver": { model: "opus", effort: "standard" }
+  },
+  complex: {
+    investigator: { model: "opus", effort: "deep" },
+    implementer: { model: "opus", effort: "deep" },
+    reviewer: { model: "opus", effort: "deep" },
+    "conflict-resolver": { model: "opus", effort: "deep" }
+  }
+};
+var RUNS_GITIGNORE_LINE = ".orchestrate/runs/";
+var bootstrapConfigInputSchema = external_exports.object({
+  repoPath: external_exports.string().optional().describe(
+    "Path to the project root the .orchestrate/ configuration is bootstrapped into. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default, which is not guaranteed to be the project root."
+  ),
+  model: external_exports.string().optional().describe(
+    "The model identifier of the running orchestrator session (e.g. 'opus' or 'claude-opus-4-7[1m]'). The MCP process cannot see the calling LLM's model, so the caller passes it. It is mapped to a context-window token count via an explicit table; an unknown or absent model falls back to 200000. Ignored when contextWindowTokens is set."
+  ),
+  contextWindowTokens: external_exports.number().optional().describe(
+    "An explicit context-window token count for the running session. When supplied as a positive integer it takes precedence over the model table. A non-positive or non-integer value is ignored and the run falls back to the model table, then to 200000."
+  )
+});
+var bootstrapConfigOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the bootstrap completed (every file either written or already present); 'error' = a filesystem write failed and the configuration is incomplete."
+  ),
+  projectType: external_exports.enum(["npm", "cargo", "python", "make", "none"]).optional().describe(
+    "The detected project type. 'none' means no recognized manifest \u2014 commands.json is written empty. Present when status='ok'."
+  ),
+  contextWindowTokens: external_exports.number().optional().describe(
+    "The context-window token count written into handoff.json. Always a positive integer \u2014 never NaN. Present when status='ok'."
+  ),
+  contextWindowSource: external_exports.enum(["explicit", "model-table", "default"]).optional().describe(
+    "How contextWindowTokens was resolved. 'explicit' = a valid contextWindowTokens input; 'model-table' = a recognized model id; 'default' = an unknown/absent model fell back to 200000. Present when status='ok'."
+  ),
+  files: external_exports.object({
+    commandsJson: external_exports.enum(["written", "already-present"]),
+    routingJson: external_exports.enum(["written", "already-present"]),
+    handoffJson: external_exports.enum(["written", "already-present"])
+  }).optional().describe(
+    "Per-config-file outcome. 'written' = the bootstrapper created it; 'already-present' = it existed and was left untouched (a committed config is never overwritten). Present when status='ok'."
+  ),
+  runsDir: external_exports.enum(["created", "already-present"]).optional().describe(
+    "Outcome for the .orchestrate/runs/ directory. Present when status='ok'."
+  ),
+  gitignore: external_exports.enum(["created-with-line", "line-added", "already-present"]).optional().describe(
+    "Outcome for the .gitignore entry. 'created-with-line' = no .gitignore existed, one was created with the .orchestrate/runs/ line; 'line-added' = the line was appended to an existing file; 'already-present' = the line was already there. Present when status='ok'."
+  ),
+  errorCode: external_exports.enum(["WRITE_FAILED"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'WRITE_FAILED' = a filesystem operation (mkdir or write) failed."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='error'."
+  )
+});
+function firstLine7(message) {
+  const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return line ?? message.trim();
+}
+function toJsonFile(value) {
+  return `${JSON.stringify(value, null, 2)}
+`;
+}
+function resolveContextWindow(input) {
+  const explicit = input.contextWindowTokens;
+  if (typeof explicit === "number" && Number.isInteger(explicit) && explicit > 0) {
+    return { tokens: explicit, source: "explicit" };
+  }
+  if (input.model !== void 0) {
+    const fromTable = MODEL_CONTEXT_WINDOW[input.model];
+    if (fromTable !== void 0) {
+      return { tokens: fromTable, source: "model-table" };
+    }
+  }
+  return { tokens: DEFAULT_CONTEXT_WINDOW_TOKENS, source: "default" };
+}
+function buildCommandsConfig(repoRoot) {
+  let entries;
+  try {
+    entries = fs8.readdirSync(repoRoot);
+  } catch {
+    entries = [];
+  }
+  const projectType = detectProjectType(entries);
+  const capabilities = detectCommandMap(repoRoot);
+  const config2 = { ...capabilities };
+  if (projectType === "npm") {
+    config2.install = ["npm", "ci"];
+  }
+  return { config: config2, projectType };
+}
+function writeIfAbsent(filePath, content) {
+  if (fs8.existsSync(filePath)) {
+    return { kind: "already-present" };
+  }
+  try {
+    fs8.writeFileSync(filePath, content);
+    return { kind: "written" };
+  } catch (err) {
+    return {
+      kind: "error",
+      message: firstLine7(err instanceof Error ? err.message : String(err))
+    };
+  }
+}
+function ensureGitignoreEntry(repoRoot) {
+  const gitignorePath = path7.join(repoRoot, ".gitignore");
+  let existing;
+  try {
+    existing = fs8.readFileSync(gitignorePath, "utf8");
+  } catch {
+    existing = null;
+  }
+  if (existing === null) {
+    try {
+      fs8.writeFileSync(gitignorePath, `${RUNS_GITIGNORE_LINE}
+`);
+      return { kind: "created-with-line" };
+    } catch (err) {
+      return {
+        kind: "error",
+        message: firstLine7(err instanceof Error ? err.message : String(err))
+      };
+    }
+  }
+  const alreadyListed = existing.split("\n").map((l) => l.trim()).some((l) => l === ".orchestrate/runs/" || l === ".orchestrate/runs");
+  if (alreadyListed) {
+    return { kind: "already-present" };
+  }
+  const separator = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
+  try {
+    fs8.appendFileSync(
+      gitignorePath,
+      `${separator}${RUNS_GITIGNORE_LINE}
+`
+    );
+    return { kind: "line-added" };
+  } catch (err) {
+    return {
+      kind: "error",
+      message: firstLine7(err instanceof Error ? err.message : String(err))
+    };
+  }
+}
+function bootstrapConfig(input) {
+  const repoRoot = input.repoPath ?? process.cwd();
+  const orchestrateDir = path7.join(repoRoot, ".orchestrate");
+  const runsDir = path7.join(orchestrateDir, "runs");
+  const runsDirExisted = fs8.existsSync(runsDir);
+  try {
+    fs8.mkdirSync(runsDir, { recursive: true });
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "WRITE_FAILED",
+      errorMessage: `Failed to create ${runsDir}: ${firstLine7(
+        err instanceof Error ? err.message : String(err)
+      )}`
+    };
+  }
+  const { config: commandsConfig, projectType } = buildCommandsConfig(repoRoot);
+  const contextWindow = resolveContextWindow(input);
+  const validatedCommands = commandsConfigSchema.safeParse(commandsConfig);
+  if (!validatedCommands.success) {
+    const detail = validatedCommands.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+    return {
+      status: "error",
+      errorCode: "WRITE_FAILED",
+      errorMessage: `Derived commands.json failed schema validation: ${detail}`
+    };
+  }
+  const commandsResult = writeIfAbsent(
+    path7.join(orchestrateDir, "commands.json"),
+    toJsonFile(validatedCommands.data)
+  );
+  if (commandsResult.kind === "error") {
+    return {
+      status: "error",
+      errorCode: "WRITE_FAILED",
+      errorMessage: `Failed to write commands.json: ${commandsResult.message}`
+    };
+  }
+  const routingResult = writeIfAbsent(
+    path7.join(orchestrateDir, "routing.json"),
+    toJsonFile(DEFAULT_ROUTING_CONFIG)
+  );
+  if (routingResult.kind === "error") {
+    return {
+      status: "error",
+      errorCode: "WRITE_FAILED",
+      errorMessage: `Failed to write routing.json: ${routingResult.message}`
+    };
+  }
+  const handoffConfig = {
+    watchdog: {
+      thresholdPercent: 40,
+      contextWindowTokens: contextWindow.tokens
+    },
+    successor: {
+      claudeArgs: [
+        "--remote-control",
+        "orchestrate-successor",
+        "--permission-mode",
+        "auto"
+      ],
+      resumePrompt: "/orchestrate",
+      terminals: [
+        {
+          name: "windows-terminal",
+          argv: [
+            "wt.exe",
+            "new-tab",
+            "--title",
+            "orchestrate-successor",
+            "wsl.exe",
+            "--",
+            "bash",
+            "-lc",
+            "{claudeCommand}"
+          ]
+        },
+        {
+          name: "warp",
+          argv: ["warp-terminal", "--", "bash", "-lc", "{claudeCommand}"]
+        }
+      ]
+    }
+  };
+  const handoffResult = writeIfAbsent(
+    path7.join(orchestrateDir, "handoff.json"),
+    toJsonFile(handoffConfig)
+  );
+  if (handoffResult.kind === "error") {
+    return {
+      status: "error",
+      errorCode: "WRITE_FAILED",
+      errorMessage: `Failed to write handoff.json: ${handoffResult.message}`
+    };
+  }
+  const gitignoreResult = ensureGitignoreEntry(repoRoot);
+  if (gitignoreResult.kind === "error") {
+    return {
+      status: "error",
+      errorCode: "WRITE_FAILED",
+      errorMessage: `Failed to update .gitignore: ${gitignoreResult.message}`
+    };
+  }
+  return {
+    status: "ok",
+    projectType,
+    contextWindowTokens: contextWindow.tokens,
+    contextWindowSource: contextWindow.source,
+    files: {
+      commandsJson: commandsResult.kind,
+      routingJson: routingResult.kind,
+      handoffJson: handoffResult.kind
+    },
+    runsDir: runsDirExisted ? "already-present" : "created",
+    gitignore: gitignoreResult.kind
+  };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
@@ -23673,6 +24023,38 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleRecoverChangedFiles
+);
+var handleBootstrapConfig = async (input) => {
+  const result = bootstrapConfig(input);
+  let text;
+  if (result.status === "ok") {
+    const f = result.files;
+    const written = [
+      f.commandsJson === "written" ? "commands.json" : null,
+      f.routingJson === "written" ? "routing.json" : null,
+      f.handoffJson === "written" ? "handoff.json" : null
+    ].filter((n) => n !== null);
+    const filesNote = written.length > 0 ? `wrote ${written.join(", ")}` : "all config files already present";
+    text = `Bootstrapped .orchestrate/ config for a ${result.projectType} project (${filesNote}; context window ${result.contextWindowTokens} tokens, source: ${result.contextWindowSource}; runs dir ${result.runsDir}; .gitignore ${result.gitignore}).`;
+  } else {
+    text = `Bootstrap failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "bootstrap_config",
+  {
+    title: "Bootstrap Orchestrate Configuration",
+    description: "Sets up a repository's .orchestrate/ configuration for a first-ever orchestrate run. Detects the project type and writes a project-aware commands.json (with `install` for npm only, empty for an unrecognized project), writes routing.json from the shipped defaults, and writes handoff.json with a context-window size derived from the running model \u2014 pass the model id (or an explicit contextWindowTokens) as input; the MCP process cannot see the calling LLM's model. An unknown or absent model falls back to 200000. Creates .orchestrate/runs/ and idempotently adds it to the repository's .gitignore. Every step is idempotent: an existing config file is never overwritten and the .gitignore line is never duplicated. Returns a discriminated `status` of 'ok' or 'error'.",
+    inputSchema: bootstrapConfigInputSchema.shape,
+    outputSchema: bootstrapConfigOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleBootstrapConfig
 );
 async function main() {
   const transport = new StdioServerTransport();

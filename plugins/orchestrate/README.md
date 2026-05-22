@@ -50,6 +50,7 @@ The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing 
 
 | Tool | Purpose |
 |------|---------|
+| `bootstrap_config` | Set up a repository's `.orchestrate/` config on a first-ever run — project-aware `commands.json`, model-derived `handoff.json`, default `routing.json`, the run directory, and the `.gitignore` entry |
 | `create_worktree` / `remove_worktree` | Git worktree lifecycle — isolated per-slice checkouts |
 | `run_tests` / `run_typecheck` / `run_build` / `run_lint` | Run the project's configured capability commands |
 | `plan_waves` | Topologically sort issues into dependency waves; detects cycles |
@@ -95,6 +96,32 @@ const commands = buildCommandMap(type); // cargo argv arrays
 
 A manifest-less repository yields `{}` — never an npm fallback — so no capability tool is ever wired to a command guaranteed to fail.
 
+### Config bootstrapping
+
+The `bootstrap_config` MCP tool makes a first-ever run set up its own `.orchestrate/` configuration with no manual steps. On a fresh run — when the repository has no `.orchestrate/` directory — the orchestrator calls it before planning the backlog. It:
+
+- Composes the **capability detector** above and writes a project-appropriate `.orchestrate/commands.json`. The shipped `templates/commands.json` is an empty `{}` safe default — the bootstrapper is the canonical source of a project-aware config. For an npm project it also sets `install: ["npm", "ci"]`; for cargo, Python, Make, or an unrecognized project it omits `install` (a wrong install command is worse than none).
+- Writes `.orchestrate/handoff.json` with a context-window size **derived from the running model**, not a static 200k constant. The model id (or an explicit token count) is passed as a tool input — the MCP process cannot see the calling LLM's model. A small explicit table maps the model to its window; an unknown or absent model falls back to `200000`.
+- Writes `.orchestrate/routing.json` from the shipped defaults.
+- Creates `.orchestrate/runs/` and idempotently appends `.orchestrate/runs/` to the repository's `.gitignore` — exactly once, even across repeated bootstraps.
+
+Every step is individually idempotent: a committed config file is never overwritten, the run directory `mkdir` is recursive, and the `.gitignore` line is never duplicated. Running `bootstrap_config` against an already-configured repository is a safe no-op.
+
+**Usage example.** The orchestrate skill calls the tool on a fresh run:
+
+```jsonc
+// bootstrap_config tool input
+{
+  "repoPath": "/path/to/repo",
+  "model": "claude-opus-4-7[1m]"   // or, e.g., "contextWindowTokens": 1000000
+}
+// → { "status": "ok", "projectType": "npm",
+//     "contextWindowTokens": 1000000, "contextWindowSource": "model-table",
+//     "files": { "commandsJson": "written", "routingJson": "written",
+//                "handoffJson": "written" },
+//     "runsDir": "created", "gitignore": "created-with-line" }
+```
+
 ### Context handoff
 
 A long backlog can fill the orchestrator session's context window before every wave is done. The bundled `context-watchdog` hook (a `PostToolUse` hook) estimates context usage from the session transcript and, past a configurable threshold (default 40%), writes the active run's `.orchestrate/runs/<runId>/context-flag.json`. The orchestrator finishes the current slice, checkpoints, and calls `spawn_successor` to launch a new interactive Claude Code session that resumes from `run-state.json` — then the predecessor exits. The successor clears the stale flag on startup, so there is no handoff loop.
@@ -138,18 +165,18 @@ To run orchestrate against another repository, that repository needs:
 - **The `gh` CLI**, installed and authenticated (`gh auth status`) — the orchestrator uses it for every GitHub operation.
 - **An `origin/development` branch** — the integration base every umbrella branch is cut from.
 - **Branch protection that does not block** merges into `orchestrate/umbrella-*` and `orchestrate/slice-*` branches — the auto-merge needs them open.
-- **Capability configuration** — copy this plugin's `templates/commands.json` and `templates/routing.json` into the target repository's `.orchestrate/` directory and fill them in. Optionally copy `templates/handoff.json` to tune the context-handoff behavior.
+- **Capability configuration** — handled automatically on the first run. When the repository has no `.orchestrate/` directory, the orchestrator calls the `bootstrap_config` MCP tool, which detects the project type and writes a project-appropriate `.orchestrate/commands.json`, `.orchestrate/routing.json`, and `.orchestrate/handoff.json`. To configure ahead of time instead, copy this plugin's `templates/` files into the target repository's `.orchestrate/` directory and fill them in — `templates/commands.json` ships as an empty `{}` starting point. A committed config is never overwritten by the bootstrapper.
 - **A `ready-for-agent` backlog** — issues labelled `ready-for-agent`, each with a **Blocked by** section listing blocker issue numbers (`- #NNN`) and a **Parent** section naming the PRD issue.
 
 Optionally, install the **`ast-grep` CLI** to enable the investigator and reviewer subagents' structural code search; without it, they fall back to text search.
 
-Add the run's generated, ephemeral files to the target repository's `.gitignore`. Every run keeps its `run-state.json`, `context-flag.json`, and rendered HTML artifacts under a per-run directory, `.orchestrate/runs/<runId>/`, so one gitignore line covers them all:
+The run's generated, ephemeral files must be gitignored. Every run keeps its `run-state.json`, `context-flag.json`, and rendered HTML artifacts under a per-run directory, `.orchestrate/runs/<runId>/`, so one gitignore line covers them all:
 
 ```gitignore
 .orchestrate/runs/
 ```
 
-The committed `.orchestrate/commands.json`, `.orchestrate/routing.json`, and `.orchestrate/handoff.json` stay flat at the `.orchestrate/` top level — they are configuration and stay tracked.
+`bootstrap_config` adds this line to the repository's `.gitignore` automatically — idempotently, never duplicating it — so a first-ever run needs no manual gitignore edit. The committed `.orchestrate/commands.json`, `.orchestrate/routing.json`, and `.orchestrate/handoff.json` stay flat at the `.orchestrate/` top level — they are configuration and stay tracked.
 
 ## Configuration Reference
 
@@ -157,16 +184,19 @@ All configuration lives in the target repository's `.orchestrate/` directory.
 
 ### `.orchestrate/commands.json`
 
-Maps each capability verb to the **argv array** that runs it. The argv form is executed with no shell, so a command can never be word-split or glob-expanded. A missing verb is tolerated — that capability tool reports `not-configured`.
+Maps each capability verb to the **argv array** that runs it. The argv form is executed with no shell, so a command can never be word-split or glob-expanded. A missing verb is tolerated — that capability tool reports `not-configured`. On a first-ever run `bootstrap_config` writes this file project-aware; the example below shows the npm form.
 
 ```json
 {
   "tests": ["npm", "test"],
   "typecheck": ["npm", "run", "typecheck"],
   "build": ["npm", "run", "build"],
-  "lint": ["npm", "run", "lint"]
+  "lint": ["npm", "run", "lint"],
+  "install": ["npm", "ci"]
 }
 ```
+
+The optional `install` verb runs once in each fresh worktree before the capability commands. `bootstrap_config` sets it to `["npm", "ci"]` for an npm project and omits it for every other project type — a wrong install command is worse than none.
 
 ### `.orchestrate/routing.json`
 
@@ -197,7 +227,7 @@ Maps each complexity tier to the model and effort variant for each role. `invest
 
 ### `.orchestrate/handoff.json`
 
-Optional. Tunes the context-watchdog threshold and the successor-session launcher. When absent, built-in defaults apply.
+Optional. Tunes the context-watchdog threshold and the successor-session launcher. When absent, built-in defaults apply. On a first-ever run `bootstrap_config` writes this file with `watchdog.contextWindowTokens` derived from the running model — `1000000` for a 1M-context model, `200000` otherwise.
 
 ```json
 {

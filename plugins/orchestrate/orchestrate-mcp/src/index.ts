@@ -85,6 +85,13 @@ import {
   type RecoverChangedFilesInput,
   type RecoverChangedFilesOutput,
 } from "./tools/recover-changed-files.js";
+import {
+  bootstrapConfig,
+  bootstrapConfigInputSchema,
+  bootstrapConfigOutputSchema,
+  type BootstrapConfigInput,
+  type BootstrapConfigOutput,
+} from "./tools/bootstrap-config.js";
 
 const server = new McpServer({
   name: "orchestrate",
@@ -687,6 +694,63 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleRecoverChangedFiles as unknown as AnyToolHandler
+);
+
+// ─── bootstrap_config ─────────────────────────────────────────────────────────
+
+const handleBootstrapConfig: ToolHandler<
+  BootstrapConfigInput,
+  BootstrapConfigOutput
+> = async (input) => {
+  const result = bootstrapConfig(input);
+  let text: string;
+  if (result.status === "ok") {
+    const f = result.files!;
+    const written = [
+      f.commandsJson === "written" ? "commands.json" : null,
+      f.routingJson === "written" ? "routing.json" : null,
+      f.handoffJson === "written" ? "handoff.json" : null,
+    ].filter((n): n is string => n !== null);
+    const filesNote =
+      written.length > 0
+        ? `wrote ${written.join(", ")}`
+        : "all config files already present";
+    text =
+      `Bootstrapped .orchestrate/ config for a ${result.projectType} project ` +
+      `(${filesNote}; context window ${result.contextWindowTokens} tokens, ` +
+      `source: ${result.contextWindowSource}; runs dir ${result.runsDir}; ` +
+      `.gitignore ${result.gitignore}).`;
+  } else {
+    text = `Bootstrap failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "bootstrap_config",
+  {
+    title: "Bootstrap Orchestrate Configuration",
+    description:
+      "Sets up a repository's .orchestrate/ configuration for a first-ever " +
+      "orchestrate run. Detects the project type and writes a project-aware " +
+      "commands.json (with `install` for npm only, empty for an unrecognized " +
+      "project), writes routing.json from the shipped defaults, and writes " +
+      "handoff.json with a context-window size derived from the running model " +
+      "— pass the model id (or an explicit contextWindowTokens) as input; the " +
+      "MCP process cannot see the calling LLM's model. An unknown or absent " +
+      "model falls back to 200000. Creates .orchestrate/runs/ and idempotently " +
+      "adds it to the repository's .gitignore. Every step is idempotent: an " +
+      "existing config file is never overwritten and the .gitignore line is " +
+      "never duplicated. Returns a discriminated `status` of 'ok' or 'error'.",
+    inputSchema: bootstrapConfigInputSchema.shape,
+    outputSchema: bootstrapConfigOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleBootstrapConfig as unknown as AnyToolHandler
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────
