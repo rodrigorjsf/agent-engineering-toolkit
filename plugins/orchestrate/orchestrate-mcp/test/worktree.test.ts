@@ -300,6 +300,139 @@ describe("create_worktree", () => {
     }
   });
 
+  it("does not execute a malicious GIT_SSH_COMMAND inherited from the environment", async () => {
+    // Security: GIT_SSH_COMMAND overrides `-c core.sshCommand` in git's
+    // precedence, so an inherited value can bypass the hardening. gitEnv() must
+    // neutralize it by setting GIT_SSH_COMMAND="ssh" after ...process.env.
+    //
+    // Setup mirrors the F-005 test: ssh:// remote + stub `ssh` on PATH.
+    // Additionally, a sentinel-writing command is injected via GIT_SSH_COMMAND.
+    // After createWorktree, the sentinel must NOT exist.
+    const remoteDir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-remote-"));
+    const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-ssh-"));
+    const sentinelDir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-sentinel-"));
+    const sentinelPath = path.join(sentinelDir, "SSH_COMMAND_EXECUTED");
+
+    const savedPath = process.env.PATH;
+    const savedSshCommand = process.env.GIT_SSH_COMMAND;
+
+    try {
+      const remoteBare = path.join(remoteDir, "remote.git");
+      git(["clone", "--bare", repoPath, remoteBare], remoteDir);
+      git(["remote", "add", "origin", `ssh://fake${remoteBare}`], repoPath);
+
+      // Stub `ssh` on PATH so the neutralized GIT_SSH_COMMAND="ssh" resolves
+      // to something that actually runs the git-upload-pack command (keeping
+      // the fetch functional).
+      const stubSsh = path.join(stubDir, "ssh");
+      fs.writeFileSync(
+        stubSsh,
+        '#!/bin/sh\nfor arg in "$@"; do cmd="$arg"; done\nexec sh -c "$cmd"\n'
+      );
+      fs.chmodSync(stubSsh, 0o755);
+
+      // Inject the malicious GIT_SSH_COMMAND that would write the sentinel.
+      process.env.GIT_SSH_COMMAND = `sh -c 'touch ${sentinelPath}; for arg in "$@"; do cmd="$arg"; done; sh -c "$cmd"' --`;
+      process.env.PATH = `${stubDir}${path.delimiter}${savedPath ?? ""}`;
+
+      const wtPath = path.join(worktreesDir, "malicious-ssh-cmd-wt");
+      await createWorktree({
+        baseRef: "HEAD",
+        branch: "malicious-ssh-cmd-branch",
+        worktreePath: wtPath,
+        repoPath,
+      });
+
+      // The sentinel must NOT have been written — the injected GIT_SSH_COMMAND
+      // must have been neutralized by gitEnv() before git was invoked.
+      expect(fs.existsSync(sentinelPath)).toBe(false);
+    } finally {
+      if (savedPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = savedPath;
+      }
+      if (savedSshCommand === undefined) {
+        delete process.env.GIT_SSH_COMMAND;
+      } else {
+        process.env.GIT_SSH_COMMAND = savedSshCommand;
+      }
+      rmrf(remoteDir);
+      rmrf(stubDir);
+      rmrf(sentinelDir);
+    }
+  });
+
+  it("core.sshCommand in repo .git/config is overridden by -c and does not execute", async () => {
+    // Security invariant pinned by #184: a malicious `core.sshCommand` in an
+    // untrusted repo's `.git/config` must NOT run because gitExecFile prepends
+    // `-c core.sshCommand=ssh` which takes precedence over repo config.
+    //
+    // This test locks that invariant in place so future refactors cannot
+    // accidentally remove the `-c core.sshCommand=ssh` override.
+    const remoteDir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-remote-"));
+    const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-ssh-"));
+    const sentinelDir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-sentinel-"));
+    const sentinelPath = path.join(sentinelDir, "CORE_SSH_COMMAND_EXECUTED");
+
+    const savedPath = process.env.PATH;
+    const savedSshCommand = process.env.GIT_SSH_COMMAND;
+
+    try {
+      const remoteBare = path.join(remoteDir, "remote.git");
+      git(["clone", "--bare", repoPath, remoteBare], remoteDir);
+      git(["remote", "add", "origin", `ssh://fake${remoteBare}`], repoPath);
+
+      // Stub `ssh` on PATH so the legitimate `-c core.sshCommand=ssh` resolves
+      // to something functional.
+      const stubSsh = path.join(stubDir, "ssh");
+      fs.writeFileSync(
+        stubSsh,
+        '#!/bin/sh\nfor arg in "$@"; do cmd="$arg"; done\nexec sh -c "$cmd"\n'
+      );
+      fs.chmodSync(stubSsh, 0o755);
+
+      // Write a malicious core.sshCommand into the repo's .git/config.
+      git(
+        ["config", "core.sshCommand", `sh -c 'touch ${sentinelPath}; for arg in "$@"; do cmd="$arg"; done; sh -c "$cmd"' --`],
+        repoPath
+      );
+
+      // Ensure GIT_SSH_COMMAND is not set so env-var path is not the actor.
+      delete process.env.GIT_SSH_COMMAND;
+      process.env.PATH = `${stubDir}${path.delimiter}${savedPath ?? ""}`;
+
+      const wtPath = path.join(worktreesDir, "malicious-core-ssh-wt");
+      const result = await createWorktree({
+        baseRef: "HEAD",
+        branch: "malicious-core-ssh-branch",
+        worktreePath: wtPath,
+        repoPath,
+      });
+
+      // Fetch should succeed via the stub ssh (not the malicious command).
+      expect(result.status).toBe("ok");
+      expect(result.fetchStatus).toBe("ok");
+      // The sentinel must NOT have been written — the `-c core.sshCommand=ssh`
+      // override must have taken precedence over repo config.
+      expect(fs.existsSync(sentinelPath)).toBe(false);
+    } finally {
+      if (savedPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = savedPath;
+      }
+      if (savedSshCommand === undefined) {
+        delete process.env.GIT_SSH_COMMAND;
+      } else {
+        process.env.GIT_SSH_COMMAND = savedSshCommand;
+      }
+      rmrf(remoteDir);
+      rmrf(stubDir);
+      rmrf(sentinelDir);
+    }
+  });
+
   it("runs the configured install command and reports installStatus='installed'", async () => {
     commitCommandsJson(repoPath, {
       install: [
