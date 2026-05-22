@@ -74,27 +74,33 @@ as a checkable end-state, e.g. `/goal the orchestrate run has opened its final
 integration pull request, or a successor session has been launched`. An
 autonomous run must not stop mid-wave.
 
-Also clear any stale handoff flag: if `.orchestrate/context-flag.json` exists,
-delete it. On a resumed run it is the predecessor's handoff trigger, now
-consumed; on a fresh run it is leftover from an earlier run. Either way,
-leaving it would make this session hand off immediately (section 2, step 4).
+Every run keeps its ephemeral state in a **per-run directory**,
+`.orchestrate/runs/<runId>/`, holding that run's `run-state.json`,
+`context-flag.json`, and rendered HTML artifacts. The committed config files
+(`commands.json`, `routing.json`, `handoff.json`) stay flat at the
+`.orchestrate/` top level. The run directory's schema and rationale are in
+`references/run-state.md`.
 
-Then check for `.orchestrate/run-state.json` (its schema is in
-`references/run-state.md`).
+**Discover the active run.** Scan `.orchestrate/runs/*/run-state.json` for a run
+whose `status` is `in-progress`.
 
-- **It exists and `status` is `in-progress`** — resume. Load the whole file,
-  preserving every top-level field — `runId`, `umbrellaBranch`, `parentIssue`,
-  `waves`, `completedWaves`, `finalPullRequest`, and `slices`. Every slice in a
-  terminal state (`passed`, `failed`, `skipped`) is left untouched — completed
-  work is never redone. Every slice still `in-progress` was interrupted before
-  finishing: discard its partial artifacts so it re-processes cleanly — if it
-  has a `worktreePath`, call `remove_worktree` (`force: true`); delete its
-  `sliceBranch` if it exists (locally, and on the remote if it was pushed) —
-  deleting the remote branch also auto-closes any orphaned slice pull request
-  GitHub opened for it, so re-processing produces a clean branch and PR with no
-  manual PR cleanup needed — then coerce that slice back to `pending`. Skip to
-  section 2.
-- **It is absent, or `status` is `completed`** — start a fresh run below.
+- **A run directory with an `in-progress` `run-state.json` exists** — resume it.
+  Its `runId` is the directory name. First clear that run's stale handoff flag:
+  if `.orchestrate/runs/<runId>/context-flag.json` exists, delete it — it is the
+  predecessor's handoff trigger, now consumed, and leaving it would make this
+  session hand off immediately (section 2, step 4). Then load the whole
+  `run-state.json`, preserving every top-level field — `runId`,
+  `umbrellaBranch`, `parentIssue`, `waves`, `completedWaves`,
+  `finalPullRequest`, and `slices`. Every slice in a terminal state (`passed`,
+  `failed`, `skipped`) is left untouched — completed work is never redone. Every
+  slice still `in-progress` was interrupted before finishing: discard its
+  partial artifacts so it re-processes cleanly — if it has a `worktreePath`,
+  call `remove_worktree` (`force: true`); delete its `sliceBranch` if it exists
+  (locally, and on the remote if it was pushed) — deleting the remote branch
+  also auto-closes any orphaned slice pull request GitHub opened for it, so
+  re-processing produces a clean branch and PR with no manual PR cleanup needed
+  — then coerce that slice back to `pending`. Skip to section 2.
+- **No run directory holds an `in-progress` run** — start a fresh run below.
 
 ### Fresh run
 
@@ -136,8 +142,9 @@ Then check for `.orchestrate/run-state.json` (its schema is in
    git push -u origin orchestrate/umbrella-<runId>
    ```
 
-6. Write the initial `.orchestrate/run-state.json` with **every field the
-   schema declares** (see `references/run-state.md`):
+6. Create the run directory `.orchestrate/runs/<runId>/`, then write the initial
+   `run-state.json` into it as `.orchestrate/runs/<runId>/run-state.json` with
+   **every field the schema declares** (see `references/run-state.md`):
    - Top level: `runId`, `status: "in-progress"`, `umbrellaBranch`,
      `integrationBase: "development"`, `parentIssue` (the parent PRD number, or
      null), `startedAt` and `updatedAt` (current UTC time), the `waves` from
@@ -182,10 +189,10 @@ Process waves in order, starting at index `completedWaves`. For each wave:
 4. **Integrate sequentially.** The commit, pull-request, and merge steps
    (section 3, steps 6–9) run **one slice at a time** — merges into the
    umbrella branch must not race each other. After each slice finishes
-   integrating, check for `.orchestrate/context-flag.json`: if it exists, the
-   context-watchdog has signalled that this session's context is filling. Do
-   not start the next slice — finish writing `run-state.json` for the slice
-   just integrated, then go to section 4 (Context handoff).
+   integrating, check for `.orchestrate/runs/<runId>/context-flag.json`: if it
+   exists, the context-watchdog has signalled that this session's context is
+   filling. Do not start the next slice — finish writing `run-state.json` for
+   the slice just integrated, then go to section 4 (Context handoff).
 5. **Checkpoint the wave.** Set `completedWaves` to this wave's index + 1 and
    write `run-state.json`.
 6. **Report wave progress to the PRD.** If `parentIssue` is set, post a comment
@@ -205,11 +212,13 @@ gh pr create --base development --head orchestrate/umbrella-<runId> \
 Record its URL as `finalPullRequest` in `run-state.json`, set
 `status: "completed"`, and checkpoint. Then render the run's HTML artifacts
 from the final checkpoint — call the `render_dashboard`, `render_graph`, and
-`render_report` MCP tools, each with the repository root as `repoPath` — so a
-developer has a visual summary of the run. If `parentIssue` is set, post a
-final summary comment on it. Report to the user: the umbrella branch, the
-final pull request URL, the paths of the three rendered artifacts, and — per
-slice — its final state and pull request.
+`render_report` MCP tools, each with the repository root as `repoPath` and the
+run's `runId`; each tool reads `.orchestrate/runs/<runId>/run-state.json` and
+writes its artifact into that same run directory — so a developer has a visual
+summary of the run. If `parentIssue` is set, post a final summary comment on
+it. Report to the user: the umbrella branch, the final pull request URL, the
+paths of the three rendered artifacts, and — per slice — its final state and
+pull request.
 
 ## 3. Processing one slice
 
@@ -346,18 +355,18 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
 
 A long run can fill this session's context before every wave is done. The
 `context-watchdog` hook bundled with this plugin watches token usage and writes
-`.orchestrate/context-flag.json` past a configurable threshold. When the wave
-loop (section 2, step 4) sees that flag, hand the run off to a fresh Claude
-Code session instead of continuing — the successor resumes from the
-`run-state.json` checkpoint exactly as section 1 describes. See
+`.orchestrate/runs/<runId>/context-flag.json` past a configurable threshold.
+When the wave loop (section 2, step 4) sees that flag, hand the run off to a
+fresh Claude Code session instead of continuing — the successor resumes from
+the `run-state.json` checkpoint exactly as section 1 describes. See
 `references/context-handoff.md` for the full mechanism.
 
 To hand off:
 
 1. Make sure `run-state.json` is checkpointed and its `status` is still
    `in-progress` — the successor resumes from it. Do **not** delete
-   `.orchestrate/context-flag.json`; the successor deletes it on startup once
-   it has consumed it.
+   `.orchestrate/runs/<runId>/context-flag.json`; the successor deletes it on
+   startup once it has consumed it.
 2. Call the `spawn_successor` MCP tool with the repository root as `repoPath`.
    It launches a new interactive Claude Code session — terminal and `claude`
    flags come from `.orchestrate/handoff.json`, defaults otherwise — that
@@ -408,8 +417,9 @@ commits close them when a developer merges the final umbrella pull request into
 
 ## Checkpointing
 
-Write `.orchestrate/run-state.json` after every slice state change and after
-every wave. Every write refreshes the top-level `updatedAt`, and a slice's own
-`updatedAt` whenever its entry changes, so an artifact rendered from the file
-has accurate timestamps. The checkpoint is what makes a run resumable: an
-interrupted run, re-invoked, skips every terminal-state slice and continues.
+Write the run's `run-state.json` — at `.orchestrate/runs/<runId>/run-state.json`
+— after every slice state change and after every wave. Every write refreshes
+the top-level `updatedAt`, and a slice's own `updatedAt` whenever its entry
+changes, so an artifact rendered from the file has accurate timestamps. The
+checkpoint is what makes a run resumable: an interrupted run, re-invoked, skips
+every terminal-state slice and continues.

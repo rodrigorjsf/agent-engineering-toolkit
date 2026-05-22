@@ -349,9 +349,10 @@ registerTool(
 );
 
 // ─── render_dashboard / render_graph / render_report ─────────────────────────
-// Three HTML-rendering tools. Each reads .orchestrate/run-state.json,
-// generates a deterministic HTML artifact, writes it to disk, and returns
-// only the artifact path — no HTML is returned in the tool response.
+// Three HTML-rendering tools. Each reads the run-state.json under the per-run
+// directory .orchestrate/runs/<runId>/, generates a deterministic HTML
+// artifact, writes it back into that same run directory, and returns only the
+// artifact path — no HTML is returned in the tool response.
 
 const RENDER_TOOLS: {
   name: string;
@@ -363,9 +364,10 @@ const RENDER_TOOLS: {
     name: "render_dashboard",
     title: "Render Run Dashboard",
     description:
-      "Reads .orchestrate/run-state.json and writes a standalone HTML dashboard " +
-      "showing the live run state: run id, status, wave progress, and a " +
-      "color-coded slice table. Returns only the artifact path — the HTML is " +
+      "Reads run-state.json from the per-run directory .orchestrate/runs/<runId>/ " +
+      "and writes a standalone HTML dashboard into it showing the live run " +
+      "state: run id, status, wave progress, and a color-coded slice table. " +
+      "Requires a `runId`. Returns only the artifact path — the HTML is " +
       "written to disk, never returned in the response.",
     run: renderDashboardArtifact,
   },
@@ -373,9 +375,10 @@ const RENDER_TOOLS: {
     name: "render_graph",
     title: "Render Dependency Graph",
     description:
-      "Reads .orchestrate/run-state.json and writes a standalone HTML dependency " +
-      "graph: waves as columns, slices as nodes, blockedBy edges as SVG lines. " +
-      "Layout is deterministic (x = wave index, y = slice index in wave). Returns " +
+      "Reads run-state.json from the per-run directory .orchestrate/runs/<runId>/ " +
+      "and writes a standalone HTML dependency graph into it: waves as columns, " +
+      "slices as nodes, blockedBy edges as SVG lines. Layout is deterministic " +
+      "(x = wave index, y = slice index in wave). Requires a `runId`. Returns " +
       "only the artifact path.",
     run: renderGraphArtifact,
   },
@@ -383,10 +386,11 @@ const RENDER_TOOLS: {
     name: "render_report",
     title: "Render Run Report",
     description:
-      "Reads .orchestrate/run-state.json and writes a standalone HTML final " +
-      "report: run duration, outcome counts (passed/failed/skipped), the final " +
-      "pull request link, and a per-slice outcome table. Returns only the " +
-      "artifact path.",
+      "Reads run-state.json from the per-run directory .orchestrate/runs/<runId>/ " +
+      "and writes a standalone HTML final report into it: run duration, outcome " +
+      "counts (passed/failed/skipped), the final pull request link, and a " +
+      "per-slice outcome table. Requires a `runId`. Returns only the artifact " +
+      "path.",
     run: renderReportArtifact,
   },
 ];
@@ -446,12 +450,14 @@ registerTool(
     title: "Spawn Successor Session",
     description:
       "Launches a fresh interactive Claude Code session that resumes an " +
-      "interrupted orchestration run from the .orchestrate/run-state.json " +
-      "checkpoint, then the predecessor exits. The successor opens in a new " +
-      "terminal window with Remote Control active and re-invokes /orchestrate " +
-      "— never print mode. The terminal fallback chain and claude flags are " +
-      "configured in .orchestrate/handoff.json; built-in defaults target a " +
-      "WSL2 environment. Returns a discriminated `status` of 'ok' or 'error'.",
+      "interrupted orchestration run from its run-state.json checkpoint " +
+      "(under the per-run directory .orchestrate/runs/<runId>/), then the " +
+      "predecessor exits. The successor opens in a new terminal window with " +
+      "Remote Control active and re-invokes /orchestrate — never print mode — " +
+      "which re-discovers the active run. The terminal fallback chain and " +
+      "claude flags are configured in .orchestrate/handoff.json; built-in " +
+      "defaults target a WSL2 environment. Returns a discriminated `status` " +
+      "of 'ok' or 'error'.",
     inputSchema: spawnSuccessorInputSchema.shape,
     outputSchema: spawnSuccessorOutputSchema.shape,
   },

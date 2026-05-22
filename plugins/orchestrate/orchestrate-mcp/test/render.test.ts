@@ -70,25 +70,36 @@ const VALID_STATE: RunState = {
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
-/** Writes a project dir; pass null for config to skip creating run-state.json. */
-function makeProject(config: unknown | string | null): string {
+/** The runId every test fixture uses unless it needs a second, distinct run. */
+const RUN_ID = "20260521-010101";
+
+/**
+ * Writes a project dir with a per-run directory at
+ * `.orchestrate/runs/<runId>/`. Pass null for config to skip creating
+ * run-state.json (the run directory is still created).
+ */
+function makeProject(
+  config: unknown | string | null,
+  runId: string = RUN_ID
+): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-render-"));
+  const runDir = path.join(dir, ".orchestrate", "runs", runId);
+  fs.mkdirSync(runDir, { recursive: true });
   if (config !== null) {
-    fs.mkdirSync(path.join(dir, ".orchestrate"));
     const content =
       typeof config === "string" ? config : JSON.stringify(config, null, 2);
-    fs.writeFileSync(
-      path.join(dir, ".orchestrate", "run-state.json"),
-      content
-    );
+    fs.writeFileSync(path.join(runDir, "run-state.json"), content);
   }
   return dir;
 }
 
 const created: string[] = [];
 
-function project(config: unknown | string | null): string {
-  const dir = makeProject(config);
+function project(
+  config: unknown | string | null,
+  runId: string = RUN_ID
+): string {
+  const dir = makeProject(config, runId);
   created.push(dir);
   return dir;
 }
@@ -203,7 +214,7 @@ describe("renderReport (pure)", () => {
 describe("renderDashboardArtifact", () => {
   it("writes the file and returns status ok with the artifact path", async () => {
     const dir = project(VALID_STATE);
-    const result = await renderDashboardArtifact({ repoPath: dir });
+    const result = await renderDashboardArtifact({ repoPath: dir, runId: RUN_ID });
 
     expect(result.status).toBe("ok");
     expect(result.artifactPath).toBeDefined();
@@ -212,10 +223,24 @@ describe("renderDashboardArtifact", () => {
     expect(content).toContain("20260521-010101");
   });
 
+  it("writes the artifact under .orchestrate/runs/<runId>/", async () => {
+    const dir = project(VALID_STATE);
+    const result = await renderDashboardArtifact({ repoPath: dir, runId: RUN_ID });
+
+    expect(result.status).toBe("ok");
+    expect(result.artifactPath).toBe(
+      path.join(dir, ".orchestrate", "runs", RUN_ID, "dashboard.html")
+    );
+  });
+
   it("respects an explicit outputPath override", async () => {
     const dir = project(VALID_STATE);
     const outputPath = path.join(dir, "custom-dashboard.html");
-    const result = await renderDashboardArtifact({ repoPath: dir, outputPath });
+    const result = await renderDashboardArtifact({
+      repoPath: dir,
+      runId: RUN_ID,
+      outputPath,
+    });
 
     expect(result.status).toBe("ok");
     expect(result.artifactPath).toBe(outputPath);
@@ -226,7 +251,7 @@ describe("renderDashboardArtifact", () => {
 describe("renderGraphArtifact", () => {
   it("writes the file and returns status ok with the artifact path", async () => {
     const dir = project(VALID_STATE);
-    const result = await renderGraphArtifact({ repoPath: dir });
+    const result = await renderGraphArtifact({ repoPath: dir, runId: RUN_ID });
 
     expect(result.status).toBe("ok");
     expect(result.artifactPath).toBeDefined();
@@ -239,7 +264,7 @@ describe("renderGraphArtifact", () => {
 describe("renderReportArtifact", () => {
   it("writes the file and returns status ok with the artifact path", async () => {
     const dir = project(VALID_STATE);
-    const result = await renderReportArtifact({ repoPath: dir });
+    const result = await renderReportArtifact({ repoPath: dir, runId: RUN_ID });
 
     expect(result.status).toBe("ok");
     expect(result.artifactPath).toBeDefined();
@@ -249,12 +274,78 @@ describe("renderReportArtifact", () => {
   });
 });
 
+// ─── Per-run path isolation ──────────────────────────────────────────────────
+
+describe("artifact tools — per-run path isolation", () => {
+  it("two render calls with distinct run ids write to distinct paths", async () => {
+    const runA = "20260521-010101";
+    const runB = "20260521-020202";
+    // One repo dir holding two distinct run directories.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-render-"));
+    created.push(dir);
+    for (const runId of [runA, runB]) {
+      const runDir = path.join(dir, ".orchestrate", "runs", runId);
+      fs.mkdirSync(runDir, { recursive: true });
+      const state = JSON.parse(JSON.stringify(VALID_STATE)) as RunState;
+      state.runId = runId;
+      fs.writeFileSync(
+        path.join(runDir, "run-state.json"),
+        JSON.stringify(state, null, 2)
+      );
+    }
+
+    const resultA = await renderDashboardArtifact({ repoPath: dir, runId: runA });
+    const resultB = await renderDashboardArtifact({ repoPath: dir, runId: runB });
+
+    expect(resultA.status).toBe("ok");
+    expect(resultB.status).toBe("ok");
+    expect(resultA.artifactPath).not.toBe(resultB.artifactPath);
+    expect(resultA.artifactPath).toContain(runA);
+    expect(resultB.artifactPath).toContain(runB);
+    // Each artifact embeds its own run's id — no cross-contamination.
+    expect(fs.readFileSync(resultA.artifactPath!, "utf8")).toContain(runA);
+    expect(fs.readFileSync(resultB.artifactPath!, "utf8")).toContain(runB);
+  });
+});
+
+// ─── Invalid runId ───────────────────────────────────────────────────────────
+
+describe("artifact tools — invalid runId", () => {
+  it("renderDashboardArtifact → RUN_ID_INVALID for a path-traversal runId", async () => {
+    const dir = project(VALID_STATE);
+    const result = await renderDashboardArtifact({
+      repoPath: dir,
+      runId: "../../etc",
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorCode).toBe("RUN_ID_INVALID");
+    expect(result.artifactPath).toBeUndefined();
+  });
+
+  it("renderGraphArtifact → RUN_ID_INVALID for an empty runId", async () => {
+    const dir = project(VALID_STATE);
+    const result = await renderGraphArtifact({ repoPath: dir, runId: "" });
+
+    expect(result.status).toBe("error");
+    expect(result.errorCode).toBe("RUN_ID_INVALID");
+  });
+
+  it("renderReportArtifact → RUN_ID_INVALID for a runId with a separator", async () => {
+    const dir = project(VALID_STATE);
+    const result = await renderReportArtifact({ repoPath: dir, runId: "a/b" });
+
+    expect(result.status).toBe("error");
+    expect(result.errorCode).toBe("RUN_ID_INVALID");
+  });
+});
+
 // ─── Error path tests ─────────────────────────────────────────────────────────
 
 describe("artifact tools — missing run-state.json", () => {
   it("renderDashboardArtifact → RUN_STATE_NOT_FOUND", async () => {
     const dir = project(null);
-    const result = await renderDashboardArtifact({ repoPath: dir });
+    const result = await renderDashboardArtifact({ repoPath: dir, runId: RUN_ID });
 
     expect(result.status).toBe("error");
     expect(result.errorCode).toBe("RUN_STATE_NOT_FOUND");
@@ -263,7 +354,7 @@ describe("artifact tools — missing run-state.json", () => {
 
   it("renderGraphArtifact → RUN_STATE_NOT_FOUND", async () => {
     const dir = project(null);
-    const result = await renderGraphArtifact({ repoPath: dir });
+    const result = await renderGraphArtifact({ repoPath: dir, runId: RUN_ID });
 
     expect(result.status).toBe("error");
     expect(result.errorCode).toBe("RUN_STATE_NOT_FOUND");
@@ -271,7 +362,7 @@ describe("artifact tools — missing run-state.json", () => {
 
   it("renderReportArtifact → RUN_STATE_NOT_FOUND", async () => {
     const dir = project(null);
-    const result = await renderReportArtifact({ repoPath: dir });
+    const result = await renderReportArtifact({ repoPath: dir, runId: RUN_ID });
 
     expect(result.status).toBe("error");
     expect(result.errorCode).toBe("RUN_STATE_NOT_FOUND");
@@ -281,7 +372,7 @@ describe("artifact tools — missing run-state.json", () => {
 describe("artifact tools — malformed JSON", () => {
   it("renderDashboardArtifact → RUN_STATE_INVALID", async () => {
     const dir = project("{ not valid json");
-    const result = await renderDashboardArtifact({ repoPath: dir });
+    const result = await renderDashboardArtifact({ repoPath: dir, runId: RUN_ID });
 
     expect(result.status).toBe("error");
     expect(result.errorCode).toBe("RUN_STATE_INVALID");
@@ -289,7 +380,7 @@ describe("artifact tools — malformed JSON", () => {
 
   it("renderGraphArtifact → RUN_STATE_INVALID", async () => {
     const dir = project("{ not valid json");
-    const result = await renderGraphArtifact({ repoPath: dir });
+    const result = await renderGraphArtifact({ repoPath: dir, runId: RUN_ID });
 
     expect(result.status).toBe("error");
     expect(result.errorCode).toBe("RUN_STATE_INVALID");
@@ -297,7 +388,7 @@ describe("artifact tools — malformed JSON", () => {
 
   it("renderReportArtifact → RUN_STATE_INVALID", async () => {
     const dir = project("{ not valid json");
-    const result = await renderReportArtifact({ repoPath: dir });
+    const result = await renderReportArtifact({ repoPath: dir, runId: RUN_ID });
 
     expect(result.status).toBe("error");
     expect(result.errorCode).toBe("RUN_STATE_INVALID");
@@ -308,7 +399,7 @@ describe("artifact tools — schema mismatch", () => {
   it("renderDashboardArtifact → RUN_STATE_INVALID when required fields are missing", async () => {
     const invalid = { runId: "x", status: "in-progress" }; // missing most required fields
     const dir = project(invalid);
-    const result = await renderDashboardArtifact({ repoPath: dir });
+    const result = await renderDashboardArtifact({ repoPath: dir, runId: RUN_ID });
 
     expect(result.status).toBe("error");
     expect(result.errorCode).toBe("RUN_STATE_INVALID");
@@ -317,7 +408,7 @@ describe("artifact tools — schema mismatch", () => {
   it("renderReportArtifact → RUN_STATE_INVALID when required fields are missing", async () => {
     const invalid = { runId: "x" };
     const dir = project(invalid);
-    const result = await renderReportArtifact({ repoPath: dir });
+    const result = await renderReportArtifact({ repoPath: dir, runId: RUN_ID });
 
     expect(result.status).toBe("error");
     expect(result.errorCode).toBe("RUN_STATE_INVALID");
@@ -363,6 +454,7 @@ describe("artifact tools — write failure", () => {
     // no-op and writeFileSync onto the directory path fails (EISDIR).
     const result = await renderDashboardArtifact({
       repoPath: dir,
+      runId: RUN_ID,
       outputPath: dir,
     });
 
@@ -379,6 +471,7 @@ describe("artifact tools — write failure", () => {
     fs.writeFileSync(blocker, "i am a file, not a directory");
     const result = await renderReportArtifact({
       repoPath: dir,
+      runId: RUN_ID,
       outputPath: path.join(blocker, "nested", "report.html"),
     });
 

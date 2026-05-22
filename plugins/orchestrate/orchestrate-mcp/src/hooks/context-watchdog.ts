@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as fs from "fs";
 import { loadHandoffConfig } from "../handoff-config.js";
+import { resolveRunDir } from "../run-dir.js";
 
 // The context-watchdog estimates how full the orchestrator session's context
 // window is by reading the session transcript, and raises a handoff flag once
@@ -155,7 +156,10 @@ export interface WatchdogResult {
   evaluation?: WatchdogEvaluation;
 }
 
-/** Shape written to `.orchestrate/context-flag.json` when the flag is raised. */
+/**
+ * Shape written to the per-run `context-flag.json` (under
+ * `.orchestrate/runs/<runId>/`) when the flag is raised.
+ */
 interface ContextFlag {
   raisedAt: string;
   usedTokens: number;
@@ -165,21 +169,68 @@ interface ContextFlag {
 }
 
 /**
+ * Scans `.orchestrate/runs/*` for the single run whose `run-state.json` has
+ * `status: "in-progress"` and returns its `runId`, or null when none is found.
+ * Pure-ish — reads the filesystem but never throws.
+ *
+ * The `PostToolUse` hook receives only the session `cwd`, not a `runId`, so the
+ * watchdog must discover the active run before it can resolve the per-run
+ * paths. This deliberately handles only the single-active-run case: a session
+ * drives exactly one orchestration run. Disambiguating concurrent runs is a
+ * separate concern and out of scope here.
+ */
+export function discoverActiveRunId(cwd: string): string | null {
+  const runsDir = path.join(cwd, ".orchestrate", "runs");
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(runsDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const statePath = path.join(runsDir, entry.name, "run-state.json");
+    let runState: unknown;
+    try {
+      runState = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    } catch {
+      continue;
+    }
+    if (
+      typeof runState === "object" &&
+      runState !== null &&
+      (runState as Record<string, unknown>).status === "in-progress"
+    ) {
+      return entry.name;
+    }
+  }
+  return null;
+}
+
+/**
  * Reads the session transcript, estimates context usage, and raises the
  * handoff flag when usage passes the configured threshold.
  *
- * The watchdog only acts while an orchestration run is in progress — it checks
- * `.orchestrate/run-state.json` first and is a silent no-op otherwise, so the
- * bundled hook is harmless in unrelated sessions. The flag is written at most
- * once per run: if `.orchestrate/context-flag.json` already exists this is a
- * no-op. Never throws.
+ * The watchdog only acts while the named run is in progress — it checks the
+ * per-run `run-state.json` under `.orchestrate/runs/<runId>/` first and is a
+ * silent no-op otherwise, so the bundled hook is harmless in unrelated
+ * sessions. The flag is written at most once per run: if the per-run
+ * `context-flag.json` already exists this is a no-op. Never throws.
  */
 export function runWatchdog(input: {
   transcriptPath?: string;
   cwd: string;
+  runId: string;
 }): WatchdogResult {
-  // 1. Act only while an orchestration run is in progress.
-  const runStatePath = path.join(input.cwd, ".orchestrate", "run-state.json");
+  // 1. Resolve the per-run paths; a malformed runId is a silent no-op.
+  const resolved = resolveRunDir(input.cwd, input.runId);
+  if (!resolved.ok) {
+    return { acted: false, flagRaised: false };
+  }
+  const { runStatePath, contextFlagPath: flagPath } = resolved.paths;
+
+  // 2. Act only while this orchestration run is in progress.
   let runState: unknown;
   try {
     runState = JSON.parse(fs.readFileSync(runStatePath, "utf8"));
@@ -194,9 +245,7 @@ export function runWatchdog(input: {
     return { acted: false, flagRaised: false };
   }
 
-  const flagPath = path.join(input.cwd, ".orchestrate", "context-flag.json");
-
-  // 2. A transcript is required to estimate usage.
+  // 3. A transcript is required to estimate usage.
   if (!input.transcriptPath) return { acted: true, flagRaised: false, flagPath };
   let transcriptText: string;
   try {
@@ -205,11 +254,11 @@ export function runWatchdog(input: {
     return { acted: true, flagRaised: false, flagPath };
   }
 
-  // 3. Estimate usage from the latest assistant turn.
+  // 4. Estimate usage from the latest assistant turn.
   const usage = parseLatestUsage(transcriptText);
   if (!usage) return { acted: true, flagRaised: false, flagPath };
 
-  // 4. Evaluate against the (possibly defaulted) config.
+  // 5. Evaluate against the (possibly defaulted) config.
   const { config } = loadHandoffConfig(input.cwd);
   const evaluation = evaluateWatchdog({
     usedTokens: contextTokens(usage),
@@ -217,12 +266,12 @@ export function runWatchdog(input: {
     thresholdPercent: config.watchdog.thresholdPercent,
   });
 
-  // 5. Below threshold, or the flag is already raised — nothing to do.
+  // 6. Below threshold, or the flag is already raised — nothing to do.
   if (!evaluation.overThreshold || fs.existsSync(flagPath)) {
     return { acted: true, flagRaised: false, flagPath, evaluation };
   }
 
-  // 6. Raise the flag.
+  // 7. Raise the flag.
   const flag: ContextFlag = {
     raisedAt: new Date().toISOString(),
     usedTokens: evaluation.usedTokens,

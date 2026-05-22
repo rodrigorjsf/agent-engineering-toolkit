@@ -1,11 +1,40 @@
 # run-state.json — the orchestration checkpoint
 
-`.orchestrate/run-state.json` is the durable checkpoint of an orchestration run.
-The orchestrator writes it after every slice state change and after every wave,
-and reads it on startup to resume an interrupted run instead of restarting.
+`run-state.json` is the durable checkpoint of an orchestration run. The
+orchestrator writes it after every slice state change and after every wave, and
+reads it on startup to resume an interrupted run instead of restarting.
 
-It lives at `.orchestrate/run-state.json` in the repository root. It is run
-metadata, not source — the target project should gitignore it.
+## The per-run directory
+
+Every run keeps its ephemeral state in a **per-run directory**,
+`.orchestrate/runs/<runId>/`, where `<runId>` is the run's timestamp id. That
+directory holds the run's `run-state.json`, its `context-flag.json` (the
+context-handoff signal), and the rendered HTML artifacts (`dashboard.html`,
+`graph.html`, `report.html`). Two distinct runs never share a directory, so
+their ephemeral state never collides — the per-run layout is the structural
+foundation for concurrent runs.
+
+The committed config files — `commands.json`, `routing.json`, and
+`handoff.json` — stay flat at the `.orchestrate/` top level; they are
+configuration, not run state, and are shared across runs.
+
+The run's `run-state.json` therefore lives at
+`.orchestrate/runs/<runId>/run-state.json`. It is run metadata, not source —
+the target project should gitignore the `.orchestrate/runs/` directory.
+
+```text
+.orchestrate/
+├── commands.json                 # committed config (flat, shared)
+├── routing.json                  # committed config (flat, shared)
+├── handoff.json                  # committed config (flat, shared)
+└── runs/
+    └── 20260521-015143/          # one per-run directory per run
+        ├── run-state.json        # the run checkpoint
+        ├── context-flag.json     # the context-handoff signal (when raised)
+        ├── dashboard.html        # rendered artifact
+        ├── graph.html            # rendered artifact
+        └── report.html           # rendered artifact
+```
 
 ## Schema
 
@@ -87,9 +116,10 @@ re-processed on resume.
 
 ## Resume
 
-On startup the orchestrator reads `.orchestrate/run-state.json`. If it exists
-and `status` is `in-progress`, the run resumes: every slice already in a
-terminal state is left untouched; every `in-progress` slice has its partial
-artifacts discarded (worktree removed, slice branch deleted) and is coerced back
-to `pending` before re-processing — it is not merely continued. A run with no
-state file, or one whose `status` is `completed`, starts fresh.
+On startup the orchestrator scans `.orchestrate/runs/*/run-state.json` for a run
+whose `status` is `in-progress`. If one is found, the run resumes: every slice
+already in a terminal state is left untouched; every `in-progress` slice has its
+partial artifacts discarded (worktree removed, slice branch deleted) and is
+coerced back to `pending` before re-processing — it is not merely continued.
+When no run directory holds an `in-progress` run — none exist, or every run's
+`status` is `completed` — a fresh run starts.
