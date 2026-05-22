@@ -2,6 +2,8 @@
 
 Hooks let you observe, control, and extend the agent loop using custom scripts. Hooks are spawned processes that communicate over stdio using JSON in both directions. They run before or after defined stages of the agent loop and can observe, block, or modify behavior.
 
+[Media](/docs-static/images/agent/hooks.mp4)
+
 With hooks, you can:
 
 - Run formatters after edits
@@ -11,15 +13,15 @@ With hooks, you can:
 - Control subagent (Task tool) execution
 - Inject context at session start
 
-Looking for ready-to-use integrations? See [Partner Integrations](#partner-integrations) for security, governance, and secrets management solutions from our ecosystem partners.
+Looking for ready-to-use integrations? See [Partner Integrations](https://cursor.com/docs/hooks.md#partner-integrations) for security, governance, and secrets management solutions from our ecosystem partners.
 
-Cursor supports loading hooks from third-party tools like Claude Code. See [Third Party Hooks](/docs/reference/third-party-hooks) for details on compatibility and configuration.
+Cursor supports loading hooks from third-party tools like Claude Code. See [Third Party Hooks](https://cursor.com/docs/reference/third-party-hooks.md) for details on compatibility and configuration.
 
-## Agent and Tab Support
+## Hook categories
 
-Hooks work with both **Cursor Agent** (Cmd+K/Agent Chat) and **Cursor Tab** (inline completions), but they use different hook events:
+Hooks fall into three categories based on what triggers them:
 
-**Agent (Cmd+K/Agent Chat)** uses the standard hooks:
+**Agent hooks (Cmd+K/Agent Chat)** fire during an agent session:
 
 - `sessionStart` / `sessionEnd` - Session lifecycle management
 - `preToolUse` / `postToolUse` / `postToolUseFailure` - Generic tool use hooks (fires for all tools)
@@ -32,24 +34,28 @@ Hooks work with both **Cursor Agent** (Cmd+K/Agent Chat) and **Cursor Tab** (inl
 - `stop` - Handle agent completion
 - `afterAgentResponse` / `afterAgentThought` - Track agent responses
 
-**Tab (inline completions)** uses specialized hooks:
+**Tab hooks (inline completions)** fire for autonomous Tab operations:
 
 - `beforeTabFileRead` - Control file access for Tab completions
 - `afterTabFileEdit` - Post-process Tab edits
 
-These separate hooks allow different policies for autonomous Tab operations versus user-directed Agent operations.
+**App lifecycle hooks** fire outside any agent session:
 
-Cloud agents also run project hooks committed in your repository through
-`.cursor/hooks.json`. Team hooks and enterprise-managed hooks do not run in
-cloud agents yet.
+- `workspaceOpen` - Fires when Cursor opens a workspace and on every workspace folder change. Can return additional plugin paths to load for the current workspace.
+
+These separate hook surfaces let you apply different policies to autonomous Tab operations, user-directed Agent operations, and workspace startup.
+
+Cloud agents also run repo hooks. On Enterprise plans, they also run team hooks and enterprise-managed hooks.
 
 ## Quickstart
 
 Create a `hooks.json` file. You can create it at the project level (`<project>/.cursor/hooks.json`) or in your home directory (`~/.cursor/hooks.json`). Project-level hooks apply only to that specific project, while home directory hooks apply globally.
 
+### User hooks (\~/.cursor/)
+
 For user-level hooks that apply globally, create `~/.cursor/hooks.json`:
 
-```
+```json
 {
   "version": 1,
   "hooks": {
@@ -60,7 +66,7 @@ For user-level hooks that apply globally, create `~/.cursor/hooks.json`:
 
 Create your hook script at `~/.cursor/hooks/format.sh`:
 
-```
+```bash
 #!/bin/bash
 # Read input, do something, exit 0
 cat > /dev/null
@@ -69,8 +75,38 @@ exit 0
 
 Make it executable:
 
-```
+```bash
 chmod +x ~/.cursor/hooks/format.sh
+```
+
+### Project hooks (.cursor/)
+
+For project-level hooks that apply to a specific repository, create `<project>/.cursor/hooks.json`:
+
+```json
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [{ "command": ".cursor/hooks/format.sh" }]
+  }
+}
+```
+
+Note: Project hooks run from the **project root**, so use `.cursor/hooks/format.sh` (not `./hooks/format.sh`).
+
+Create your hook script at `<project>/.cursor/hooks/format.sh`:
+
+```bash
+#!/bin/bash
+# Read input, do something, exit 0
+cat > /dev/null
+exit 0
+```
+
+Make it executable:
+
+```bash
+chmod +x .cursor/hooks/format.sh
 ```
 
 Cursor watches hooks config files and reloads them automatically. Your hook runs after every file edit.
@@ -83,7 +119,7 @@ Hooks support two execution types: command-based (default) and prompt-based (LLM
 
 Command hooks execute shell scripts that receive JSON input via stdin and return JSON output via stdout.
 
-```
+```json
 {
   "hooks": {
     "beforeShellExecution": [
@@ -107,7 +143,7 @@ Command hooks execute shell scripts that receive JSON input via stdin and return
 
 Prompt hooks use an LLM to evaluate a natural language condition. They're useful for policy enforcement without writing custom scripts.
 
-```
+```json
 {
   "hooks": {
     "beforeShellExecution": [
@@ -133,7 +169,7 @@ Prompt hooks use an LLM to evaluate a natural language condition. They're useful
 
 The examples below use `./hooks/...` paths, which work for **user hooks** (`~/.cursor/hooks.json`) where scripts run from `~/.cursor/`. For **project hooks** (`<project>/.cursor/hooks.json`), use `.cursor/hooks/...` paths instead since scripts run from the project root.
 
-```json
+```json title="hooks.json"
 {
   "version": 1,
   "hooks": {
@@ -202,14 +238,87 @@ The examples below use `./hooks/...` paths, which work for **user hooks** (`~/.c
     ]
   }
 }
+```
 
+```sh title="audit.sh"
+#!/bin/bash
+
+# audit.sh - Hook script that writes all JSON input to /tmp/agent-audit.log
+# This script is designed to be called by Cursor's hooks system for auditing purposes
+
+# Read JSON input from stdin
+json_input=$(cat)
+
+# Create timestamp for the log entry
+timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
+# Create the log directory if it doesn't exist
+mkdir -p "$(dirname /tmp/agent-audit.log)"
+
+# Write the timestamped JSON entry to the audit log
+echo "[$timestamp] $json_input" >> /tmp/agent-audit.log
+
+# Exit successfully
+exit 0
+```
+
+```sh title="block-git.sh"
+#!/bin/bash
+
+# Hook to block git commands and redirect to gh tool usage
+# This hook implements the beforeShellExecution hook from the Cursor Hooks Spec
+
+# Initialize debug logging
+echo "Hook execution started" >> /tmp/hooks.log
+
+# Read JSON input from stdin
+input=$(cat)
+echo "Received input: $input" >> /tmp/hooks.log
+
+# Parse the command from the JSON input
+command=$(echo "$input" | jq -r '.command // empty')
+echo "Parsed command: '$command'" >> /tmp/hooks.log
+
+# Check if the command contains 'git' or 'gh'
+if [[ "$command" =~ git[[:space:]] ]] || [[ "$command" == "git" ]]; then
+    echo "Git command detected - blocking: '$command'" >> /tmp/hooks.log
+    # Block the git command and provide guidance to use gh tool instead
+    cat << EOF
+{
+  "continue": true,
+  "permission": "deny",
+  "user_message": "Git command blocked. Please use the GitHub CLI (gh) tool instead.",
+  "agent_message": "The git command '$command' has been blocked by a hook. Instead of using raw git commands, please use the 'gh' tool which provides better integration with GitHub and follows best practices. For example:\n- Instead of 'git clone', use 'gh repo clone'\n- Instead of 'git push', use 'gh repo sync' or the appropriate gh command\n- For other git operations, check if there's an equivalent gh command or use the GitHub web interface\n\nThis helps maintain consistency and leverages GitHub's enhanced tooling."
+}
+EOF
+elif [[ "$command" =~ gh[[:space:]] ]] || [[ "$command" == "gh" ]]; then
+    echo "GitHub CLI command detected - asking for permission: '$command'" >> /tmp/hooks.log
+    # Ask for permission for gh commands
+    cat << EOF
+{
+  "continue": true,
+  "permission": "ask",
+  "user_message": "GitHub CLI command requires permission: $command",
+  "agent_message": "The command '$command' uses the GitHub CLI (gh) which can interact with your GitHub repositories and account. Please review and approve this command if you want to proceed."
+}
+EOF
+else
+    echo "Non-git/non-gh command detected - allowing: '$command'" >> /tmp/hooks.log
+    # Allow non-git/non-gh commands
+    cat << EOF
+{
+  "continue": true,
+  "permission": "allow"
+}
+EOF
+fi
 ```
 
 ### TypeScript stop automation hook
 
 Choose TypeScript when you need typed JSON, durable file I/O, and HTTP calls in the same hook. This Bun-powered `stop` hook tracks per-conversation failure counts on disk, forwards structured telemetry to an internal API, and can automatically schedule a retry when the agent fails twice in a row.
 
-```json
+```json title="hooks.json"
 {
   "version": 1,
   "hooks": {
@@ -222,13 +331,109 @@ Choose TypeScript when you need typed JSON, durable file I/O, and HTTP calls in 
 }
 ```
 
+```ts title=".cursor/hooks/track-stop.ts"
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { stdin } from 'bun';
+
+type StopHookInput = {
+  conversation_id: string;
+  generation_id: string;
+  model: string;
+  status: 'completed' | 'aborted' | 'error';
+  loop_count: number;
+};
+
+type StopHookOutput = {
+  followup_message?: string;
+};
+
+type MetricsEntry = {
+  lastStatus: StopHookInput['status'];
+  errorCount: number;
+  lastUpdatedIso: string;
+};
+
+type MetricsStore = Record<string, MetricsEntry>;
+
+const STATE_DIR = '.cursor/hooks/state';
+const METRICS_PATH = `${STATE_DIR}/agent-metrics.json`;
+const TELEMETRY_URL = Bun.env.AGENT_TELEMETRY_URL;
+
+async function parseHookInput<T>(): Promise<T> {
+  const text = await stdin.text();
+  return JSON.parse(text) as T;
+}
+
+async function readMetrics(): Promise<MetricsStore> {
+  try {
+    return JSON.parse(await readFile(METRICS_PATH, 'utf8')) as MetricsStore;
+  } catch {
+    return {};
+  }
+}
+
+async function writeMetrics(store: MetricsStore) {
+  await mkdir(STATE_DIR, { recursive: true });
+  await writeFile(METRICS_PATH, JSON.stringify(store, null, 2), 'utf8');
+}
+
+async function sendTelemetry(payload: StopHookInput, entry: MetricsEntry) {
+  if (!TELEMETRY_URL) return;
+  await fetch(TELEMETRY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      conversationId: payload.conversation_id,
+      generationId: payload.generation_id,
+      model: payload.model,
+      status: payload.status,
+      errorCount: entry.errorCount,
+      loopCount: payload.loop_count,
+      timestamp: entry.lastUpdatedIso
+    })
+  });
+}
+
+async function main() {
+  const payload = await parseHookInput<StopHookInput>();
+  const metrics = await readMetrics();
+  const entry =
+    metrics[payload.conversation_id] ?? {
+      lastStatus: payload.status,
+      errorCount: 0,
+      lastUpdatedIso: ''
+    };
+
+  entry.lastStatus = payload.status;
+  entry.lastUpdatedIso = new Date().toISOString();
+  entry.errorCount = payload.status === 'error' ? entry.errorCount + 1 : 0;
+
+  metrics[payload.conversation_id] = entry;
+  await writeMetrics(metrics);
+  await sendTelemetry(payload, entry);
+
+  const response: StopHookOutput = {};
+  if (entry.errorCount >= 2 && payload.loop_count < 4) {
+    response.followup_message =
+      'Automated retry triggered after two failures. Double-check credentials before running again.';
+  }
+
+  process.stdout.write(JSON.stringify(response) + '\n');
+}
+
+main().catch(error => {
+  console.error('[stop hook] failed', error);
+  process.stdout.write('{}\n');
+});
+```
+
 Set `AGENT_TELEMETRY_URL` to the internal endpoint that should receive run summaries.
 
 ### Python manifest guard hook
 
 Python shines when you need rich parsing libraries. This hook uses `pyyaml` to inspect Kubernetes manifests before `kubectl apply` runs; Bash would struggle to parse multi-document YAML safely.
 
-```json
+```json title="hooks.json"
 {
   "version": 1,
   "hooks": {
@@ -239,7 +444,79 @@ Python shines when you need rich parsing libraries. This hook uses `pyyaml` to i
     ]
   }
 }
+```
 
+```python title=".cursor/hooks/kube_guard.py"
+#!/usr/bin/env python3
+import json
+import shlex
+import sys
+from pathlib import Path
+
+import yaml
+
+SENSITIVE_NAMESPACES = {"prod", "production"}
+
+def main() -> None:
+    payload = json.load(sys.stdin)
+    command = payload.get("command", "")
+    cwd = Path(payload.get("cwd") or ".")
+    response = {"continue": True, "permission": "allow"}
+
+    try:
+        args = shlex.split(command)
+    except ValueError:
+        print(json.dumps(response))
+        return
+
+    if len(args) < 2 or args[0] != "kubectl" or args[1] != "apply" or "-f" not in args:
+        print(json.dumps(response))
+        return
+
+    f_index = args.index("-f")
+    if f_index + 1 >= len(args):
+        print(json.dumps(response))
+        return
+
+    manifest_arg = args[f_index + 1]
+    manifest_path = (cwd / manifest_arg).resolve()
+
+    if not manifest_path.exists():
+        print(json.dumps(response))
+        return
+
+    cli_namespace = None
+    for i, arg in enumerate(args):
+        if arg in ("-n", "--namespace") and i + 1 < len(args):
+            cli_namespace = args[i + 1]
+        elif arg.startswith("--namespace="):
+            cli_namespace = arg.split("=", 1)[1]
+        elif arg.startswith("-n="):
+            cli_namespace = arg.split("=", 1)[1]
+
+    try:
+        documents = list(yaml.safe_load_all(manifest_path.read_text()))
+    except (OSError, yaml.YAMLError) as exc:
+        sys.stderr.write(f"Failed to read/parse {manifest_path}: {exc}\n")
+        print(json.dumps(response))
+        return
+
+    if cli_namespace in SENSITIVE_NAMESPACES or any(
+        (doc or {}).get("metadata", {}).get("namespace") in SENSITIVE_NAMESPACES
+        for doc in documents
+    ):
+        response.update(
+            {
+                "permission": "ask",
+                "user_message": "kubectl apply to prod requires manual approval.",
+                "agent_message": f"{manifest_path.name} includes protected namespaces; confirm with your team before continuing.",
+            }
+        )
+
+    print(json.dumps(response))
+
+if __name__ == "__main__":
+    main()
 ```
 
 Install PyYAML (for example, `pip install pyyaml`) wherever your hook scripts run so the parser import succeeds.
@@ -287,27 +564,25 @@ For more details about our hooks partners, see the [Hooks for security and platf
 
 Define hooks in a `hooks.json` file. Configuration can exist at multiple levels. All matching hooks from every source run; when responses conflict, higher-priority sources take precedence during merge:
 
-```
-
+```sh
 ~/.cursor/
 ├── hooks.json
 └── hooks/
     ├── audit.sh
     └── block-git.sh
-
 ```
 
 - **Enterprise** (MDM-managed, system-wide):
-- macOS: `/Library/Application Support/Cursor/hooks.json`
-- Linux/WSL: `/etc/cursor/hooks.json`
-- Windows: `C:\\ProgramData\\Cursor\\hooks.json`
+  - macOS: `/Library/Application Support/Cursor/hooks.json`
+  - Linux/WSL: `/etc/cursor/hooks.json`
+  - Windows: `C:\\ProgramData\\Cursor\\hooks.json`
 - **Team** (Cloud-distributed, enterprise only):
-- Configured in the [web dashboard](https://cursor.com/dashboard/team-content?section=hooks) and synced to all team members automatically
+  - Configured in the [web dashboard](https://cursor.com/dashboard/team-content?section=hooks) and synced to all team members automatically
 - **Project** (Project-specific):
-- `<project-root>/.cursor/hooks.json`
-- Project hooks run in any trusted workspace and are checked into version control with your project
+  - `<project-root>/.cursor/hooks.json`
+  - Project hooks run in any trusted workspace and are checked into version control with your project
 - **User** (User-specific):
-- `~/.cursor/hooks.json`
+  - `~/.cursor/hooks.json`
 
 Priority order (highest to lowest): Enterprise → Team → Project → User
 
@@ -324,8 +599,7 @@ For project hooks, use paths like `.cursor/hooks/script.sh` (relative to project
 
 This example shows a user-level hooks file (`~/.cursor/hooks.json`). For project-level hooks, change paths like `./hooks/script.sh` to `.cursor/hooks/script.sh`:
 
-```
-
+```json
 {
   "version": 1,
   "hooks": {
@@ -347,13 +621,13 @@ This example shows a user-level hooks file (`~/.cursor/hooks.json`). For project
     "preCompact": [{ "command": "./audit.sh" }],
     "stop": [{ "command": "./audit.sh", "loop_limit": 10 }],
     "beforeTabFileRead": [{ "command": "./redact-secrets-tab.sh" }],
-    "afterTabFileEdit": [{ "command": "./format-tab.sh" }]
+    "afterTabFileEdit": [{ "command": "./format-tab.sh" }],
+    "workspaceOpen": [{ "command": "./register-workspace-plugins.sh" }]
   }
 }
-
 ```
 
-The Agent hooks (`sessionStart`, `sessionEnd`, `preToolUse`, `postToolUse`, `postToolUseFailure`, `subagentStart`, `subagentStop`, `beforeShellExecution`, `afterShellExecution`, `beforeMCPExecution`, `afterMCPExecution`, `beforeReadFile`, `afterFileEdit`, `beforeSubmitPrompt`, `preCompact`, `stop`, `afterAgentResponse`, `afterAgentThought`) apply to Cmd+K and Agent Chat operations. The Tab hooks (`beforeTabFileRead`, `afterTabFileEdit`) apply specifically to inline Tab completions.
+The Agent hooks (`sessionStart`, `sessionEnd`, `preToolUse`, `postToolUse`, `postToolUseFailure`, `subagentStart`, `subagentStop`, `beforeShellExecution`, `afterShellExecution`, `beforeMCPExecution`, `afterMCPExecution`, `beforeReadFile`, `afterFileEdit`, `beforeSubmitPrompt`, `preCompact`, `stop`, `afterAgentResponse`, `afterAgentThought`) apply to Cmd+K and Agent Chat operations. The Tab hooks (`beforeTabFileRead`, `afterTabFileEdit`) apply specifically to inline Tab completions. The app lifecycle hook (`workspaceOpen`) fires when a workspace opens and on workspace folder changes, independent of any agent session.
 
 ### Global Configuration Options
 
@@ -376,8 +650,7 @@ The Agent hooks (`sessionStart`, `sessionEnd`, `preToolUse`, `postToolUse`, `pos
 
 Matchers let you filter when a hook runs. Which field the matcher applies to depends on the hook:
 
-```
-
+```json
 {
   "hooks": {
     "preToolUse": [
@@ -400,11 +673,10 @@ Matchers let you filter when a hook runs. Which field the matcher applies to dep
     ]
   }
 }
-
 ```
 
 - **subagentStart**: The matcher runs against the **subagent type** (e.g. `explore`, `shell`, `generalPurpose`). Use it to run hooks only when a specific kind of subagent is started. The example above runs `validate-explore.sh` only for explore or shell subagents.
-- **beforeShellExecution**: The matcher runs against the **shell command** string. Use it to run hooks only when the command matches a pattern (e.g. network calls, file deletions). The example above runs `approve-network.sh` only when the command contains `curl`, `wget`, or `nc`.
+- **beforeShellExecution**: The matcher runs against the **shell command** string. Use it to run hooks only when the command matches a pattern (e.g. network calls, file deletions). The example above runs `approve-network.sh` only when the command contains `curl`, `wget`, or `nc `.
 
 **Available matchers by hook:**
 
@@ -475,8 +747,7 @@ Enterprise administrators can create, edit, and manage team hooks from the dashb
 
 All hooks receive a base set of fields in addition to their hook-specific fields:
 
-```
-
+```json
 {
   "conversation_id": "string",
   "generation_id": "string",
@@ -487,7 +758,6 @@ All hooks receive a base set of fields in addition to their hook-specific fields
   "user_email": "string | null",
   "transcript_path": "string | null"
 }
-
 ```
 
 | Field             | Type           | Description                                                                                               |
@@ -496,10 +766,12 @@ All hooks receive a base set of fields in addition to their hook-specific fields
 | `generation_id`   | string         | The current generation that changes with every user message                                               |
 | `model`           | string         | The model configured for the composer that triggered the hook                                             |
 | `hook_event_name` | string         | Which hook is being run                                                                                   |
-| `cursor_version`  | string         | Cursor application version (e.g. "1.7.2")                                                                 |
-| `workspace_roots` | string[]       | The list of root folders in the workspace (normally just one, but multiroot workspaces can have multiple) |
+| `cursor_version`  | string         | Cursor application version (e.g. "1.7.2")                                                                |
+| `workspace_roots` | string\[]      | The list of root folders in the workspace (normally just one, but multiroot workspaces can have multiple) |
 | `user_email`      | string \| null | Email address of the authenticated user, if available                                                     |
 | `transcript_path` | string \| null | Path to the main conversation transcript file (null if transcripts disabled)                              |
+
+App lifecycle hooks (`workspaceOpen`) fire outside any agent session, so the request omits `conversation_id`, `generation_id`, `model`, `session_id`, and `transcript_path`. They still receive `hook_event_name`, `cursor_version`, `workspace_roots`, and `user_email`.
 
 ### Hook events
 
@@ -507,8 +779,7 @@ All hooks receive a base set of fields in addition to their hook-specific fields
 
 Called before any tool execution. This is a generic hook that fires for all tool types (Shell, Read, Write, MCP, Task, etc.). Use matchers to filter by specific tools.
 
-```
-
+```json
 // Input
 {
   "tool_name": "Shell",
@@ -526,7 +797,6 @@ Called before any tool execution. This is a generic hook that fires for all tool
   "agent_message": "<message sent to agent when denied>",
   "updated_input": { "command": "npm ci" }
 }
-
 ```
 
 | Output Field    | Type              | Description                                                                                                         |
@@ -540,8 +810,7 @@ Called before any tool execution. This is a generic hook that fires for all tool
 
 Called after successful tool execution. Useful for auditing, analytics, and injecting context.
 
-```
-
+```json
 // Input
 {
   "tool_name": "Shell",
@@ -558,7 +827,6 @@ Called after successful tool execution. Useful for auditing, analytics, and inje
   "updated_mcp_tool_output": { "modified": "output" },
   "additional_context": "Test coverage report attached."
 }
-
 ```
 
 | Input Field   | Type   | Description                                                           |
@@ -575,8 +843,7 @@ Called after successful tool execution. Useful for auditing, analytics, and inje
 
 Called when a tool fails, times out, or is denied. Useful for error tracking and recovery logic.
 
-```
-
+```json
 // Input
 {
   "tool_name": "Shell",
@@ -593,7 +860,6 @@ Called when a tool fails, times out, or is denied. Useful for error tracking and
 {
   // No output fields currently supported
 }
-
 ```
 
 | Input Field     | Type    | Description                                                       |
@@ -607,8 +873,7 @@ Called when a tool fails, times out, or is denied. Useful for error tracking and
 
 Called before spawning a subagent (Task tool). Can allow or deny subagent creation.
 
-```
-
+```json
 // Input
 {
   "subagent_id": "abc-123",
@@ -626,7 +891,6 @@ Called before spawning a subagent (Task tool). Can allow or deny subagent creati
   "permission": "allow" | "deny",
   "user_message": "<message shown when denied>"
 }
-
 ```
 
 | Input Field              | Type              | Description                                                  |
@@ -649,8 +913,7 @@ Called before spawning a subagent (Task tool). Can allow or deny subagent creati
 
 Called when a subagent completes, errors, or is aborted. Can trigger follow-up actions.
 
-```
-
+```json
 // Input
 {
   "subagent_type": "generalPurpose",
@@ -670,7 +933,6 @@ Called when a subagent completes, errors, or is aborted. Can trigger follow-up a
 {
   "followup_message": "<auto-continue with this message>"
 }
-
 ```
 
 | Input Field             | Type           | Description                                                                                      |
@@ -684,7 +946,7 @@ Called when a subagent completes, errors, or is aborted. Can trigger follow-up a
 | `message_count`         | number         | Number of messages exchanged during the subagent session                                         |
 | `tool_call_count`       | number         | Number of tool calls the subagent made                                                           |
 | `loop_count`            | number         | Number of times a `subagentStop` follow-up has already triggered for this subagent (starts at 0) |
-| `modified_files`        | string[]       | Files the subagent modified                                                                      |
+| `modified_files`        | string\[]      | Files the subagent modified                                                                      |
 | `agent_transcript_path` | string \| null | Path to the subagent's own transcript file (separate from the parent conversation)               |
 
 | Output Field       | Type              | Description                                                                    |
@@ -699,8 +961,7 @@ Called before any shell command or MCP tool is executed. Return a permission dec
 
 By default, hook failures (crash, timeout, invalid JSON) allow the action through (fail-open). Set `failClosed: true` on the hook definition to block the action on failure instead. This is recommended for security-critical `beforeMCPExecution` hooks.
 
-```
-
+```json
 // beforeShellExecution input
 {
   "command": "<full terminal command>",
@@ -724,15 +985,13 @@ By default, hook failures (crash, timeout, invalid JSON) allow the action throug
   "user_message": "<message shown in client>",
   "agent_message": "<message sent to agent>"
 }
-
 ```
 
 #### afterShellExecution
 
 Fires after a shell command executes; useful for auditing or collecting metrics from command output.
 
-```
-
+```json
 // Input
 {
   "command": "<full terminal command>",
@@ -740,7 +999,6 @@ Fires after a shell command executes; useful for auditing or collecting metrics 
   "duration": 1234,
   "sandbox": false
 }
-
 ```
 
 | Field      | Type    | Description                                                                              |
@@ -754,8 +1012,7 @@ Fires after a shell command executes; useful for auditing or collecting metrics 
 
 Fires after an MCP tool executes; includes the tool's input parameters and full JSON result.
 
-```
-
+```json
 // Input
 {
   "tool_name": "<tool name>",
@@ -763,7 +1020,6 @@ Fires after an MCP tool executes; includes the tool's input parameters and full 
   "result_json": "<tool result json>",
   "duration": 1234
 }
-
 ```
 
 | Field         | Type   | Description                                                                         |
@@ -777,14 +1033,12 @@ Fires after an MCP tool executes; includes the tool's input parameters and full 
 
 Fires after the Agent edits a file; useful for formatters or accounting of agent-written code.
 
-```
-
+```json
 // Input
 {
   "file_path": "<absolute path>",
   "edits": [{ "old_string": "<search>", "new_string": "<replace>" }]
 }
-
 ```
 
 #### beforeReadFile
@@ -793,8 +1047,7 @@ Called before Agent reads a file. Use for access control to block sensitive file
 
 By default, `beforeReadFile` hook failures (crash, timeout, invalid JSON) are logged and the read is allowed through. Set `failClosed: true` on the hook definition to block the read on failure instead.
 
-```
-
+```json
 // Input
 {
   "file_path": "<absolute path>",
@@ -812,7 +1065,6 @@ By default, `beforeReadFile` hook failures (crash, timeout, invalid JSON) are lo
   "permission": "allow" | "deny",
   "user_message": "<message shown when denied>"
 }
-
 ```
 
 | Input Field   | Type   | Description                                                                                                       |
@@ -836,8 +1088,7 @@ Called before Tab (inline completions) reads a file. Enable redaction or access 
 - Does not include `attachments` field (Tab doesn't use prompt attachments)
 - Useful for applying different policies to autonomous Tab operations
 
-```
-
+```json
 // Input
 {
   "file_path": "<absolute path>",
@@ -848,7 +1099,6 @@ Called before Tab (inline completions) reads a file. Enable redaction or access 
 {
   "permission": "allow" | "deny"
 }
-
 ```
 
 #### afterTabFileEdit
@@ -861,8 +1111,7 @@ Called after Tab (inline completions) edits a file. Useful for formatters or aud
 - Includes detailed edit information: `range`, `old_line`, and `new_line` for precise edit tracking
 - Useful for fine-grained formatting or analysis of Tab edits
 
-```
-
+```json
 // Input
 {
   "file_path": "<absolute path>",
@@ -886,15 +1135,13 @@ Called after Tab (inline completions) edits a file. Useful for formatters or aud
 {
   // No output fields currently supported
 }
-
 ```
 
 #### beforeSubmitPrompt
 
 Called right after user hits send but before backend request. Can prevent submission.
 
-```
-
+```json
 // Input
 {
   "prompt": "<user prompt text>",
@@ -911,7 +1158,6 @@ Called right after user hits send but before backend request. Can prevent submis
   "continue": true | false,
   "user_message": "<message shown to user when blocked>"
 }
-
 ```
 
 | Output Field   | Type              | Description                                          |
@@ -923,21 +1169,18 @@ Called right after user hits send but before backend request. Can prevent submis
 
 Called after the agent has completed an assistant message.
 
-```
-
+```json
 // Input
 {
   "text": "<assistant final text>"
 }
-
 ```
 
 #### afterAgentThought
 
 Called after the agent completes a thinking block. Useful for observing the agent's reasoning process.
 
-```
-
+```json
 // Input
 {
   "text": "<fully aggregated thinking text>",
@@ -948,7 +1191,6 @@ Called after the agent completes a thinking block. Useful for observing the agen
 {
   // No output fields currently supported
 }
-
 ```
 
 | Field         | Type              | Description                                            |
@@ -960,23 +1202,19 @@ Called after the agent completes a thinking block. Useful for observing the agen
 
 Called when the agent loop ends. Can optionally auto-submit a follow-up user message to keep iterating.
 
-```
-
+```json
 // Input
 {
   "status": "completed" | "aborted" | "error",
   "loop_count": 0
 }
-
 ```
 
-```
-
+```json
 // Output
 {
   "followup_message": "<message text>"
 }
-
 ```
 
 - The optional `followup_message` is a string. When provided and non-empty, Cursor will automatically submit it as the next user message. This enables loop-style flows (e.g., iterate until a goal is met).
@@ -986,25 +1224,21 @@ Called when the agent loop ends. Can optionally auto-submit a follow-up user mes
 
 Called when a new composer conversation is created. This hook runs as fire-and-forget; the agent loop does not wait for or enforce a blocking response. Use it to set up session-specific environment variables or inject additional context.
 
-```
-
+```json
 // Input
 {
   "session_id": "<unique session identifier>",
   "is_background_agent": true | false,
   "composer_mode": "agent" | "ask" | "edit"
 }
-
 ```
 
-```
-
+```json
 // Output
 {
   "env": { "<key>": "<value>" },
   "additional_context": "<context to add to conversation>"
 }
-
 ```
 
 | Input Field           | Type              | Description                                                         |
@@ -1025,7 +1259,6 @@ The schema also accepts `continue` and `user_message` fields, but current caller
 Called when a composer conversation ends. This is a fire-and-forget hook useful for logging, analytics, or cleanup tasks. The response is logged but not used.
 
 ```json
-
 // Input
 {
   "session_id": "<unique session identifier>",
@@ -1035,33 +1268,29 @@ Called when a composer conversation ends. This is a fire-and-forget hook useful 
   "final_status": "<status string>",
   "error_message": "<error details if reason is 'error'>"
 }
-
 ```
 
 ```json
-
 // Output
 {
   // No output fields - fire and forget
 }
-
 ```
 
-| Input Field           | Type              | Description                                                                             |
-| --------------------- | ----------------- | --------------------------------------------------------------------------------------- |
-| `session_id`          | string            | Unique identifier for the session that is ending                                        |
-| `reason`              | string            | How the session ended: "completed", "aborted", "error", "window_close", or "user_close" |
-| `duration_ms`         | number            | Total duration of the session in milliseconds                                           |
-| `is_background_agent` | boolean           | Whether this was a background agent session                                             |
-| `final_status`        | string            | Final status of the session                                                             |
-| `error_message`       | string (optional) | Error message if reason is "error"                                                      |
+| Input Field           | Type              | Description                                                                               |
+| --------------------- | ----------------- | ----------------------------------------------------------------------------------------- |
+| `session_id`          | string            | Unique identifier for the session that is ending                                          |
+| `reason`              | string            | How the session ended: "completed", "aborted", "error", "window\_close", or "user\_close" |
+| `duration_ms`         | number            | Total duration of the session in milliseconds                                             |
+| `is_background_agent` | boolean           | Whether this was a background agent session                                               |
+| `final_status`        | string            | Final status of the session                                                               |
+| `error_message`       | string (optional) | Error message if reason is "error"                                                        |
 
 #### preCompact
 
 Called before context window compaction/summarization occurs. This is an observational hook that cannot block or modify the compaction behavior. Useful for logging when compaction happens or notifying users.
 
 ```json
-
 // Input
 {
   "trigger": "auto" | "manual",
@@ -1072,44 +1301,64 @@ Called before context window compaction/summarization occurs. This is an observa
   "messages_to_compact": 30,
   "is_first_compaction": true | false
 }
-
 ```
 
 ```json
-
 // Output
 {
   "user_message": "<message to show when compaction occurs>"
 }
-
 ```
 
-| Input Field           | Type    | Description                                                |
-| --------------------- | ------- | ---------------------------------------------------------- |
-| trigger               | string  | What triggered the compaction: "auto" or "manual"          |
-| context_usage_percent | number  | Current context window usage as a percentage (0-100)       |
-| context_tokens        | number  | Current context window token count                         |
-| context_window_size   | number  | Maximum context window size in tokens                      |
-| message_count         | number  | Number of messages in the conversation                     |
-| messages_to_compact   | number  | Number of messages that will be summarized                 |
-| is_first_compaction   | boolean | Whether this is the first compaction for this conversation |
+| Input Field             | Type    | Description                                                |
+| ----------------------- | ------- | ---------------------------------------------------------- |
+| `trigger`               | string  | What triggered the compaction: "auto" or "manual"          |
+| `context_usage_percent` | number  | Current context window usage as a percentage (0-100)       |
+| `context_tokens`        | number  | Current context window token count                         |
+| `context_window_size`   | number  | Maximum context window size in tokens                      |
+| `message_count`         | number  | Number of messages in the conversation                     |
+| `messages_to_compact`   | number  | Number of messages that will be summarized                 |
+| `is_first_compaction`   | boolean | Whether this is the first compaction for this conversation |
 
-| Output Field | Type              | Description                                        |
-| ------------ | ----------------- | -------------------------------------------------- |
-| user_message | string (optional) | Message to show to the user when compaction occurs |
+| Output Field   | Type              | Description                                        |
+| -------------- | ----------------- | -------------------------------------------------- |
+| `user_message` | string (optional) | Message to show to the user when compaction occurs |
+
+#### workspaceOpen
+
+Fires once when Cursor opens a workspace and again on every workspace folder change. Skipped when the window has zero workspace folders. Runs in the Cursor desktop app and CLI.
+
+```json
+// Input
+{
+  "hook_event_name": "workspaceOpen",
+  "cursor_version": "string",
+  "workspace_roots": ["<absolute path>"],
+  "user_email": "string | null"
+}
+
+// Output
+{
+  "pluginPaths": ["<absolute path>", "..."]
+}
+```
+
+| Output Field  | Type                 | Description                                                             |
+| ------------- | -------------------- | ----------------------------------------------------------------------- |
+| `pluginPaths` | string\[] (optional) | Absolute paths to plugin directories to load for the current workspace. |
 
 ## Environment Variables
 
 Hook scripts receive environment variables when executed:
 
-| Variable               | Description                                                 | Always Present         |
-| ---------------------- | ----------------------------------------------------------- | ---------------------- |
-| CURSOR_PROJECT_DIR     | Workspace root directory                                    | Yes                    |
-| CURSOR_VERSION         | Cursor version string                                       | Yes                    |
-| CURSOR_USER_EMAIL      | Authenticated user email                                    | If logged in           |
-| CURSOR_TRANSCRIPT_PATH | Path to the conversation transcript file                    | If transcripts enabled |
-| CURSOR_CODE_REMOTE     | Set to the string "true" when running in a remote workspace | For remote workspaces  |
-| CLAUDE_PROJECT_DIR     | Alias for project dir (Claude compatibility)                | Yes                    |
+| Variable                 | Description                                                   | Always Present         |
+| ------------------------ | ------------------------------------------------------------- | ---------------------- |
+| `CURSOR_PROJECT_DIR`     | Workspace root directory                                      | Yes                    |
+| `CURSOR_VERSION`         | Cursor version string                                         | Yes                    |
+| `CURSOR_USER_EMAIL`      | Authenticated user email                                      | If logged in           |
+| `CURSOR_TRANSCRIPT_PATH` | Path to the conversation transcript file                      | If transcripts enabled |
+| `CURSOR_CODE_REMOTE`     | Set to the string `"true"` when running in a remote workspace | For remote workspaces  |
+| `CLAUDE_PROJECT_DIR`     | Alias for project dir (Claude compatibility)                  | Yes                    |
 
 Session-scoped environment variables from `sessionStart` hooks are passed to all subsequent hook executions within that session.
 
@@ -1123,9 +1372,13 @@ There is a Hooks tab in Cursor Settings to debug configured and executed hooks, 
 
 - Cursor watches `hooks.json` files and reloads them on save. If hooks still do not load, restart Cursor.
 - Check that relative paths are correct for your hook source:
-- For **project hooks**, paths are relative to the **project root** (e.g., `.cursor/hooks/script.sh`)
-- For **user hooks**, paths are relative to `~/.cursor/` (e.g., `./hooks/script.sh` or `hooks/script.sh`)
+  - For **project hooks**, paths are relative to the **project root** (e.g., `.cursor/hooks/script.sh`)
+  - For **user hooks**, paths are relative to `~/.cursor/` (e.g., `./hooks/script.sh` or `hooks/script.sh`)
 
 **Exit code blocking**
 
 Exit code `2` from command hooks blocks the action (equivalent to returning `permission: "deny"`). This matches Claude Code behavior for compatibility.
+
+### Enterprise hooks and distribution
+
+Cloud distribution and team-wide hook management are available on Enterprise.
