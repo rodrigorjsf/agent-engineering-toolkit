@@ -28,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 
 // src/hooks/context-watchdog.ts
-var path2 = __toESM(require("path"));
+var path3 = __toESM(require("path"));
 var fs2 = __toESM(require("fs"));
 
 // src/handoff-config.ts
@@ -513,8 +513,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path3, errorMaps, issueData } = params;
-  const fullPath = [...path3, ...issueData.path || []];
+  const { data, path: path4, errorMaps, issueData } = params;
+  const fullPath = [...path4, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -630,11 +630,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path3, key) {
+  constructor(parent, value, path4, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path3;
+    this._path = path4;
     this._key = key;
   }
   get path() {
@@ -4160,6 +4160,34 @@ function loadHandoffConfig(repoPath) {
   return { config: result.data, warning: null };
 }
 
+// src/run-dir.ts
+var path2 = __toESM(require("path"));
+var RUN_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+function isValidRunId(runId) {
+  return RUN_ID_PATTERN.test(runId);
+}
+function resolveRunDir(repoPath, runId) {
+  if (!isValidRunId(runId)) {
+    return {
+      ok: false,
+      errorCode: "RUN_ID_INVALID",
+      errorMessage: `Invalid runId '${runId}': a runId must be a non-empty string of letters, digits, underscores, and hyphens (e.g. '20260521-015143').`
+    };
+  }
+  const runDir = path2.join(repoPath, ".orchestrate", "runs", runId);
+  return {
+    ok: true,
+    paths: {
+      runDir,
+      runStatePath: path2.join(runDir, "run-state.json"),
+      contextFlagPath: path2.join(runDir, "context-flag.json"),
+      dashboardPath: path2.join(runDir, "dashboard.html"),
+      graphPath: path2.join(runDir, "graph.html"),
+      reportPath: path2.join(runDir, "report.html")
+    }
+  };
+}
+
 // src/hooks/context-watchdog.ts
 function parseLatestUsage(transcriptText) {
   const lines = transcriptText.split("\n");
@@ -4223,8 +4251,35 @@ function readTranscriptText(transcriptPath) {
     fs2.closeSync(fd);
   }
 }
+function discoverActiveRunId(cwd) {
+  const runsDir = path3.join(cwd, ".orchestrate", "runs");
+  let entries;
+  try {
+    entries = fs2.readdirSync(runsDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const statePath = path3.join(runsDir, entry.name, "run-state.json");
+    let runState;
+    try {
+      runState = JSON.parse(fs2.readFileSync(statePath, "utf8"));
+    } catch {
+      continue;
+    }
+    if (typeof runState === "object" && runState !== null && runState.status === "in-progress") {
+      return entry.name;
+    }
+  }
+  return null;
+}
 function runWatchdog(input) {
-  const runStatePath = path2.join(input.cwd, ".orchestrate", "run-state.json");
+  const resolved = resolveRunDir(input.cwd, input.runId);
+  if (!resolved.ok) {
+    return { acted: false, flagRaised: false };
+  }
+  const { runStatePath, contextFlagPath: flagPath } = resolved.paths;
   let runState;
   try {
     runState = JSON.parse(fs2.readFileSync(runStatePath, "utf8"));
@@ -4234,7 +4289,6 @@ function runWatchdog(input) {
   if (typeof runState !== "object" || runState === null || runState.status !== "in-progress") {
     return { acted: false, flagRaised: false };
   }
-  const flagPath = path2.join(input.cwd, ".orchestrate", "context-flag.json");
   if (!input.transcriptPath) return { acted: true, flagRaised: false, flagPath };
   let transcriptText;
   try {
@@ -4261,7 +4315,7 @@ function runWatchdog(input) {
     usagePercent: evaluation.usagePercent
   };
   try {
-    fs2.mkdirSync(path2.dirname(flagPath), { recursive: true });
+    fs2.mkdirSync(path3.dirname(flagPath), { recursive: true });
     fs2.writeFileSync(flagPath, JSON.stringify(flag, null, 2));
   } catch {
     return { acted: true, flagRaised: false, flagPath, evaluation };
@@ -4290,9 +4344,15 @@ async function main() {
   }
   try {
     const event = raw ? JSON.parse(raw) : {};
+    const cwd = typeof event.cwd === "string" ? event.cwd : process.cwd();
+    const runId = discoverActiveRunId(cwd);
+    if (runId === null) {
+      process.exit(0);
+    }
     const result = runWatchdog({
       transcriptPath: typeof event.transcript_path === "string" ? event.transcript_path : void 0,
-      cwd: typeof event.cwd === "string" ? event.cwd : process.cwd()
+      cwd,
+      runId
     });
     if (result.flagRaised && result.evaluation) {
       const e = result.evaluation;

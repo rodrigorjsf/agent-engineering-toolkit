@@ -3226,8 +3226,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path6) {
-      let input = path6;
+    function removeDotSegments(path7) {
+      let input = path7;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3479,8 +3479,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path6, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path6 && path6 !== "/" ? path6 : void 0;
+        const [path7, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path7 && path7 !== "/" ? path7 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -7364,8 +7364,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path6, errorMaps, issueData } = params;
-  const fullPath = [...path6, ...issueData.path || []];
+  const { data, path: path7, errorMaps, issueData } = params;
+  const fullPath = [...path7, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7481,11 +7481,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path6, key) {
+  constructor(parent, value, path7, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path6;
+    this._path = path7;
     this._key = key;
   }
   get path() {
@@ -11123,10 +11123,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path6) {
-  if (!path6)
+function getElementAtPath(obj, path7) {
+  if (!path7)
     return obj;
-  return path6.reduce((acc, key) => acc?.[key], obj);
+  return path7.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11446,11 +11446,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path6, issues) {
+function prefixIssues(path7, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path6);
+    iss.path.unshift(path7);
     return iss;
   });
 }
@@ -21959,8 +21959,38 @@ function resolveRoutingFromConfig(input) {
 }
 
 // src/tools/render.ts
-var path4 = __toESM(require("path"));
+var path5 = __toESM(require("path"));
 var fs4 = __toESM(require("fs"));
+
+// src/run-dir.ts
+var path4 = __toESM(require("path"));
+var RUN_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+function isValidRunId(runId) {
+  return RUN_ID_PATTERN.test(runId);
+}
+function resolveRunDir(repoPath, runId) {
+  if (!isValidRunId(runId)) {
+    return {
+      ok: false,
+      errorCode: "RUN_ID_INVALID",
+      errorMessage: `Invalid runId '${runId}': a runId must be a non-empty string of letters, digits, underscores, and hyphens (e.g. '20260521-015143').`
+    };
+  }
+  const runDir = path4.join(repoPath, ".orchestrate", "runs", runId);
+  return {
+    ok: true,
+    paths: {
+      runDir,
+      runStatePath: path4.join(runDir, "run-state.json"),
+      contextFlagPath: path4.join(runDir, "context-flag.json"),
+      dashboardPath: path4.join(runDir, "dashboard.html"),
+      graphPath: path4.join(runDir, "graph.html"),
+      reportPath: path4.join(runDir, "report.html")
+    }
+  };
+}
+
+// src/tools/render.ts
 var sliceStateEnum = external_exports.enum(["pending", "in-progress", "passed", "failed", "skipped"]);
 var tierEnum = external_exports.enum(["trivial", "standard", "complex"]);
 var sliceSchema = external_exports.object({
@@ -21990,26 +22020,29 @@ var runStateSchema = external_exports.object({
   slices: external_exports.record(external_exports.string(), sliceSchema)
 });
 var renderInputSchema = external_exports.object({
+  runId: external_exports.string().describe(
+    "The orchestration run's id (its YYYYMMDD-HHMMSS timestamp). It selects the per-run directory .orchestrate/runs/<runId>/, which holds that run's run-state.json and is where the HTML artifact is written. Required \u2014 every render call happens after the run has a runId."
+  ),
   repoPath: external_exports.string().optional().describe(
-    "Path to the project root that holds the .orchestrate/run-state.json file. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default."
+    "Path to the project root that holds the .orchestrate/ directory. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default."
   ),
   outputPath: external_exports.string().optional().describe(
-    "Override the default output path for the HTML artifact. When omitted the artifact is written under <repoPath>/.orchestrate/ with a fixed filename per tool (dashboard.html, graph.html, report.html)."
+    "Override the default output path for the HTML artifact. When omitted the artifact is written under <repoPath>/.orchestrate/runs/<runId>/ with a fixed filename per tool (dashboard.html, graph.html, report.html)."
   )
 });
 var renderOutputSchema = external_exports.object({
   status: external_exports.enum(["ok", "error"]).describe("Outcome discriminant. 'ok' = artifact written; 'error' = could not complete."),
   artifactPath: external_exports.string().optional().describe("Absolute path to the written HTML artifact. Present when status='ok'."),
-  errorCode: external_exports.enum(["RUN_STATE_NOT_FOUND", "RUN_STATE_INVALID", "WRITE_FAILED"]).optional().describe(
-    "Machine-readable failure category. Present when status='error'. 'RUN_STATE_NOT_FOUND' = no .orchestrate/run-state.json; 'RUN_STATE_INVALID' = malformed JSON or schema mismatch; 'WRITE_FAILED' = could not write the HTML artifact."
+  errorCode: external_exports.enum([
+    "RUN_ID_INVALID",
+    "RUN_STATE_NOT_FOUND",
+    "RUN_STATE_INVALID",
+    "WRITE_FAILED"
+  ]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'RUN_ID_INVALID' = the runId is malformed and cannot resolve a run directory; 'RUN_STATE_NOT_FOUND' = no run-state.json under .orchestrate/runs/<runId>/; 'RUN_STATE_INVALID' = malformed JSON or schema mismatch; 'WRITE_FAILED' = could not write the HTML artifact."
   ),
   errorMessage: external_exports.string().optional().describe("Human-readable failure description. Present when status='error'.")
 });
-var ARTIFACT_DEFAULTS = {
-  dashboard: ".orchestrate/dashboard.html",
-  graph: ".orchestrate/graph.html",
-  report: ".orchestrate/report.html"
-};
 function firstLine3(message) {
   const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
   return line ?? message.trim();
@@ -22032,8 +22065,22 @@ function formatDuration(startedAt, updatedAt) {
   if (mins > 0) return `${mins}m ${secs % 60}s`;
   return `${secs}s`;
 }
-function readAndValidateRunState(repoPath) {
-  const statePath = path4.join(repoPath, ".orchestrate", "run-state.json");
+function resolveRenderPaths(input) {
+  const repoPath = input.repoPath ?? process.cwd();
+  const resolved = resolveRunDir(repoPath, input.runId);
+  if (!resolved.ok) {
+    return {
+      ok: false,
+      response: {
+        status: "error",
+        errorCode: resolved.errorCode,
+        errorMessage: resolved.errorMessage
+      }
+    };
+  }
+  return { ok: true, paths: resolved.paths };
+}
+function readAndValidateRunState(statePath) {
   let raw;
   try {
     raw = fs4.readFileSync(statePath, "utf8");
@@ -22043,7 +22090,7 @@ function readAndValidateRunState(repoPath) {
       response: {
         status: "error",
         errorCode: "RUN_STATE_NOT_FOUND",
-        errorMessage: `No .orchestrate/run-state.json found in ${repoPath}.`
+        errorMessage: `No run-state.json found at ${statePath}.`
       }
     };
   }
@@ -22056,7 +22103,7 @@ function readAndValidateRunState(repoPath) {
       response: {
         status: "error",
         errorCode: "RUN_STATE_INVALID",
-        errorMessage: `.orchestrate/run-state.json is not valid JSON: ${firstLine3(
+        errorMessage: `run-state.json is not valid JSON: ${firstLine3(
           err instanceof Error ? err.message : String(err)
         )}`
       }
@@ -22070,7 +22117,7 @@ function readAndValidateRunState(repoPath) {
       response: {
         status: "error",
         errorCode: "RUN_STATE_INVALID",
-        errorMessage: `.orchestrate/run-state.json does not match the expected shape: ${detail}`
+        errorMessage: `run-state.json does not match the expected shape: ${detail}`
       }
     };
   }
@@ -22078,7 +22125,7 @@ function readAndValidateRunState(repoPath) {
 }
 function writeArtifact(html, outputPath) {
   try {
-    fs4.mkdirSync(path4.dirname(outputPath), { recursive: true });
+    fs4.mkdirSync(path5.dirname(outputPath), { recursive: true });
     fs4.writeFileSync(outputPath, html, "utf8");
     return void 0;
   } catch (err) {
@@ -22548,31 +22595,34 @@ function renderReport(state) {
 </html>`;
 }
 async function renderDashboardArtifact(input) {
-  const repoPath = input.repoPath ?? process.cwd();
-  const read = readAndValidateRunState(repoPath);
+  const resolved = resolveRenderPaths(input);
+  if (!resolved.ok) return resolved.response;
+  const read = readAndValidateRunState(resolved.paths.runStatePath);
   if (!read.ok) return read.response;
   const html = renderDashboard(read.state);
-  const artifactPath = input.outputPath ?? path4.join(repoPath, ARTIFACT_DEFAULTS.dashboard);
+  const artifactPath = input.outputPath ?? resolved.paths.dashboardPath;
   const writeErr = writeArtifact(html, artifactPath);
   if (writeErr) return writeErr;
   return { status: "ok", artifactPath };
 }
 async function renderGraphArtifact(input) {
-  const repoPath = input.repoPath ?? process.cwd();
-  const read = readAndValidateRunState(repoPath);
+  const resolved = resolveRenderPaths(input);
+  if (!resolved.ok) return resolved.response;
+  const read = readAndValidateRunState(resolved.paths.runStatePath);
   if (!read.ok) return read.response;
   const html = renderGraph(read.state);
-  const artifactPath = input.outputPath ?? path4.join(repoPath, ARTIFACT_DEFAULTS.graph);
+  const artifactPath = input.outputPath ?? resolved.paths.graphPath;
   const writeErr = writeArtifact(html, artifactPath);
   if (writeErr) return writeErr;
   return { status: "ok", artifactPath };
 }
 async function renderReportArtifact(input) {
-  const repoPath = input.repoPath ?? process.cwd();
-  const read = readAndValidateRunState(repoPath);
+  const resolved = resolveRenderPaths(input);
+  if (!resolved.ok) return resolved.response;
+  const read = readAndValidateRunState(resolved.paths.runStatePath);
   if (!read.ok) return read.response;
   const html = renderReport(read.state);
-  const artifactPath = input.outputPath ?? path4.join(repoPath, ARTIFACT_DEFAULTS.report);
+  const artifactPath = input.outputPath ?? resolved.paths.reportPath;
   const writeErr = writeArtifact(html, artifactPath);
   if (writeErr) return writeErr;
   return { status: "ok", artifactPath };
@@ -22582,7 +22632,7 @@ async function renderReportArtifact(input) {
 var import_child_process3 = require("child_process");
 
 // src/handoff-config.ts
-var path5 = __toESM(require("path"));
+var path6 = __toESM(require("path"));
 var fs5 = __toESM(require("fs"));
 var watchdogConfigSchema = external_exports.object({
   thresholdPercent: external_exports.number().min(1).max(100).default(40).describe(
@@ -22637,7 +22687,7 @@ function firstLine4(message) {
   return line ?? message.trim();
 }
 function loadHandoffConfig(repoPath) {
-  const configPath = path5.join(repoPath, ".orchestrate", "handoff.json");
+  const configPath = path6.join(repoPath, ".orchestrate", "handoff.json");
   const defaults = handoffConfigSchema.parse({});
   let raw;
   try {
@@ -22670,7 +22720,7 @@ function loadHandoffConfig(repoPath) {
 // src/tools/spawn-successor.ts
 var spawnSuccessorInputSchema = external_exports.object({
   repoPath: external_exports.string().optional().describe(
-    "Path to the repository root \u2014 the directory holding .orchestrate/. The successor session opens here and reads run-state.json to resume. Defaults to the MCP server process's current working directory; callers should pass it explicitly."
+    "Path to the repository root \u2014 the directory holding .orchestrate/. The successor session opens here and re-discovers the active run from .orchestrate/runs/*/run-state.json to resume. Defaults to the MCP server process's current working directory; callers should pass it explicitly."
   )
 });
 var launchAttemptSchema = external_exports.object({
@@ -23435,19 +23485,19 @@ var RENDER_TOOLS = [
   {
     name: "render_dashboard",
     title: "Render Run Dashboard",
-    description: "Reads .orchestrate/run-state.json and writes a standalone HTML dashboard showing the live run state: run id, status, wave progress, and a color-coded slice table. Returns only the artifact path \u2014 the HTML is written to disk, never returned in the response.",
+    description: "Reads run-state.json from the per-run directory .orchestrate/runs/<runId>/ and writes a standalone HTML dashboard into it showing the live run state: run id, status, wave progress, and a color-coded slice table. Requires a `runId`. Returns only the artifact path \u2014 the HTML is written to disk, never returned in the response.",
     run: renderDashboardArtifact
   },
   {
     name: "render_graph",
     title: "Render Dependency Graph",
-    description: "Reads .orchestrate/run-state.json and writes a standalone HTML dependency graph: waves as columns, slices as nodes, blockedBy edges as SVG lines. Layout is deterministic (x = wave index, y = slice index in wave). Returns only the artifact path.",
+    description: "Reads run-state.json from the per-run directory .orchestrate/runs/<runId>/ and writes a standalone HTML dependency graph into it: waves as columns, slices as nodes, blockedBy edges as SVG lines. Layout is deterministic (x = wave index, y = slice index in wave). Requires a `runId`. Returns only the artifact path.",
     run: renderGraphArtifact
   },
   {
     name: "render_report",
     title: "Render Run Report",
-    description: "Reads .orchestrate/run-state.json and writes a standalone HTML final report: run duration, outcome counts (passed/failed/skipped), the final pull request link, and a per-slice outcome table. Returns only the artifact path.",
+    description: "Reads run-state.json from the per-run directory .orchestrate/runs/<runId>/ and writes a standalone HTML final report into it: run duration, outcome counts (passed/failed/skipped), the final pull request link, and a per-slice outcome table. Requires a `runId`. Returns only the artifact path.",
     run: renderReportArtifact
   }
 ];
@@ -23493,7 +23543,7 @@ registerTool(
   "spawn_successor",
   {
     title: "Spawn Successor Session",
-    description: "Launches a fresh interactive Claude Code session that resumes an interrupted orchestration run from the .orchestrate/run-state.json checkpoint, then the predecessor exits. The successor opens in a new terminal window with Remote Control active and re-invokes /orchestrate \u2014 never print mode. The terminal fallback chain and claude flags are configured in .orchestrate/handoff.json; built-in defaults target a WSL2 environment. Returns a discriminated `status` of 'ok' or 'error'.",
+    description: "Launches a fresh interactive Claude Code session that resumes an interrupted orchestration run from its run-state.json checkpoint (under the per-run directory .orchestrate/runs/<runId>/), then the predecessor exits. The successor opens in a new terminal window with Remote Control active and re-invokes /orchestrate \u2014 never print mode \u2014 which re-discovers the active run. The terminal fallback chain and claude flags are configured in .orchestrate/handoff.json; built-in defaults target a WSL2 environment. Returns a discriminated `status` of 'ok' or 'error'.",
     inputSchema: spawnSuccessorInputSchema.shape,
     outputSchema: spawnSuccessorOutputSchema.shape
   },

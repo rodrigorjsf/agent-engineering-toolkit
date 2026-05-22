@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as fs from "fs";
 import { z } from "zod";
+import { resolveRunDir, type RunPaths } from "../run-dir.js";
 
 // ─── Schemas — z.object is the single source of truth; TS types via z.infer ───
 
@@ -36,11 +37,19 @@ export const runStateSchema = z.object({
 });
 
 export const renderInputSchema = z.object({
+  runId: z
+    .string()
+    .describe(
+      "The orchestration run's id (its YYYYMMDD-HHMMSS timestamp). It selects " +
+        "the per-run directory .orchestrate/runs/<runId>/, which holds that " +
+        "run's run-state.json and is where the HTML artifact is written. " +
+        "Required — every render call happens after the run has a runId."
+    ),
   repoPath: z
     .string()
     .optional()
     .describe(
-      "Path to the project root that holds the .orchestrate/run-state.json file. " +
+      "Path to the project root that holds the .orchestrate/ directory. " +
         "Defaults to the MCP server process's current working directory — callers " +
         "should pass this explicitly rather than rely on the default."
     ),
@@ -49,8 +58,8 @@ export const renderInputSchema = z.object({
     .optional()
     .describe(
       "Override the default output path for the HTML artifact. When omitted the " +
-        "artifact is written under <repoPath>/.orchestrate/ with a fixed filename " +
-        "per tool (dashboard.html, graph.html, report.html)."
+        "artifact is written under <repoPath>/.orchestrate/runs/<runId>/ with a " +
+        "fixed filename per tool (dashboard.html, graph.html, report.html)."
     ),
 });
 
@@ -63,13 +72,19 @@ export const renderOutputSchema = z.object({
     .optional()
     .describe("Absolute path to the written HTML artifact. Present when status='ok'."),
   errorCode: z
-    .enum(["RUN_STATE_NOT_FOUND", "RUN_STATE_INVALID", "WRITE_FAILED"])
+    .enum([
+      "RUN_ID_INVALID",
+      "RUN_STATE_NOT_FOUND",
+      "RUN_STATE_INVALID",
+      "WRITE_FAILED",
+    ])
     .optional()
     .describe(
       "Machine-readable failure category. Present when status='error'. " +
-        "'RUN_STATE_NOT_FOUND' = no .orchestrate/run-state.json; " +
-        "'RUN_STATE_INVALID' = malformed JSON or schema mismatch; " +
-        "'WRITE_FAILED' = could not write the HTML artifact."
+        "'RUN_ID_INVALID' = the runId is malformed and cannot resolve a run " +
+        "directory; 'RUN_STATE_NOT_FOUND' = no run-state.json under " +
+        ".orchestrate/runs/<runId>/; 'RUN_STATE_INVALID' = malformed JSON or " +
+        "schema mismatch; 'WRITE_FAILED' = could not write the HTML artifact."
     ),
   errorMessage: z
     .string()
@@ -83,14 +98,6 @@ export type RunState = z.infer<typeof runStateSchema>;
 export type SliceState = z.infer<typeof sliceStateEnum>;
 export type RenderInput = z.infer<typeof renderInputSchema>;
 export type RenderOutput = z.infer<typeof renderOutputSchema>;
-
-// ─── Default artifact paths ───────────────────────────────────────────────────
-
-const ARTIFACT_DEFAULTS = {
-  dashboard: ".orchestrate/dashboard.html",
-  graph: ".orchestrate/graph.html",
-  report: ".orchestrate/report.html",
-} as const;
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -137,14 +144,35 @@ function formatDuration(startedAt: string, updatedAt: string): string {
 }
 
 /**
- * Reads and validates `.orchestrate/run-state.json` from the given repoPath.
- * Returns either the validated state or a structured error response.
+ * Resolves the per-run paths for `input`, mapping a malformed runId onto a
+ * structured `RUN_ID_INVALID` response so the caller never has to throw.
+ */
+function resolveRenderPaths(
+  input: RenderInput
+): { ok: true; paths: RunPaths } | { ok: false; response: RenderOutput } {
+  const repoPath = input.repoPath ?? process.cwd();
+  const resolved = resolveRunDir(repoPath, input.runId);
+  if (!resolved.ok) {
+    return {
+      ok: false,
+      response: {
+        status: "error",
+        errorCode: resolved.errorCode,
+        errorMessage: resolved.errorMessage,
+      },
+    };
+  }
+  return { ok: true, paths: resolved.paths };
+}
+
+/**
+ * Reads and validates the run-state.json at `statePath` (the per-run path from
+ * the run-directory resolver). Returns either the validated state or a
+ * structured error response.
  */
 function readAndValidateRunState(
-  repoPath: string
+  statePath: string
 ): { ok: true; state: RunState } | { ok: false; response: RenderOutput } {
-  const statePath = path.join(repoPath, ".orchestrate", "run-state.json");
-
   let raw: string;
   try {
     raw = fs.readFileSync(statePath, "utf8");
@@ -154,7 +182,7 @@ function readAndValidateRunState(
       response: {
         status: "error",
         errorCode: "RUN_STATE_NOT_FOUND",
-        errorMessage: `No .orchestrate/run-state.json found in ${repoPath}.`,
+        errorMessage: `No run-state.json found at ${statePath}.`,
       },
     };
   }
@@ -168,7 +196,7 @@ function readAndValidateRunState(
       response: {
         status: "error",
         errorCode: "RUN_STATE_INVALID",
-        errorMessage: `.orchestrate/run-state.json is not valid JSON: ${firstLine(
+        errorMessage: `run-state.json is not valid JSON: ${firstLine(
           err instanceof Error ? err.message : String(err)
         )}`,
       },
@@ -185,7 +213,7 @@ function readAndValidateRunState(
       response: {
         status: "error",
         errorCode: "RUN_STATE_INVALID",
-        errorMessage: `.orchestrate/run-state.json does not match the expected shape: ${detail}`,
+        errorMessage: `run-state.json does not match the expected shape: ${detail}`,
       },
     };
   }
@@ -754,12 +782,13 @@ export function renderReport(state: RunState): string {
 export async function renderDashboardArtifact(
   input: RenderInput
 ): Promise<RenderOutput> {
-  const repoPath = input.repoPath ?? process.cwd();
-  const read = readAndValidateRunState(repoPath);
+  const resolved = resolveRenderPaths(input);
+  if (!resolved.ok) return resolved.response;
+  const read = readAndValidateRunState(resolved.paths.runStatePath);
   if (!read.ok) return read.response;
 
   const html = renderDashboard(read.state);
-  const artifactPath = input.outputPath ?? path.join(repoPath, ARTIFACT_DEFAULTS.dashboard);
+  const artifactPath = input.outputPath ?? resolved.paths.dashboardPath;
   const writeErr = writeArtifact(html, artifactPath);
   if (writeErr) return writeErr;
 
@@ -773,12 +802,13 @@ export async function renderDashboardArtifact(
 export async function renderGraphArtifact(
   input: RenderInput
 ): Promise<RenderOutput> {
-  const repoPath = input.repoPath ?? process.cwd();
-  const read = readAndValidateRunState(repoPath);
+  const resolved = resolveRenderPaths(input);
+  if (!resolved.ok) return resolved.response;
+  const read = readAndValidateRunState(resolved.paths.runStatePath);
   if (!read.ok) return read.response;
 
   const html = renderGraph(read.state);
-  const artifactPath = input.outputPath ?? path.join(repoPath, ARTIFACT_DEFAULTS.graph);
+  const artifactPath = input.outputPath ?? resolved.paths.graphPath;
   const writeErr = writeArtifact(html, artifactPath);
   if (writeErr) return writeErr;
 
@@ -792,12 +822,13 @@ export async function renderGraphArtifact(
 export async function renderReportArtifact(
   input: RenderInput
 ): Promise<RenderOutput> {
-  const repoPath = input.repoPath ?? process.cwd();
-  const read = readAndValidateRunState(repoPath);
+  const resolved = resolveRenderPaths(input);
+  if (!resolved.ok) return resolved.response;
+  const read = readAndValidateRunState(resolved.paths.runStatePath);
   if (!read.ok) return read.response;
 
   const html = renderReport(read.state);
-  const artifactPath = input.outputPath ?? path.join(repoPath, ARTIFACT_DEFAULTS.report);
+  const artifactPath = input.outputPath ?? resolved.paths.reportPath;
   const writeErr = writeArtifact(html, artifactPath);
   if (writeErr) return writeErr;
 
