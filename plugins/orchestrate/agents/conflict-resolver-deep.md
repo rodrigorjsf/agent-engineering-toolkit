@@ -53,6 +53,12 @@ with higher risk.
   merge is genuinely ambiguous is a `failed` result — never guess and ship a
   silently-wrong merge.
 
+## Advisor policy
+
+This subagent does not call an advisor tool. The `advisor` tool is intentionally
+absent from this subagent's `tools:` frontmatter. Advisor passes, when used, run
+at the orchestrator boundary — not inside any subagent.
+
 ## Deep effort
 
 You are spawned for complex, high-risk conflicts where a shallow pass risks a

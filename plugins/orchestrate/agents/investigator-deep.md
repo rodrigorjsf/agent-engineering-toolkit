@@ -58,6 +58,12 @@ always acceptable.
 - Do not attempt to implement, fix, or change anything. Investigate only.
 - Do not edit the issue, open pull requests, or change tracker labels.
 
+## Advisor policy
+
+This subagent does not call an advisor tool. The `advisor` tool is intentionally
+absent from this subagent's `tools:` frontmatter. Advisor passes, when used, run
+at the orchestrator boundary — not inside any subagent.
+
 ## Deep effort
 
 You are spawned for complex, high-risk issues where a shallow investigation

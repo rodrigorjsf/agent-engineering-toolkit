@@ -51,6 +51,12 @@ The orchestrator gives you:
   main repository checkout.
 - Do not edit the issue, open pull requests, or change tracker labels.
 
+## Advisor policy
+
+This subagent does not call an advisor tool. The `advisor` tool is intentionally
+absent from this subagent's `tools:` frontmatter. Advisor passes, when used, run
+at the orchestrator boundary — not inside any subagent.
+
 ## What you return
 
 End your turn with a **result envelope** — a single fenced

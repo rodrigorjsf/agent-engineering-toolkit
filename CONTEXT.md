@@ -185,6 +185,10 @@ _Avoid_: envelope parser, schema checker (validator is the contract name; it cla
 The orchestrator's recovery path, the `recover_changed_files` MCP tool, for when a subagent's **Result envelope** is missing or invalid: it inspects the slice worktree directly with `git status` and returns the full changed-file set (build artifacts included), treating the worktree as the source of truth. Applies to the implementer, reviewer, and conflict-resolver only — the read-only investigator leaves no worktree changes to recover.
 _Avoid_: git-status recovery, changed-file scan (worktree fallback is the precise term — it is the fallback, not the primary path)
 
+**Subagent advisor policy**:
+The deliberate decision that all eight orchestrate subagents (`investigator`, `implementer`, `reviewer`, `conflict-resolver`, both `-standard` and `-deep` variants) do **not** call an advisor tool. The `advisor` tool is intentionally absent from every subagent's `tools:` frontmatter. Advisor passes, when used, run at the **orchestrator boundary** (the driver session running the `orchestrate` skill), not inside any subagent. The policy is expressed as an explicit `## Advisor policy` section — word-for-word identical between the `-standard` and `-deep` variant of each role — so the decision is self-evident from the definition file. See ADR-0009.
+_Avoid_: no-advisor rule, advisor ban (the policy is positive — advisor responsibility lives at the orchestrator boundary, not absent from the system)
+
 ## Relationships
 
 - A **Distribution** owns at most one **Initializer** and at most one **Customizer**.
