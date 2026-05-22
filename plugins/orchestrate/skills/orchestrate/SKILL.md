@@ -243,10 +243,9 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
    slice has **FAILED**.
 5. **Run the reviewer.** Spawn the `orchestrate:reviewer-<effort>` subagent —
    `<effort>` and the `model` override from `routing.reviewer` — in the same
-   worktree. Its
-   prompt must carry the issue, the worktree path, the implementer's
-   `filesChanged` list and `notes`, and the investigator's brief if one was
-   produced. If it returns `failed`, the slice has **FAILED**.
+   worktree. Its prompt must carry the issue, the worktree path, the
+   implementer's `filesChanged` list and `notes`, and the investigator's brief
+   if one was produced. If it returns `failed`, the slice has **FAILED**.
 6. **Commit and push.** Stage only the files the subagents reported changing —
    the union of the implementer's and reviewer's `filesChanged` lists. Never
    `git add -A`: the capability tools leave untracked build artifacts in the

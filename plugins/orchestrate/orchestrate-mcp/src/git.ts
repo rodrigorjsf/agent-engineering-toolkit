@@ -21,10 +21,11 @@ const GIT_CONFIG_OVERRIDES: string[] = [
   "core.fsmonitor=",
   // `core.sshCommand=ssh`, not a blank value. A command-line `-c` overrides
   // whatever an untrusted repo's `.git/config` sets, so a malicious
-  // `core.sshCommand` still cannot run — the code-execution surface stays
-  // closed. A blank value would also close it, but it makes an SSH `fetch`
-  // spawn an empty command and fail (F-005); `ssh` is the real, working
-  // invocation, resolved from PATH.
+  // `core.sshCommand` from the repo config cannot run. A blank value would
+  // also close that vector, but it makes an SSH `fetch` spawn an empty
+  // command and fail (F-005); `ssh` is the real, working invocation,
+  // resolved from PATH. Note: an inherited `GIT_SSH_COMMAND` env var takes
+  // precedence over `core.sshCommand` and is not neutralized here — see #200.
   "-c",
   "core.sshCommand=ssh",
   "-c",
