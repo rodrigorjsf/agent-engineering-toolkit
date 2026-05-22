@@ -39,13 +39,13 @@ Every plugin requires a `.cursor-plugin/plugin.json` manifest file.
 ### Required fields
 
 | Field  | Type   | Description                                                                                                                                                              |
-| ------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| :----- | :----- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `name` | string | Plugin identifier. Lowercase, kebab-case (alphanumerics, hyphens, and periods). Must start and end with an alphanumeric character. Examples: `my-plugin`, `prompts.chat` |
 
 ### Optional fields
 
 | Field         | Type                     | Description                                                                                                                                                                                                          |
-| ------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| :------------ | :----------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `description` | string                   | Brief plugin description                                                                                                                                                                                             |
 | `version`     | string                   | Semantic version (e.g., `1.0.0`)                                                                                                                                                                                     |
 | `author`      | object                   | Author info: `name` (required), `email` (optional)                                                                                                                                                                   |
@@ -82,7 +82,7 @@ Every plugin requires a `.cursor-plugin/plugin.json` manifest file.
 When the manifest does not specify explicit paths for a component type, the parser uses **automatic folder-based discovery**:
 
 | Component   | Default location          | How it's discovered                                                                        |
-| ----------- | ------------------------- | ------------------------------------------------------------------------------------------ |
+| :---------- | :------------------------ | :----------------------------------------------------------------------------------------- |
 | Skills      | `skills/`                 | Each subdirectory containing a `SKILL.md` file                                             |
 | Rules       | `rules/`                  | All `.md`, `.mdc`, or `.markdown` files                                                    |
 | Agents      | `agents/`                 | All `.md`, `.mdc`, or `.markdown` files                                                    |
@@ -90,6 +90,7 @@ When the manifest does not specify explicit paths for a component type, the pars
 | Hooks       | `hooks/hooks.json`        | Parsed for hook event names                                                                |
 | MCP Servers | `mcp.json`                | Parsed for server entries                                                                  |
 | Root Skill  | `SKILL.md` at plugin root | Treated as a single-skill plugin (only if no `skills/` dir and no manifest `skills` field) |
+
 If a manifest field **is** specified (e.g., `"skills": "./my-skills/"`), it **replaces** folder discovery for that component. The default folder is not also scanned.
 
 ## Rules format
@@ -98,9 +99,7 @@ Rules are `.mdc` files providing persistent guidance to the AI. Place them in th
 
 Rules require YAML frontmatter with metadata:
 
-**`rules/prefer-const.mdc`**
-
-```yaml
+```markdown title="rules/prefer-const.mdc"
 ---
 description: Prefer const over let for variables that are never reassigned
 alwaysApply: true
@@ -113,11 +112,12 @@ Only use `let` when the variable needs to be reassigned. Never use `var`.
 ### Rule frontmatter fields
 
 | Field         | Type            | Description                                                                     |
-| ------------- | --------------- | ------------------------------------------------------------------------------- |
+| :------------ | :-------------- | :------------------------------------------------------------------------------ |
 | `description` | string          | Brief description of what the rule does                                         |
 | `alwaysApply` | boolean         | If `true`, rule applies to all files. If `false`, rule is available on request. |
 | `globs`       | string or array | File patterns the rule applies to (e.g., `"**/*.ts"`)                           |
-For full documentation, see [Rules](/docs/rules).
+
+For full documentation, see [Rules](https://cursor.com/docs/rules.md).
 
 ## Skills format
 
@@ -125,9 +125,7 @@ Skills are specialized capabilities defined in `SKILL.md` files. Each skill live
 
 Skills require YAML frontmatter with metadata:
 
-**`skills/api-designer/SKILL.md`**
-
-```yaml
+```markdown title="skills/api-designer/SKILL.md"
 ---
 name: api-designer
 description: Design RESTful APIs following OpenAPI 3.0 specification.
@@ -155,10 +153,11 @@ description: Design RESTful APIs following OpenAPI 3.0 specification.
 ### Skill frontmatter fields
 
 | Field         | Type   | Description                                           |
-| ------------- | ------ | ----------------------------------------------------- |
+| :------------ | :----- | :---------------------------------------------------- |
 | `name`        | string | Skill identifier (lowercase, kebab-case)              |
 | `description` | string | Description of what the skill does and when to use it |
-For full documentation, see [Skills](/docs/skills).
+
+For full documentation, see [Skills](https://cursor.com/docs/skills.md).
 
 ## Agents format
 
@@ -166,9 +165,7 @@ Agents are markdown files defining custom agent behaviors and prompts. Place the
 
 Agents require YAML frontmatter with metadata:
 
-**`agents/security-reviewer.md`**
-
-```yaml
+```markdown title="agents/security-reviewer.md"
 ---
 name: security-reviewer
 description: Security-focused code reviewer that checks for
@@ -190,7 +187,7 @@ You are a security-focused code reviewer. When reviewing code:
 ### Agent frontmatter fields
 
 | Field         | Type   | Description                              |
-| ------------- | ------ | ---------------------------------------- |
+| :------------ | :----- | :--------------------------------------- |
 | `name`        | string | Agent identifier (lowercase, kebab-case) |
 | `description` | string | Brief description of the agent's purpose |
 
@@ -200,9 +197,7 @@ Commands are markdown or text files defining agent-executable actions. Place the
 
 Commands support `.md`, `.mdc`, `.markdown`, and `.txt` extensions. They can include YAML frontmatter:
 
-**`commands/deploy-staging.md`**
-
-```yaml
+```markdown title="commands/deploy-staging.md"
 ---
 name: deploy-staging
 description: Deploy the current branch to the staging environment
@@ -219,17 +214,15 @@ Steps to deploy to staging:
 ### Command frontmatter fields
 
 | Field         | Type   | Description                                |
-| ------------- | ------ | ------------------------------------------ |
+| :------------ | :----- | :----------------------------------------- |
 | `name`        | string | Command identifier (lowercase, kebab-case) |
 | `description` | string | Brief description of what the command does |
 
 ## Hooks format
 
-Hooks are automation scripts triggered by agent events. Define them in `hooks/hooks.json`:
+Hooks are automation scripts triggered by agent, Tab, or workspace events. Define them in `hooks/hooks.json`:
 
-**`hooks/hooks.json`**
-
-```json
+```json title="hooks/hooks.json"
 {
   "hooks": {
     "afterFileEdit": [
@@ -256,8 +249,9 @@ Hooks are automation scripts triggered by agent events. Define them in `hooks/ho
 
 - **Agent hooks**: `sessionStart`, `sessionEnd`, `preToolUse`, `postToolUse`, `postToolUseFailure`, `subagentStart`, `subagentStop`, `beforeShellExecution`, `afterShellExecution`, `beforeMCPExecution`, `afterMCPExecution`, `beforeReadFile`, `afterFileEdit`, `beforeSubmitPrompt`, `preCompact`, `stop`, `afterAgentResponse`, `afterAgentThought`
 - **Tab hooks**: `beforeTabFileRead`, `afterTabFileEdit`
+- **App lifecycle hooks**: `workspaceOpen`
 
-For full documentation, see [Hooks](/docs/hooks).
+For full documentation, see [Hooks](https://cursor.com/docs/hooks.md).
 
 ## MCP servers
 
@@ -265,9 +259,7 @@ The `mcp.json` file at the plugin root is detected automatically. You only need 
 
 The MCP config file should contain server entries under a `mcpServers` key:
 
-**`mcp.json`**
-
-```json
+```json title="mcp.json"
 {
   "mcpServers": {
     "postgres": {
@@ -281,7 +273,7 @@ The MCP config file should contain server entries under a `mcpServers` key:
 }
 ```
 
-For full documentation, see [MCP](/docs/mcp).
+For full documentation, see [MCP](https://cursor.com/docs/mcp.md).
 
 ## Logos
 
@@ -336,7 +328,7 @@ A single Git repository can contain multiple plugins using a **marketplace manif
 ### Marketplace manifest fields
 
 | Field      | Type   | Description                                                                           |
-| ---------- | ------ | ------------------------------------------------------------------------------------- |
+| :--------- | :----- | :------------------------------------------------------------------------------------ |
 | `name`     | string | **(required)** Marketplace identifier (kebab-case)                                    |
 | `owner`    | object | **(required)** `name` (required), `email` (optional)                                  |
 | `plugins`  | array  | **(required)** Array of plugin entries (max 500)                                      |
@@ -347,7 +339,7 @@ A single Git repository can contain multiple plugins using a **marketplace manif
 Each entry in the `plugins` array supports:
 
 | Field                                   | Type             | Description                                                 |
-| --------------------------------------- | ---------------- | ----------------------------------------------------------- |
+| :-------------------------------------- | :--------------- | :---------------------------------------------------------- |
 | `name`                                  | string           | **(required)** Plugin identifier (kebab-case)               |
 | `source`                                | string or object | Path to plugin directory, or object with `path` and options |
 | `description`                           | string           | Plugin description                                          |
@@ -400,15 +392,15 @@ my-plugins/
 
 Plugins are reviewed by the Cursor team. To submit:
 
-### 1. Create your plugin
+### Create your plugin
 
 Follow this reference's structure. Make sure your plugin has a valid `.cursor-plugin/plugin.json` manifest.
 
-### 2. Host in a Git repository
+### Host in a Git repository
 
 Push your plugin to a public Git repository. Commit your logo to the repo (optional but recommended).
 
-### 3. Submit your plugin
+### Submit your plugin
 
 Go to [cursor.com/marketplace/publish](https://cursor.com/marketplace/publish) and submit your repository link.
 

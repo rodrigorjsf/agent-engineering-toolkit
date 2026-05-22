@@ -16,7 +16,7 @@ Source: Andrej Karpathy, "LLM Knowledge Bases" (X / Twitter post, 2026). Pattern
 
 ## How this repository adapts the methodology
 
-- `docs/` plays the role of `raw/`. We do **not** rename — too many cross-references in rules, skills, and CI — but the immutability invariant carries over.
+- `docs/` plays the role of `raw/`. We do **not** rename — too many cross-references in rules, skills, and CI — but the immutability invariant carries over. **(Amended by [ADR-0010](0010-vendor-doc-mirrors-are-living.md): vendor-documentation mirrors — `docs/claude/`, `docs/claude-code/`, `docs/cursor/` — are living, re-syncable mirrors; immutability holds for all other `docs/` artifacts.)**
 - `wiki/knowledge/` is the compiled wiki. `index.md` and `log.md` are agent-maintained.
 - A new `.claude/rules/wiki-routing.md` enforces the lookup order: `wiki/knowledge/index.md` → specific page → `docs/` fallback.
 - A new `wiki-ingest` skill (slash command `/wiki-ingest`) mechanizes Karpathy's "data ingest" loop when a new file is added under `docs/`.

@@ -1,8 +1,8 @@
 # Claude Code Memory
 
-**Summary**: The multi-layered system by which Claude Code maintains persistent project context across sessions — comprising CLAUDE.md file hierarchies, path-scoped rules in `.claude/rules/`, auto memory from corrections, and import-based composition.
+**Summary**: The multi-layered system by which Claude Code maintains persistent project context across sessions — comprising CLAUDE.md and CLAUDE.local.md file hierarchies, path-scoped rules in `.claude/rules/`, auto memory from corrections, and import-based composition.
 **Sources**: how-claude-remembers-a-project.md, analysis-how-claude-remembers-a-project.md
-**Last updated**: 2026-04-18
+**Last updated**: 2026-05-22
 
 ---
 
@@ -11,21 +11,40 @@
 | Layer                 | Written By          | Persistence                    | Scope                  |
 | --------------------- | ------------------- | ------------------------------ | ---------------------- |
 | **CLAUDE.md**         | Human               | Permanent (version-controlled) | Project, user, managed |
+| **CLAUDE.local.md**   | Human               | Permanent (gitignored)         | Per-project, just you  |
 | **`.claude/rules/`**  | Human               | Permanent (version-controlled) | Path-specific          |
-| **Auto memory**       | Claude              | Persistent (local storage)     | User or project        |
+| **Auto memory**       | Claude              | Persistent (local storage)     | Per repository         |
 | **Imports** (`@file`) | Human (referencing) | Derived from source files      | Composable             |
+
+## When to Add to CLAUDE.md
+
+Treat CLAUDE.md as the place you write down what you would otherwise re-explain (source: how-claude-remembers-a-project.md). Add to it when:
+
+- Claude makes the same mistake a second time
+- A code review catches something Claude should have known about this codebase
+- You type the same correction or clarification into chat that you typed last session
+- A new teammate would need the same context to be productive
+
+Keep it to facts Claude should hold in **every** session — build commands, conventions, project layout, "always do X" rules. If an entry is a multi-step procedure, move it to a [[claude-code-skills]] skill; if it only matters for one part of the codebase, move it to a [[#Path-Scoped Rules]] file instead.
 
 ## CLAUDE.md File Hierarchy
 
-Discovery follows directory traversal from the working directory upward:
+CLAUDE.md files live in several locations, listed below in **load order** — broadest scope first, most specific last, so a project instruction lands in context after a user instruction (source: how-claude-remembers-a-project.md):
 
-```
-/etc/claude-code/CLAUDE.md          ← Managed policy (enterprise)
-~/.claude/CLAUDE.md                  ← User preferences
-./CLAUDE.md                          ← Project root
-./.claude/CLAUDE.md                  ← Alternative project location
-./src/CLAUDE.md                      ← Subdirectory (lazy loaded)
-```
+| Scope                | Location                                                                                                                              | Purpose                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| Managed policy       | macOS `/Library/Application Support/ClaudeCode/CLAUDE.md`; Linux/WSL `/etc/claude-code/CLAUDE.md`; Windows `C:\Program Files\ClaudeCode\CLAUDE.md` | Org-wide instructions, cannot be excluded |
+| User instructions    | `~/.claude/CLAUDE.md`                                                                                                                 | Personal preferences, all projects     |
+| Project instructions | `./CLAUDE.md` or `./.claude/CLAUDE.md`                                                                                                | Team-shared, via source control        |
+| Local instructions   | `./CLAUDE.local.md`                                                                                                                   | Personal per-project, add to `.gitignore` |
+
+Within the directory tree, content is ordered from filesystem root down to the working directory; within each directory `CLAUDE.local.md` is appended after `CLAUDE.md`. Subdirectory `CLAUDE.md`/`CLAUDE.local.md` files (e.g. `./src/CLAUDE.md`) are not loaded at launch — they load on demand when Claude reads files in that directory.
+
+### CLAUDE.local.md
+
+`CLAUDE.local.md` at the project root holds private per-project preferences (sandbox URLs, preferred test data) that should not be checked in (source: how-claude-remembers-a-project.md). It loads alongside `CLAUDE.md` and is treated the same way. Add it to `.gitignore` — running `/init` with the personal option does this for you. Because a gitignored `CLAUDE.local.md` only exists in the worktree where it was created, share personal instructions across worktrees by importing a home-directory file (`@~/.claude/my-project-instructions.md`) instead.
+
+The managed-policy layer can also be supplied as a `claudeMd` key inside `managed-settings.json` rather than a separate file; `claudeMd` set in user, project, or local settings has no effect.
 
 ## Path-Scoped Rules
 
@@ -71,20 +90,21 @@ Every token loads on **every request**. The test: "Would removing this cause the
 
 ## Auto Memory
 
-Claude automatically stores learnings from corrections and patterns:
+Claude accumulates learnings across sessions without you writing anything — build commands, debugging insights, architecture notes, style preferences (source: how-claude-remembers-a-project.md). It does not save every session; it decides what is worth remembering. On by default; requires Claude Code v2.1.59 or later. Toggle via the `/memory` command, the `autoMemoryEnabled` setting, or `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`.
 
-- Triggered when users correct Claude's behavior
-- Stored locally (not in version control)
-- Scopes: user, project
+- **Storage**: `~/.claude/projects/<project>/memory/`, derived from the git repository — all worktrees and subdirectories of one repo share a single auto-memory directory. Machine-local; not shared across machines. Relocatable via `autoMemoryDirectory` (user/policy settings only).
+- **Structure**: a `MEMORY.md` index plus optional topic files (`debugging.md`, etc.). Only the first 200 lines or 25 KB of `MEMORY.md` (whichever comes first) load at session start; topic files load on demand.
+- **`/memory`** lists all loaded CLAUDE.md, CLAUDE.local.md, and rules files, toggles auto memory, and links to the auto-memory folder.
 
 ## Key Practices
 
 - Use **specific, concrete instructions** ("Use 2-space indentation" not "Format properly")
 - Use **markdown headers and bullets**, not dense paragraphs
-- Run `/init` to auto-generate a starter CLAUDE.md
-- Commit project CLAUDE.md to version control
+- Run `/init` to auto-generate a starter CLAUDE.md (`CLAUDE_CODE_NEW_INIT=1` enables an interactive multi-phase flow)
+- Commit project CLAUDE.md to version control; put private per-project notes in gitignored `CLAUDE.local.md`
 - Put personal preferences in user CLAUDE.md, not project
 - Don't mix conflicting rules (Claude picks one arbitrarily)
+- Block-level HTML comments (`<!-- ... -->`) in CLAUDE.md are stripped before injection — use them for human-only maintainer notes
 
 ## Related pages
 
