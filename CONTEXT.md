@@ -173,6 +173,10 @@ _Avoid_: project sniffer, auto-configurator, manifest scanner
 A plain object with the four fixed capability verb keys (`tests`, `typecheck`, `build`, `lint`), each mapping to an argv array consumed directly by the orchestrate run tools. Produced by the **Capability detector**. The `install` verb is never included — that is a setup verb, not a capability verb. For unrecognized project types the map is empty (`{}`).
 _Avoid_: command config, verb table, command dictionary
 
+**Config bootstrapper** (`bootstrap_config` MCP tool):
+The integration module (`orchestrate-mcp/src/tools/bootstrap-config.ts`) that makes a first-ever orchestrate run set up its own `.orchestrate/` configuration. It composes the **Capability detector** to write a project-aware `commands.json`, derives `handoff.json`'s context-window size from the running model (passed as a tool input, since the MCP process cannot see the calling model — unknown or absent falls back to 200000), writes `routing.json` from shipped defaults, creates the **Run directory** parent `.orchestrate/runs/`, and idempotently appends `.orchestrate/runs/` to the target repository's `.gitignore`. Every step is individually idempotent — a committed config file is never overwritten.
+_Avoid_: config generator, init tool, setup wizard
+
 **Result envelope**:
 The machine-checkable structured result every orchestrate subagent emits as the last of its turn — a fenced ` ```orchestrate-envelope ` JSON block conforming to a per-role schema (a `discriminatedUnion` on `role`). Worker roles (implementer, reviewer, conflict-resolver) carry `status`, `filesChanged`, `verification`, and `notes`; the read-only investigator carries a research brief and no `status`/`filesChanged`. It is the orchestrator's only source of a subagent's status and changed-file set — the orchestrator never parses subagent prose.
 _Avoid_: result blob, subagent summary, return payload
