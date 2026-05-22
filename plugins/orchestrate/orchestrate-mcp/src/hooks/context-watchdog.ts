@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as fs from "fs";
 import { loadHandoffConfig } from "../handoff-config.js";
+import { resolveRunDir } from "../run-dir.js";
 
 // The context-watchdog estimates how full the orchestrator session's context
 // window is by reading the session transcript, and raises a handoff flag once
@@ -155,7 +156,10 @@ export interface WatchdogResult {
   evaluation?: WatchdogEvaluation;
 }
 
-/** Shape written to `.orchestrate/context-flag.json` when the flag is raised. */
+/**
+ * Shape written to the per-run `context-flag.json` (under
+ * `.orchestrate/runs/<runId>/`) when the flag is raised.
+ */
 interface ContextFlag {
   raisedAt: string;
   usedTokens: number;
@@ -164,22 +168,145 @@ interface ContextFlag {
   usagePercent: number;
 }
 
+/** One in-progress run discovered by {@link scanInProgressRuns}. */
+interface InProgressRun {
+  /** The run directory name — the `runId`. */
+  runId: string;
+  /**
+   * The run's recorded driver-session identity, or null when the run-state
+   * file carries no `driverSessionId` (a legacy/older checkpoint) or it is
+   * not a string.
+   */
+  driverSessionId: string | null;
+}
+
+/**
+ * Scans `.orchestrate/runs/*` and returns one {@link InProgressRun} per run
+ * whose `run-state.json` has `status: "in-progress"`. Reads the filesystem but
+ * never throws — a missing runs directory yields `[]`, and a malformed or
+ * unreadable `run-state.json` is silently skipped. The `status` gate is the
+ * only inclusion rule: completed runs are never returned.
+ */
+function scanInProgressRuns(cwd: string): InProgressRun[] {
+  const runsDir = path.join(cwd, ".orchestrate", "runs");
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(runsDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const runs: InProgressRun[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const statePath = path.join(runsDir, entry.name, "run-state.json");
+    let runState: unknown;
+    try {
+      runState = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    } catch {
+      continue;
+    }
+    if (
+      typeof runState !== "object" ||
+      runState === null ||
+      (runState as Record<string, unknown>).status !== "in-progress"
+    ) {
+      continue;
+    }
+    // A missing or non-string driverSessionId degrades to null — never a
+    // crash. Legacy run-state files predate this field entirely.
+    const rawId = (runState as Record<string, unknown>).driverSessionId;
+    runs.push({
+      runId: entry.name,
+      driverSessionId: typeof rawId === "string" ? rawId : null,
+    });
+  }
+  return runs;
+}
+
+/**
+ * Scans `.orchestrate/runs/*` for the single run whose `run-state.json` has
+ * `status: "in-progress"` and returns its `runId`, or null when none is found.
+ * Pure-ish — reads the filesystem but never throws.
+ *
+ * The `PostToolUse` hook receives only the session `cwd`, not a `runId`, so the
+ * watchdog must discover the active run before it can resolve the per-run
+ * paths. This handles only the single-active-run case and is retained for that
+ * path; {@link findActiveRunForSession} extends it to disambiguate concurrent
+ * runs by the driver-session identity (#196).
+ */
+export function discoverActiveRunId(cwd: string): string | null {
+  const runs = scanInProgressRuns(cwd);
+  return runs.length > 0 ? runs[0].runId : null;
+}
+
+/**
+ * Resolves which in-progress run a watchdog invocation belongs to, given the
+ * session id the hook event carried. Reads the filesystem but never throws.
+ *
+ * The decision binds the global `PostToolUse` watchdog to the correct run when
+ * several runs proceed concurrently in one repository (#196):
+ *
+ * - Only runs whose `run-state.json` `status` is `in-progress` are considered.
+ * - When `sessionId` is given and **exactly one** in-progress run records a
+ *   matching `driverSessionId`, that run is returned — the positive identity
+ *   match.
+ * - Otherwise, when **exactly one** run is in-progress at all, it is returned:
+ *   with a single run there is no "wrong run" to mistakenly flag, so the
+ *   watchdog still acts even if no session identity is available or matched
+ *   (this also covers legacy run-state files with no `driverSessionId`).
+ * - In every other case — two or more in-progress runs with no unambiguous
+ *   single match — the watchdog cannot disambiguate and `null` is returned, so
+ *   the caller safely no-ops rather than risk flagging the wrong run.
+ *
+ * Returning `null` is always safe: the run stays correct and merely loses
+ * automatic context-handoff for this invocation.
+ */
+export function findActiveRunForSession(
+  cwd: string,
+  sessionId: string | undefined
+): string | null {
+  const runs = scanInProgressRuns(cwd);
+  if (runs.length === 0) return null;
+
+  // Positive identity match: exactly one in-progress run claims this session.
+  if (typeof sessionId === "string" && sessionId.length > 0) {
+    const matches = runs.filter((r) => r.driverSessionId === sessionId);
+    if (matches.length === 1) return matches[0].runId;
+    // matches.length >= 2 — the same session id binds multiple runs, which is
+    // ambiguous; fall through to the single-run fast path, which also fails.
+  }
+
+  // Single-run fast path: one in-progress run means no "wrong run" exists.
+  if (runs.length === 1) return runs[0].runId;
+
+  // Two or more in-progress runs and no unambiguous match — cannot decide.
+  return null;
+}
+
 /**
  * Reads the session transcript, estimates context usage, and raises the
  * handoff flag when usage passes the configured threshold.
  *
- * The watchdog only acts while an orchestration run is in progress — it checks
- * `.orchestrate/run-state.json` first and is a silent no-op otherwise, so the
- * bundled hook is harmless in unrelated sessions. The flag is written at most
- * once per run: if `.orchestrate/context-flag.json` already exists this is a
- * no-op. Never throws.
+ * The watchdog only acts while the named run is in progress — it checks the
+ * per-run `run-state.json` under `.orchestrate/runs/<runId>/` first and is a
+ * silent no-op otherwise, so the bundled hook is harmless in unrelated
+ * sessions. The flag is written at most once per run: if the per-run
+ * `context-flag.json` already exists this is a no-op. Never throws.
  */
 export function runWatchdog(input: {
   transcriptPath?: string;
   cwd: string;
+  runId: string;
 }): WatchdogResult {
-  // 1. Act only while an orchestration run is in progress.
-  const runStatePath = path.join(input.cwd, ".orchestrate", "run-state.json");
+  // 1. Resolve the per-run paths; a malformed runId is a silent no-op.
+  const resolved = resolveRunDir(input.cwd, input.runId);
+  if (!resolved.ok) {
+    return { acted: false, flagRaised: false };
+  }
+  const { runStatePath, contextFlagPath: flagPath } = resolved.paths;
+
+  // 2. Act only while this orchestration run is in progress.
   let runState: unknown;
   try {
     runState = JSON.parse(fs.readFileSync(runStatePath, "utf8"));
@@ -194,9 +321,7 @@ export function runWatchdog(input: {
     return { acted: false, flagRaised: false };
   }
 
-  const flagPath = path.join(input.cwd, ".orchestrate", "context-flag.json");
-
-  // 2. A transcript is required to estimate usage.
+  // 3. A transcript is required to estimate usage.
   if (!input.transcriptPath) return { acted: true, flagRaised: false, flagPath };
   let transcriptText: string;
   try {
@@ -205,11 +330,11 @@ export function runWatchdog(input: {
     return { acted: true, flagRaised: false, flagPath };
   }
 
-  // 3. Estimate usage from the latest assistant turn.
+  // 4. Estimate usage from the latest assistant turn.
   const usage = parseLatestUsage(transcriptText);
   if (!usage) return { acted: true, flagRaised: false, flagPath };
 
-  // 4. Evaluate against the (possibly defaulted) config.
+  // 5. Evaluate against the (possibly defaulted) config.
   const { config } = loadHandoffConfig(input.cwd);
   const evaluation = evaluateWatchdog({
     usedTokens: contextTokens(usage),
@@ -217,12 +342,12 @@ export function runWatchdog(input: {
     thresholdPercent: config.watchdog.thresholdPercent,
   });
 
-  // 5. Below threshold, or the flag is already raised — nothing to do.
+  // 6. Below threshold, or the flag is already raised — nothing to do.
   if (!evaluation.overThreshold || fs.existsSync(flagPath)) {
     return { acted: true, flagRaised: false, flagPath, evaluation };
   }
 
-  // 6. Raise the flag.
+  // 7. Raise the flag.
   const flag: ContextFlag = {
     raisedAt: new Date().toISOString(),
     usedTokens: evaluation.usedTokens,

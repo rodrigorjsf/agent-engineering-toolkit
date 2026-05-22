@@ -1,7 +1,6 @@
 {
   "watchdog": {
-    "thresholdPercent": 40,
-    "contextWindowTokens": 200000
+    "thresholdPercent": 40
   },
   "successor": {
     "claudeArgs": [

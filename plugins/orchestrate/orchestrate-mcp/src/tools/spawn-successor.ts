@@ -8,9 +8,17 @@ import {
 
 // `spawn_successor` launches a fresh interactive Claude Code session that
 // resumes an interrupted orchestration run, then the predecessor exits. The
-// run is resumable from `.orchestrate/run-state.json`, so the successor only
-// needs to re-invoke `/orchestrate`. Command construction is pure and tested;
-// the detached spawn itself is verified end-to-end, not by unit tests.
+// run is resumable from its per-run `run-state.json` (under
+// `.orchestrate/runs/<runId>/`), so the successor only needs to re-invoke
+// `/orchestrate`. Command construction is pure and tested; the detached spawn
+// itself is verified end-to-end, not by unit tests.
+//
+// `spawn_successor` deliberately takes NO `runId` parameter. It resolves no
+// per-run path itself: it reads only the flat `.orchestrate/handoff.json`
+// config and launches a terminal. The successor's `/orchestrate` invocation
+// re-discovers the active run from `.orchestrate/runs/*/run-state.json` on
+// startup — that re-discovery is what makes the handoff per-run-aware. Adding
+// a `runId` here would be a dead parameter.
 
 // ─── Schemas — z.object is the single source of truth; TS types via z.infer ───
 
@@ -20,9 +28,10 @@ export const spawnSuccessorInputSchema = z.object({
     .optional()
     .describe(
       "Path to the repository root — the directory holding .orchestrate/. " +
-        "The successor session opens here and reads run-state.json to resume. " +
-        "Defaults to the MCP server process's current working directory; " +
-        "callers should pass it explicitly."
+        "The successor session opens here and re-discovers the active run " +
+        "from .orchestrate/runs/*/run-state.json to resume. Defaults to the " +
+        "MCP server process's current working directory; callers should pass " +
+        "it explicitly."
     ),
 });
 

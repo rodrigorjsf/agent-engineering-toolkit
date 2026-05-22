@@ -19,8 +19,15 @@ const GIT_CONFIG_OVERRIDES: string[] = [
   "core.hooksPath=/dev/null",
   "-c",
   "core.fsmonitor=",
+  // `core.sshCommand=ssh`, not a blank value. A command-line `-c` overrides
+  // whatever an untrusted repo's `.git/config` sets, so a malicious
+  // `core.sshCommand` from the repo config cannot run. A blank value would
+  // also close that vector, but it makes an SSH `fetch` spawn an empty
+  // command and fail (F-005); `ssh` is the real, working invocation,
+  // resolved from PATH. The corresponding `GIT_SSH_COMMAND` env-var override
+  // is neutralized in gitEnv() — see the GIT_SSH_COMMAND key there.
   "-c",
-  "core.sshCommand=",
+  "core.sshCommand=ssh",
   "-c",
   "core.pager=cat",
 ];
@@ -31,6 +38,12 @@ const GIT_CONFIG_OVERRIDES: string[] = [
  * - `GIT_TERMINAL_PROMPT=0`: an auth prompt fails fast instead of hanging.
  * - `GIT_CONFIG_NOSYSTEM=1`: ignore the system-wide git config.
  * - `GIT_CONFIG_GLOBAL=/dev/null`: ignore the user-global git config.
+ * - `GIT_SSH_COMMAND=ssh`: neutralize any inherited value — git's SSH-command
+ *   precedence is GIT_SSH_COMMAND > core.sshCommand config, so an inherited
+ *   env var would bypass the `-c core.sshCommand=ssh` hardening applied by
+ *   GIT_CONFIG_OVERRIDES. Resetting to "ssh" closes that vector (#200).
+ * - `GIT_SSH=ssh`: defense-in-depth for the legacy variable; on git 2.43 it
+ *   does not override `-c core.sshCommand`, but clearing it is cheap.
  */
 function gitEnv(): NodeJS.ProcessEnv {
   return {
@@ -38,6 +51,8 @@ function gitEnv(): NodeJS.ProcessEnv {
     GIT_TERMINAL_PROMPT: "0",
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_SSH_COMMAND: "ssh",
+    GIT_SSH: "ssh",
   };
 }
 

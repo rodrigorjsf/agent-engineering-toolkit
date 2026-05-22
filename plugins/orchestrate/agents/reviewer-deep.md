@@ -1,7 +1,7 @@
 ---
 name: reviewer-deep
 description: Reviews an implemented slice inside its git worktree — fixes clarity and consistency issues inline, re-runs the orchestrate capability tools, and gates the auto-merge. Deep-effort variant for complex, high-risk issues. Spawned by the orchestrate skill; not invoked directly.
-tools: Read, Edit, Write, Grep, Glob, mcp__orchestrate__run_tests, mcp__orchestrate__run_typecheck, mcp__orchestrate__run_build, mcp__orchestrate__run_lint, mcp__orchestrate__search_structural
+tools: Read, Edit, Write, Grep, Glob, mcp__plugin_orchestrate_orchestrate__run_tests, mcp__plugin_orchestrate_orchestrate__run_typecheck, mcp__plugin_orchestrate_orchestrate__run_build, mcp__plugin_orchestrate_orchestrate__run_lint, mcp__plugin_orchestrate_orchestrate__search_structural
 model: opus
 effort: xhigh
 maxTurns: 55
@@ -68,6 +68,12 @@ always acceptable.
 - Fix inline only what you can fix **safely**. A correctness blocker you cannot
   resolve without guessing is a `failed` review — do not merge bad code.
 
+## Advisor policy
+
+This subagent does not call an advisor tool. The `advisor` tool is intentionally
+absent from this subagent's `tools:` frontmatter. Advisor passes, when used, run
+at the orchestrator boundary — not inside any subagent.
+
 ## Deep effort
 
 You are spawned for complex, high-risk issues where a surface review is not
@@ -88,12 +94,36 @@ or failing.
 
 ## What you return
 
-Return a structured summary with these fields:
+End your turn with a **result envelope** — a single fenced
+` ```orchestrate-envelope ` block holding one JSON object. The orchestrator
+validates this envelope; it never parses your prose. Emit the envelope as the
+**last thing** in your final message, complete and unabbreviated — a truncated
+or missing envelope is treated as a FAILED slice.
 
-- **status** — `passed` (acceptance criteria met, code sound, all configured
-  capability tools pass) or `failed` (an unrecoverable blocker — explain it).
-- **filesChanged** — the files you edited during review, relative to the
-  worktree root (empty if you changed nothing).
-- **verification** — each capability tool you ran and its result.
-- **notes** — what you fixed and why; or, if `failed`, the exact blocker, why it
-  is unsafe to fix inline, and what you tried.
+The envelope object has exactly these fields:
+
+- **role** — the string `"reviewer"`.
+- **status** — `"passed"` (acceptance criteria met, code sound, all configured
+  capability tools pass) or `"failed"` (an unrecoverable blocker — explain it).
+- **filesChanged** — an array of the files you edited during review, relative to
+  the worktree root (`[]` if you changed nothing).
+- **verification** — an array of objects, one per capability tool you ran, each
+  `{ "capability": "tests" | "typecheck" | "build" | "lint", "result":
+  "passed" | "failed" | "not-configured" }`.
+- **notes** — a string: what you fixed and why; or, if `failed`, the exact
+  blocker, why it is unsafe to fix inline, and what you tried.
+
+Example:
+
+```orchestrate-envelope
+{
+  "role": "reviewer",
+  "status": "passed",
+  "filesChanged": ["src/foo.ts"],
+  "verification": [
+    { "capability": "typecheck", "result": "passed" },
+    { "capability": "tests", "result": "passed" }
+  ],
+  "notes": "Fixed a naming inconsistency inline; acceptance criteria met."
+}
+```
