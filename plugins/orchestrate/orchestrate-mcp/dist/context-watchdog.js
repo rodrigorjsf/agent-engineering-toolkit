@@ -4251,14 +4251,15 @@ function readTranscriptText(transcriptPath) {
     fs2.closeSync(fd);
   }
 }
-function discoverActiveRunId(cwd) {
+function scanInProgressRuns(cwd) {
   const runsDir = path3.join(cwd, ".orchestrate", "runs");
   let entries;
   try {
     entries = fs2.readdirSync(runsDir, { withFileTypes: true });
   } catch {
-    return null;
+    return [];
   }
+  const runs = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const statePath = path3.join(runsDir, entry.name, "run-state.json");
@@ -4268,10 +4269,25 @@ function discoverActiveRunId(cwd) {
     } catch {
       continue;
     }
-    if (typeof runState === "object" && runState !== null && runState.status === "in-progress") {
-      return entry.name;
+    if (typeof runState !== "object" || runState === null || runState.status !== "in-progress") {
+      continue;
     }
+    const rawId = runState.driverSessionId;
+    runs.push({
+      runId: entry.name,
+      driverSessionId: typeof rawId === "string" ? rawId : null
+    });
   }
+  return runs;
+}
+function findActiveRunForSession(cwd, sessionId) {
+  const runs = scanInProgressRuns(cwd);
+  if (runs.length === 0) return null;
+  if (typeof sessionId === "string" && sessionId.length > 0) {
+    const matches = runs.filter((r) => r.driverSessionId === sessionId);
+    if (matches.length === 1) return matches[0].runId;
+  }
+  if (runs.length === 1) return runs[0].runId;
   return null;
 }
 function runWatchdog(input) {
@@ -4345,7 +4361,8 @@ async function main() {
   try {
     const event = raw ? JSON.parse(raw) : {};
     const cwd = typeof event.cwd === "string" ? event.cwd : process.cwd();
-    const runId = discoverActiveRunId(cwd);
+    const sessionId = typeof event.session_id === "string" ? event.session_id : void 0;
+    const runId = findActiveRunForSession(cwd, sessionId);
     if (runId === null) {
       process.exit(0);
     }

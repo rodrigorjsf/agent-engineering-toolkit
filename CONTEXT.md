@@ -138,7 +138,7 @@ The per-run `.orchestrate/runs/<runId>/` directory holding that run's ephemeral 
 _Avoid_: run folder, state dir
 
 **Driver session**:
-The Claude Code session executing a run's orchestrator. Its identity is recorded in the run's run-state so the global context-watchdog binds the correct run when several runs proceed concurrently.
+The Claude Code session executing a run's orchestrator. Its `session_id` is recorded in `run-state.json` as the `driverSessionId` field — captured by the orchestrate `SessionStart` hook into `$ORCHESTRATE_SESSION_ID`, written on run start, and refreshed on resume (a successor session has a new `session_id`). The global `context-watchdog` matches `driverSessionId` against in-progress runs to bind itself to the correct run when several runs proceed concurrently; when it cannot disambiguate, or when `driverSessionId` is `null` (identity unavailable), it safely no-ops and the run loses only automatic context-handoff.
 _Avoid_: orchestrator window, owner session
 
 **Integration base**:

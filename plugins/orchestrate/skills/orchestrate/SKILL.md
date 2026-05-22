@@ -91,7 +91,13 @@ whose `status` is `in-progress`.
   session hand off immediately (section 2, step 4). Then load the whole
   `run-state.json`, preserving every top-level field — `runId`,
   `umbrellaBranch`, `parentIssue`, `waves`, `completedWaves`,
-  `finalPullRequest`, and `slices`. Every slice in a terminal state (`passed`,
+  `finalPullRequest`, and `slices`. **Refresh the `driverSessionId` field** —
+  this resuming session is a new Claude Code session with a *new* `session_id`,
+  so overwrite `driverSessionId` with the current `$ORCHESTRATE_SESSION_ID`
+  (or `null` if it is empty or unset — applying the same operator notice as the
+  fresh-run step 6). Without this refresh the `context-watchdog` would keep
+  matching the predecessor's stale identity and automatic context-handoff would
+  be lost for the rest of the run. Every slice in a terminal state (`passed`,
   `failed`, `skipped`) is left untouched — completed work is never redone. Every
   slice still `in-progress` was interrupted before finishing: discard its
   partial artifacts so it re-processes cleanly — if it has a `worktreePath`,
@@ -99,7 +105,8 @@ whose `status` is `in-progress`.
   (locally, and on the remote if it was pushed) — deleting the remote branch
   also auto-closes any orphaned slice pull request GitHub opened for it, so
   re-processing produces a clean branch and PR with no manual PR cleanup needed
-  — then coerce that slice back to `pending`. Skip to section 2.
+  — then coerce that slice back to `pending`. Checkpoint the refreshed
+  `run-state.json`, then skip to section 2.
 - **No run directory holds an `in-progress` run** — start a fresh run below.
 
 ### Fresh run
@@ -167,10 +174,23 @@ whose `status` is `in-progress`.
 6. Create the run directory `.orchestrate/runs/<runId>/`, then write the initial
    `run-state.json` into it as `.orchestrate/runs/<runId>/run-state.json` with
    **every field the schema declares** (see `references/run-state.md`):
-   - Top level: `runId`, `status: "in-progress"`, `umbrellaBranch`,
-     `integrationBase: "development"`, `parentIssue` (the parent PRD number, or
-     null), `startedAt` and `updatedAt` (current UTC time), the `waves` from
-     `plan_waves`, `completedWaves: 0`, `finalPullRequest: null`.
+   - Top level: `runId`, `status: "in-progress"`, `driverSessionId` (see the
+     paragraph below), `umbrellaBranch`, `integrationBase: "development"`,
+     `parentIssue` (the parent PRD number, or null), `startedAt` and
+     `updatedAt` (current UTC time), the `waves` from `plan_waves`,
+     `completedWaves: 0`, `finalPullRequest: null`.
+
+   **Record the driver-session identity.** Read the environment variable
+   `$ORCHESTRATE_SESSION_ID` — the orchestrate `SessionStart` hook captures the
+   session's own `session_id` and persists it there. Write its value as
+   `driverSessionId` in `run-state.json`. This binds the global
+   `context-watchdog` to this run when several runs proceed concurrently in one
+   repository (see section 4). If `$ORCHESTRATE_SESSION_ID` is **empty or
+   unset** — the hook did not run, or the environment did not surface it — set
+   `driverSessionId` to `null` and **tell the operator**: the run proceeds
+   normally but **without automatic context-handoff**; should this session's
+   context fill, the operator must resume the run manually by invoking
+   `/orchestrate` in a new session.
    - One `slices` entry per issue: `issue`, `title`, `wave` (its index in
      `waves`), `tier`, `blockedBy`, `state: "pending"`, `sliceBranch:
      "orchestrate/slice-<N>"`, `worktreePath: null`, `pullRequest: null`,
@@ -410,6 +430,16 @@ When the wave loop (section 2, step 4) sees that flag, hand the run off to a
 fresh Claude Code session instead of continuing — the successor resumes from
 the `run-state.json` checkpoint exactly as section 1 describes. See
 `references/context-handoff.md` for the full mechanism.
+
+The watchdog binds to the correct run by matching this session's identity:
+it compares the hook event's `session_id` against each in-progress run's
+`driverSessionId`, and writes the flag only under the matching run's directory.
+When several runs proceed concurrently and the session cannot be disambiguated,
+the watchdog writes no flag — that run stays correct and merely loses automatic
+context-handoff. The same **degraded mode** applies when `driverSessionId` is
+`null` because `$ORCHESTRATE_SESSION_ID` was unavailable at run start (section 1,
+step 6): the run is unaffected except that it will not hand off automatically,
+and the operator was already told to resume it manually if needed.
 
 To hand off:
 

@@ -11,23 +11,47 @@ checkpoint, and the predecessor exits. This file documents the three pieces.
 (`hooks/hooks.json`). It runs after every tool call, asynchronously, and is a
 **silent no-op unless an orchestration run is in progress**.
 
-The hook event carries only the session `cwd` and `transcript_path` — never a
-runId. The watchdog therefore first **discovers the active run**: it scans
-`.orchestrate/runs/*/run-state.json` for the single run whose `status` is
-`in-progress`. With no active run it does nothing, so it is harmless in
-unrelated sessions even though the plugin is always enabled.
+The hook event carries the session `cwd`, `transcript_path`, and `session_id`
+— never a runId. The watchdog therefore first **discovers the run this session
+drives**:
 
-When a run is active it:
+- It scans `.orchestrate/runs/*/run-state.json` and considers **only** runs
+  whose `status` is `in-progress` — a completed run is never selected.
+- When the event's `session_id` matches exactly one in-progress run's
+  `driverSessionId`, that run is selected — the positive identity match. This
+  is what binds the watchdog to the right run when several runs proceed
+  concurrently in one repository.
+- When exactly one run is in-progress at all, it is selected even with no
+  identity match: with a single run there is no "wrong run" to flag, so the
+  watchdog still acts (this also covers a legacy `run-state.json` with no
+  `driverSessionId`).
+- Otherwise — two or more in-progress runs with no unambiguous single match —
+  the watchdog **cannot disambiguate and writes no flag**. The run stays
+  correct; it merely loses automatic context-handoff for that invocation. The
+  watchdog never writes the wrong run's `context-flag.json`.
+
+The session's own identity is supplied by a companion `SessionStart` hook (also
+in `hooks/hooks.json`): it captures the session `session_id` and persists it as
+`ORCHESTRATE_SESSION_ID` into `CLAUDE_ENV_FILE`. The orchestrator reads
+`$ORCHESTRATE_SESSION_ID` at run start and records it as `driverSessionId` in
+`run-state.json`; a resuming successor session refreshes the field with its own
+new `session_id`. When the identity is unavailable, `driverSessionId` is `null`
+and the run runs in the degraded, no-auto-handoff mode described above.
+
+With no active run the watchdog does nothing, so it is harmless in unrelated
+sessions even though the plugin is always enabled.
+
+When a run is selected it:
 
 1. Reads the session transcript and finds the latest assistant turn's token
    usage (`input_tokens` + `cache_creation_input_tokens` +
    `cache_read_input_tokens`).
 2. Compares that against the context window and threshold from
    `.orchestrate/handoff.json` (defaults: 40% of a 200000-token window).
-3. On the first sample that reaches the threshold, writes the discovered run's
-   `.orchestrate/runs/<runId>/context-flag.json` and surfaces a `systemMessage`.
-   The flag is written **at most once per run** — once it exists, later samples
-   are no-ops.
+3. On the first sample that reaches the threshold, writes the selected run's
+   `.orchestrate/runs/<runId>/context-flag.json` — under that run's own run
+   directory, never another's — and surfaces a `systemMessage`. The flag is
+   written **at most once per run** — once it exists, later samples are no-ops.
 
 The hook never throws and never blocks a tool call; a watchdog that disrupts
 the session would be worse than one that misses.

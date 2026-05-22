@@ -99,6 +99,8 @@ A manifest-less repository yields `{}` — never an npm fallback — so no capab
 
 A long backlog can fill the orchestrator session's context window before every wave is done. The bundled `context-watchdog` hook (a `PostToolUse` hook) estimates context usage from the session transcript and, past a configurable threshold (default 40%), writes the active run's `.orchestrate/runs/<runId>/context-flag.json`. The orchestrator finishes the current slice, checkpoints, and calls `spawn_successor` to launch a new interactive Claude Code session that resumes from `run-state.json` — then the predecessor exits. The successor clears the stale flag on startup, so there is no handoff loop.
 
+When several runs proceed concurrently in one repository, the watchdog binds to the correct run by **driver-session identity**: a companion `SessionStart` hook captures the session's `session_id` into `$ORCHESTRATE_SESSION_ID`, the orchestrator records it as `driverSessionId` in `run-state.json` (refreshed on resume), and the watchdog matches the event's `session_id` against each in-progress run — writing the flag only under the matching run's directory. If it cannot disambiguate, or the identity is unavailable, the watchdog safely writes nothing: the run stays correct and merely loses automatic handoff, remaining manually resumable with `/orchestrate`.
+
 ## Installation
 
 ```bash
@@ -271,7 +273,8 @@ plugins/orchestrate/
 ├── .mcp.json                    # Registers the orchestrate-mcp server
 ├── README.md                    # This file
 ├── hooks/
-│   └── hooks.json               # The context-watchdog PostToolUse hook
+│   └── hooks.json               # context-watchdog (PostToolUse) +
+│                                #   session-start (SessionStart) hooks
 ├── skills/
 │   └── orchestrate/
 │       ├── SKILL.md             # The orchestrator skill
@@ -282,7 +285,8 @@ plugins/orchestrate/
 └── orchestrate-mcp/             # The MCP server (TypeScript)
     ├── src/                     # Tool implementations
     ├── test/                    # Unit suite
-    └── dist/                    # Bundled server + context-watchdog hook
+    └── dist/                    # Bundled server + context-watchdog +
+                                 #   session-start hooks
 ```
 
 ## Contributing to orchestrate-mcp
@@ -292,7 +296,7 @@ The `orchestrate-mcp/` directory contains a TypeScript MCP server whose compiled
 ```bash
 cd plugins/orchestrate/orchestrate-mcp
 npm ci          # if node_modules is stale
-npm run build   # regenerates dist/index.js and dist/context-watchdog.js
+npm run build   # regenerates dist/index.js, dist/context-watchdog.js, dist/session-start.js
 git add dist/
 ```
 
