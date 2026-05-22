@@ -86,6 +86,13 @@ import {
   type RecoverChangedFilesOutput,
 } from "./tools/recover-changed-files.js";
 import {
+  cleanRuns,
+  cleanRunsInputSchema,
+  cleanRunsOutputSchema,
+  type CleanRunsInput,
+  type CleanRunsOutput,
+} from "./tools/clean-runs.js";
+import {
   verifyChangeset,
   verifyChangesetInputSchema,
   verifyChangesetOutputSchema,
@@ -703,6 +710,31 @@ registerTool(
   handleRecoverChangedFiles as unknown as AnyToolHandler
 );
 
+// ─── clean_runs ────────────────────────────────────────────────────────────────
+
+const handleCleanRuns: ToolHandler<CleanRunsInput, CleanRunsOutput> = async (
+  input
+) => {
+  const result = await cleanRuns(input);
+  let text: string;
+  if (result.status === "ok") {
+    const removed = result.runs.filter((r) => r.action === "removed").length;
+    const preserved = result.runs.filter(
+      (r) => r.action === "preserved"
+    ).length;
+    const skipped = result.runs.filter((r) => r.action === "skipped").length;
+    text =
+      `Cleanup swept ${result.runs.length} run(s): ` +
+      `${removed} removed, ${preserved} preserved, ${skipped} skipped.`;
+  } else {
+    text = `Run cleanup failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
 // ─── verify_changeset ─────────────────────────────────────────────────────────
 
 const handleVerifyChangeset: ToolHandler<
@@ -757,6 +789,30 @@ const handleBootstrapConfig: ToolHandler<
     content: [{ type: "text" as const, text }],
   };
 };
+
+registerTool(
+  "clean_runs",
+  {
+    title: "Clean Up Concluded Runs",
+    description:
+      "Sweeps `.orchestrate/runs/` and removes the on-disk and git footprint " +
+      "of every run whose final integration pull request has merged — its " +
+      "worktrees, its umbrella and slice branches (local and remote), and its " +
+      "run directory. The merged/open/closed-unmerged verdict is GitHub state " +
+      "and is NOT read by this tool: the orchestrator resolves each run's " +
+      "verdict with `gh pr view` and passes a per-run `verdicts` map; this " +
+      "tool is purely git + filesystem. A run absent from the map, or one " +
+      "whose run-state is not `completed`, is left strictly intact. Failed-" +
+      "slice worktrees are preserved (and the run directory kept) unless " +
+      "`force` is set. Every removal is best-effort and idempotent — an " +
+      "already-absent resource is success, not error. Never throws.",
+    inputSchema: cleanRunsInputSchema.shape,
+    outputSchema: cleanRunsOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleCleanRuns as unknown as AnyToolHandler
+);
 
 registerTool(
   "verify_changeset",

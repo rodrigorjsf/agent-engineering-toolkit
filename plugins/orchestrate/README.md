@@ -58,6 +58,7 @@ The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing 
 | `validate_envelope` | Validate a subagent's result envelope against its role schema — distinguishes a valid, a truncated/invalid, and a missing envelope. The implementer status carries `completed`, `incomplete` (a graceful turn-budget self-report), and `blocked` |
 | `recover_changed_files` | Recover a worktree's changed-file set by inspecting it directly — the orchestrator's fallback when an envelope is missing or invalid |
 | `verify_changeset` | Compare a worktree's actual changeset against the file set an implementer declared — the post-implementer scope check before a `completed` envelope is trusted |
+| `clean_runs` | Remove a concluded run's worktrees, branches, and run directory once its final pull request has merged — git + filesystem only |
 | `render_dashboard` / `render_graph` / `render_report` | Render standalone HTML artifacts from the run state |
 | `spawn_successor` | Launch a fresh Claude Code session that resumes the run |
 | `search_structural` | Syntax-aware (ast-grep) code search, with a text-search fallback |
@@ -181,6 +182,28 @@ Because each partitioned run owns a disjoint set of issues and its own run direc
 On startup the orchestrator scans every in-progress run and matches it by the `prd<N>-` / `backlog-` prefix of its `runId`. Invoking `/orchestrate 195` again while a `prd195-` run is still in progress **resumes** that run rather than starting a duplicate; the resumed run reloads only its own partition and never widens its scope. Two in-progress runs for the same PRD is reported as a loud error, never silently resolved.
 
 When a partitioned run's child issue is blocked by an issue **outside** the partition, the orchestrator verifies that external blocker's real state on the tracker before the dependent slice runs — if the blocker is still open, the dependent slice is skipped with a reason naming it.
+
+### Cleaning up concluded runs
+
+Each run leaves a footprint behind — its run directory under `.orchestrate/runs/`, its worktrees, and its umbrella and slice branches. Every `/orchestrate` invocation begins with a **start-of-run sweep** that removes the footprint of any run whose final integration pull request has already merged into `development`, so leftovers do not accumulate.
+
+To run the same cleanup on demand without starting a run, invoke the `clean` mode:
+
+```bash
+/orchestrate clean
+```
+
+`/orchestrate clean` enumerates every run under `.orchestrate/runs/`, checks each one's final pull request, and:
+
+- **Removes** a run whose final pull request has **merged** into `development` — its run directory, its worktrees, and its umbrella and slice branches (locally and on the remote).
+- **Leaves intact and reports** a run whose final pull request is still open or was closed unmerged — cleanup is gated strictly on the merge.
+- **Preserves** a failed slice's worktree (and keeps that run's directory) so you can still inspect it. Pass `--force` to remove failed-slice worktrees too:
+
+```bash
+/orchestrate clean --force
+```
+
+`/orchestrate clean` never starts an orchestration run — it cleans up and stops. The merge check is best-effort and idempotent, so re-running it is always safe.
 
 ## Importing Into Another Project
 

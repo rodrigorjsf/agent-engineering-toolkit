@@ -162,3 +162,36 @@ scheme matches neither and is ignored.
 This per-PRD match is what keeps two concurrent runs disjoint: each owns one
 parent PRD's children, recorded in its own run directory, and a re-invocation
 resumes the right one instead of duplicating it.
+
+## Cleanup lifecycle
+
+A `completed` run still leaves a footprint on disk and in git — its run
+directory, any preserved worktrees, and its umbrella and slice branches. **Run
+cleanup** removes that footprint once the run has fully concluded.
+
+A run is eligible for cleanup only when **both** conditions hold:
+
+- Its `status` is `completed` — necessary, but not sufficient on its own.
+- Its `finalPullRequest` has **merged** into the integration base
+  (`development`). A non-null `finalPullRequest` means only that the pull
+  request was *opened*; the gate is its **merged** state. A run whose final pull
+  request is still open or was closed unmerged is left intact and only reported.
+
+The merge verdict is GitHub state. The orchestrator resolves it with
+`gh pr view <finalPullRequest> --json state,mergedAt` and passes a per-run
+verdict map (`runId → merged | open | closed-unmerged | unknown`) to the
+`clean_runs` MCP tool, which is itself git + filesystem only. For a `merged`
+run, `clean_runs` removes its `passed`-slice worktrees, deletes its
+`umbrellaBranch` and every `sliceBranch` (local and remote), and removes the run
+directory.
+
+A `failed`-state slice's worktree is **preserved** by default — a developer may
+still need to inspect it. When a slice worktree is preserved, its `sliceBranch`
+is left fully intact too (local **and** remote), so the developer can still
+check it out and push from the preserved worktree; only the branches of removed
+worktrees, plus the `umbrellaBranch`, are deleted. The run directory is **kept**
+whenever any worktree was preserved, so the preserved worktree's `run-state.json`
+survives. The `--force` option removes failed-slice worktrees too, deletes every
+branch, and always removes the run directory. Cleanup runs both as a sweep at the
+start of every run and on demand via `/orchestrate clean`; it never touches an
+`in-progress` run.
