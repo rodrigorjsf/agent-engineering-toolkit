@@ -53,6 +53,12 @@ with higher risk.
   merge is genuinely ambiguous is a `failed` result — never guess and ship a
   silently-wrong merge.
 
+## Advisor policy
+
+This subagent does not call an advisor tool. The `advisor` tool is intentionally
+absent from this subagent's `tools:` frontmatter. Advisor passes, when used, run
+at the orchestrator boundary — not inside any subagent.
+
 ## Deep effort
 
 You are spawned for complex, high-risk conflicts where a shallow pass risks a
@@ -75,12 +81,36 @@ before declaring `resolved`.
 
 ## What you return
 
-Return a structured summary with these fields:
+End your turn with a **result envelope** — a single fenced
+` ```orchestrate-envelope ` block holding one JSON object. The orchestrator
+validates this envelope; it never parses your prose. Emit the envelope as the
+**last thing** in your final message, complete and unabbreviated — a truncated
+or missing envelope is treated as a FAILED slice.
 
-- **status** — `resolved` (every marker gone, every configured capability tool
-  passes) or `failed` (a conflict you could not resolve correctly).
-- **filesChanged** — the conflicted files you edited, relative to the worktree
-  root.
-- **verification** — each capability tool you ran and its result.
-- **notes** — how you reconciled each conflict; or, if `failed`, the exact
-  conflict that defeated you and why it could not be resolved safely.
+The envelope object has exactly these fields:
+
+- **role** — the string `"conflict-resolver"`.
+- **status** — `"resolved"` (every marker gone, every configured capability tool
+  passes) or `"failed"` (a conflict you could not resolve correctly).
+- **filesChanged** — an array of the conflicted files you edited, relative to the
+  worktree root.
+- **verification** — an array of objects, one per capability tool you ran, each
+  `{ "capability": "tests" | "typecheck" | "build" | "lint", "result":
+  "passed" | "failed" | "not-configured" }`.
+- **notes** — a string: how you reconciled each conflict; or, if `failed`, the
+  exact conflict that defeated you and why it could not be resolved safely.
+
+Example:
+
+```orchestrate-envelope
+{
+  "role": "conflict-resolver",
+  "status": "resolved",
+  "filesChanged": ["src/index.ts"],
+  "verification": [
+    { "capability": "typecheck", "result": "passed" },
+    { "capability": "tests", "result": "passed" }
+  ],
+  "notes": "Reconciled both intents in the import block; no markers remain."
+}
+```

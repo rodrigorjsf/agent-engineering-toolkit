@@ -137,8 +137,12 @@ _Avoid_: backlog slice, batch (slice is reserved for a single issue's work)
 The per-run `.orchestrate/runs/<runId>/` directory holding that run's ephemeral state — the run-state checkpoint, the context-flag, and rendered HTML artifacts. Gitignored; the committed config files stay at the `.orchestrate/` top level.
 _Avoid_: run folder, state dir
 
+**runId format**:
+A run's identifier in one of two minted forms — `prd<N>-<timestamp>` for a partitioned run scoped to PRD `<N>`'s children (`/orchestrate <PRD#>`), and `backlog-<timestamp>` for a no-argument whole-backlog run. The `prd<N>-` / `backlog-` prefix is durable, persisted in `run-state.json`, and is the match key the startup scan parses to decide which in-progress run a re-invocation resumes. It also flows into the **Run directory** path and the umbrella branch name, keeping two concurrent runs disjoint.
+_Avoid_: timestamp id, run name (the prefix is load-bearing, not decoration)
+
 **Driver session**:
-The Claude Code session executing a run's orchestrator. Its identity is recorded in the run's run-state so the global context-watchdog binds the correct run when several runs proceed concurrently.
+The Claude Code session executing a run's orchestrator. Its `session_id` is recorded in `run-state.json` as the `driverSessionId` field — captured by the orchestrate `SessionStart` hook into `$ORCHESTRATE_SESSION_ID`, written on run start, and refreshed on resume (a successor session has a new `session_id`). The global `context-watchdog` matches `driverSessionId` against in-progress runs to bind itself to the correct run when several runs proceed concurrently; when it cannot disambiguate, or when `driverSessionId` is `null` (identity unavailable), it safely no-ops and the run loses only automatic context-handoff.
 _Avoid_: orchestrator window, owner session
 
 **Integration base**:
@@ -148,6 +152,62 @@ _Avoid_: main, master, trunk (the integration base is `development`, distinct fr
 **Run cleanup**:
 Removal of a concluded run's run directory, worktrees, and umbrella/slice branches — gated on that run's final integration pull request having been merged into the **Integration base**.
 _Avoid_: purge, garbage collection, prune
+
+**Backlog partitioner**:
+The pure module (`src/tools/backlog-partitioner.ts`) that splits the fetched `ready-for-agent` backlog into the run's `slices` set and the resolved `parentIssue`. It is the single canonical answer to "which issues are slices, and which is the parent PRD". Two detection signals are applied in order: (1) parent-field reference — any issue named as another backlog issue's `Parent`; (2) the `PRD:` title heuristic — any backlog issue whose title starts with `PRD:` (case-insensitive), catching a parent PRD that child issues have not yet linked via their `Parent` field. The detected parent PRD is excluded from `slices` and surfaced as `parentIssue`; it is only a progress-comment target, never an implementation slice.
+_Avoid_: backlog filter, issue splitter
+
+**Parent PRD**:
+The single parent issue detected by the **Backlog partitioner** for a run — either via parent-field reference or the `PRD:` title heuristic. Recorded as `parentIssue` in `run-state.json`. Its only role during a run is as the target for wave-progress comments (`gh issue comment <parentIssue>`); it is never enrolled as a slice. `null` when no parent is detected.
+_Avoid_: umbrella issue, epic (epic is an unrelated concept)
+
+**PRD: title heuristic**:
+Secondary signal used by the **Backlog partitioner** when no explicit parent-field reference exists: any backlog issue whose title starts with `PRD:` (case-insensitive) is treated as the **Parent PRD**. Catches a decomposed PRD that appears in the backlog before child issues have been created or before children have their `Parent` field set.
+_Avoid_: title matching, title filter
+
+**filterToOneParentPrd**:
+The exported function in `backlog-partitioner.ts` that narrows the full backlog to the child issues of a single parent PRD number (matching `parent === prdNumber`). Used to scope a `/orchestrate <PRD#>` run to one **Run partition**. The parent PRD issue itself is excluded from the result.
+_Avoid_: backlog filter, PRD filter (too generic)
+
+**Capability detector** (`detect-project` module):
+A pure module in `orchestrate-mcp/src/tools/detect-project.ts` that inspects a repository root's top-level manifest files and returns the **Capability command map** for the detected project type. Input: a repository root path. Output: a command map or empty object. No side effects. Detection precedence: npm (`package.json`) > Cargo (`Cargo.toml`) > Python (`pyproject.toml`) > Make (`Makefile`) > none. A repository with no recognized manifest yields an empty map — never a fallback npm map.
+_Avoid_: project sniffer, auto-configurator, manifest scanner
+
+**Capability command map**:
+A plain object with the four fixed capability verb keys (`tests`, `typecheck`, `build`, `lint`), each mapping to an argv array consumed directly by the orchestrate run tools. Produced by the **Capability detector**. The `install` verb is never included — that is a setup verb, not a capability verb. For unrecognized project types the map is empty (`{}`).
+_Avoid_: command config, verb table, command dictionary
+
+**Config bootstrapper** (`bootstrap_config` MCP tool):
+The integration module (`orchestrate-mcp/src/tools/bootstrap-config.ts`) that makes a first-ever orchestrate run set up its own `.orchestrate/` configuration. It composes the **Capability detector** to write a project-aware `commands.json`, derives `handoff.json`'s context-window size from the running model (passed as a tool input, since the MCP process cannot see the calling model — unknown or absent falls back to 200000), writes `routing.json` from shipped defaults, creates the **Run directory** parent `.orchestrate/runs/`, and idempotently appends `.orchestrate/runs/` to the target repository's `.gitignore`. Every step is individually idempotent — a committed config file is never overwritten.
+_Avoid_: config generator, init tool, setup wizard
+
+**Result envelope**:
+The machine-checkable structured result every orchestrate subagent emits as the last of its turn — a fenced ` ```orchestrate-envelope ` JSON block conforming to a per-role schema (a `discriminatedUnion` on `role`). Worker roles (implementer, reviewer, conflict-resolver) carry `status`, `filesChanged`, `verification`, and `notes`; the read-only investigator carries a research brief and no `status`/`filesChanged`. It is the orchestrator's only source of a subagent's status and changed-file set — the orchestrator never parses subagent prose.
+_Avoid_: result blob, subagent summary, return payload
+
+**Implementer `incomplete` status**:
+The third value of the implementer **Result envelope**'s `status` enum — alongside `completed` and `blocked`, and unique to the implementer role. It is the implementer's *graceful* turn-budget self-report: when the implementer foresees it cannot finish every acceptance criterion within its remaining turns, it stops cleanly and emits `status: "incomplete"` with the partial work recorded, rather than being cut off mid-sentence. Distinct from `blocked` (an unrecoverable obstacle — more turns would not help) and from a hard turn-limit cutoff (which truncates the envelope into an unclosed fence the **Envelope validator** reports `invalid`). The orchestrator treats an `incomplete` slice as a FAILED slice with a `failureReason` naming the turn-limit cutoff — partial, resumable work — never a new `run-state.json` slice `state` value.
+_Avoid_: partial status, timed-out status (it is a proactive self-report, not a passively-observed timeout)
+
+**Changeset scope check**:
+The orchestrator's post-implementer verification, the `verify_changeset` MCP tool, run after every implementer returns and before a `completed` envelope is trusted. It inspects the slice worktree directly with `git status` and compares the implementer's declared `filesChanged` against what actually changed on disk, returning a `match` verdict — `matched`, `clean`, `mismatch`, `empty-but-declared` (the implementer's edits never landed), or `suspiciously-empty` (the work was under-reported). It is a cheap set comparison, not a semantic scope check: it never parses the issue body and never judges whether the changed files are the *right* files.
+_Avoid_: scope validator, diff checker (it compares declared-vs-actual file sets, it does not validate semantic scope)
+
+**Envelope validator**:
+The deterministic `validate_envelope` MCP tool that classifies a subagent's returned text into exactly one of `valid` (a schema-conforming envelope for the expected role), `invalid` (an envelope was attempted but is truncated, malformed, or off-schema), or `missing` (no envelope block found). A truncated envelope is always reported `invalid`, never silently accepted.
+_Avoid_: envelope parser, schema checker (validator is the contract name; it classifies, it does not merely parse)
+
+**Worktree fallback**:
+The orchestrator's recovery path, the `recover_changed_files` MCP tool, for when a subagent's **Result envelope** is missing or invalid: it inspects the slice worktree directly with `git status` and returns the full changed-file set (build artifacts included), treating the worktree as the source of truth. Applies to the implementer, reviewer, and conflict-resolver only — the read-only investigator leaves no worktree changes to recover.
+_Avoid_: git-status recovery, changed-file scan (worktree fallback is the precise term — it is the fallback, not the primary path)
+
+**Subagent advisor policy**:
+The deliberate decision that all eight orchestrate subagents (`investigator`, `implementer`, `reviewer`, `conflict-resolver`, both `-standard` and `-deep` variants) do **not** call an advisor tool. The `advisor` tool is intentionally absent from every subagent's `tools:` frontmatter. Advisor passes, when used, run at the **orchestrator boundary** (the driver session running the `orchestrate` skill), not inside any subagent. The policy is expressed as an explicit `## Advisor policy` section — word-for-word identical between the `-standard` and `-deep` variant of each role — so the decision is self-evident from the definition file. See ADR-0009.
+_Avoid_: no-advisor rule, advisor ban (the policy is positive — advisor responsibility lives at the orchestrator boundary, not absent from the system)
+
+**Investigator scope guard**:
+The standing constraint — expressed as a `## Scope-boundary guard` section in both `investigator-standard.md` and `investigator-deep.md` — that limits the investigator's brief to work traceable to the slice's acceptance criteria. Every item in `relevantFiles`, `approach`, and `notes` must trace to at least one acceptance criterion; work belonging to a sibling or downstream slice must be dropped. Enforced at the orchestrator boundary by a brief-scope diff: after `validate_envelope` returns `valid`, the orchestrator compares the brief against the acceptance criteria it supplied as the hard scope boundary, and treats an over-scoped brief as a failed investigation pass (the slice **FAILS** before the implementer runs).
+_Avoid_: scope check, brief filter (the guard is a positive constraint on what the brief may contain, enforced at two points — inside the investigator definition and at the orchestrator boundary)
 
 ## Relationships
 
@@ -166,6 +226,10 @@ _Avoid_: purge, garbage collection, prune
 - Sibling **Orchestration runs** in the same repository must own disjoint **Run partitions** — one parent PRD's children each.
 - A **Driver session** executes exactly one **Orchestration run**; the context-watchdog binds a run by matching the **Driver session** identity recorded in run-state.
 - **Run cleanup** acts on an **Orchestration run** only after its final pull request has merged into the **Integration base**.
+- Every orchestrate subagent returns exactly one **Result envelope**; the **Envelope validator** classifies it, and the orchestrator acts only on that classification — never on subagent prose.
+- The **Worktree fallback** runs only when the **Envelope validator** reports a worker subagent's **Result envelope** `invalid` or `missing` — it never substitutes for a `valid` envelope.
+- The **Changeset scope check** runs after every implementer returns a `valid` `completed` envelope — it cross-checks the declared `filesChanged` against the worktree before the orchestrator trusts the result; the **Worktree fallback** instead runs only when the envelope itself was `invalid` or `missing`.
+- The **Implementer `incomplete` status** is the graceful counterpart to a hard turn-limit cutoff: the cutoff truncates the envelope into an `invalid` classification, while `incomplete` is a clean, schema-conforming self-report — both FAIL the slice, distinguished by the `failureReason`.
 
 ## Example dialogue
 

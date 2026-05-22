@@ -1,6 +1,6 @@
 {
   "name": "orchestrate",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Autonomously orchestrate a backlog of ready-for-agent GitHub issues — dependency-ordered waves, implementer and reviewer subagents in isolated git worktrees, checkpointed and resumable.",
   "author": {
     "name": "rodrigorjsf"
