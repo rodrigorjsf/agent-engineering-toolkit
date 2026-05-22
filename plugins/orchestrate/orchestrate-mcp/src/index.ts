@@ -71,6 +71,20 @@ import {
   type FilterToOneParentPrdInput,
   type FilterToOneParentPrdOutput,
 } from "./tools/backlog-partitioner.js";
+import {
+  validateEnvelope,
+  validateEnvelopeInputSchema,
+  validateEnvelopeOutputSchema,
+  type ValidateEnvelopeInput,
+  type ValidateEnvelopeOutput,
+} from "./tools/validate-envelope.js";
+import {
+  recoverChangedFiles,
+  recoverChangedFilesInputSchema,
+  recoverChangedFilesOutputSchema,
+  type RecoverChangedFilesInput,
+  type RecoverChangedFilesOutput,
+} from "./tools/recover-changed-files.js";
 
 const server = new McpServer({
   name: "orchestrate",
@@ -586,6 +600,87 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleFilterToOneParentPrd as unknown as AnyToolHandler
+);
+
+// ─── validate_envelope ────────────────────────────────────────────────────────
+
+const handleValidateEnvelope: ToolHandler<
+  ValidateEnvelopeInput,
+  ValidateEnvelopeOutput
+> = async (input) => {
+  const result = validateEnvelope(input);
+  let text: string;
+  if (result.status === "valid") {
+    text = `Valid ${result.role} envelope.`;
+  } else if (result.status === "invalid") {
+    text = `Invalid ${result.role} envelope [${result.errorCode}]: ${result.errorMessage}`;
+  } else {
+    text = `Missing ${result.role} envelope: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "validate_envelope",
+  {
+    title: "Validate Subagent Result Envelope",
+    description:
+      "Validates a subagent's result envelope — the ```orchestrate-envelope " +
+      "fenced JSON block a subagent emits as its final message — against the " +
+      "defined schema for its role. Returns a discriminated `status`: 'valid' " +
+      "(a well-formed envelope matching the role, with the parsed `envelope`), " +
+      "'invalid' (an envelope was attempted but is truncated, malformed, or " +
+      "off-schema — a truncated envelope is ALWAYS invalid, never silently " +
+      "accepted), or 'missing' (no envelope block was found). The orchestrator " +
+      "uses this instead of parsing subagent prose for status or changed files.",
+    inputSchema: validateEnvelopeInputSchema.shape,
+    outputSchema: validateEnvelopeOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleValidateEnvelope as unknown as AnyToolHandler
+);
+
+// ─── recover_changed_files ────────────────────────────────────────────────────
+
+const handleRecoverChangedFiles: ToolHandler<
+  RecoverChangedFilesInput,
+  RecoverChangedFilesOutput
+> = async (input) => {
+  const result = await recoverChangedFiles(input);
+  let text: string;
+  if (result.status === "ok") {
+    text = `Recovered ${result.changedFiles!.length} changed file(s) from the worktree.`;
+  } else {
+    text = `Changed-file recovery failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "recover_changed_files",
+  {
+    title: "Recover Changed Files From a Worktree",
+    description:
+      "Recovers the changed-file set of a slice worktree by inspecting it " +
+      "directly with 'git status --porcelain -z' — the orchestrator's fallback " +
+      "for when a subagent's result envelope is missing or invalid and its " +
+      "`filesChanged` list cannot be trusted. Returns ALL changes (tracked, " +
+      "staged, and untracked alike — build artifacts NOT filtered); a rename " +
+      "emits both real paths, never an 'old -> new' composite. Discriminated " +
+      "`status` of 'ok' or 'error'.",
+    inputSchema: recoverChangedFilesInputSchema.shape,
+    outputSchema: recoverChangedFilesOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRecoverChangedFiles as unknown as AnyToolHandler
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────
