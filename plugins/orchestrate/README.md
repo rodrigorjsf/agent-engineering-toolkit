@@ -58,6 +58,39 @@ The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing 
 
 Every tool returns a discriminated `status` and never throws — failures are structured results, not exceptions.
 
+### Project capability detection
+
+The `detect-project` module (`orchestrate-mcp/src/tools/detect-project.ts`) auto-detects a repository's project type from its top-level manifest files and emits the matching capability command map. It is pure — repository root in, command map out, no side effects.
+
+**Detection precedence** (first match wins):
+
+| Manifest file | Project type | Command set |
+|---------------|-------------|-------------|
+| `package.json` | npm | `npm test`, `npm run typecheck`, `npm run build`, `npm run lint` |
+| `Cargo.toml` | Cargo | `cargo test`, `cargo check`, `cargo build`, `cargo clippy` |
+| `pyproject.toml` | Python | `pytest`, `mypy .`, `python -m build`, `ruff check .` |
+| `Makefile` | Make | `make test`, `make typecheck`, `make build`, `make lint` |
+| _(none found)_ | none | empty map — no capability tool is wired to a failing command |
+
+**Usage example** (TypeScript):
+
+```typescript
+import { detectCommandMap } from "./tools/detect-project.js";
+
+// Detect from a repository root — returns the command map or {} if unrecognized.
+const map = detectCommandMap("/path/to/repo");
+// For a repo with package.json:
+// { tests: ["npm", "test"], typecheck: ["npm", "run", "typecheck"],
+//   build: ["npm", "run", "build"], lint: ["npm", "run", "lint"] }
+
+// Or use the pure functions directly (no I/O):
+import { detectProjectType, buildCommandMap } from "./tools/detect-project.js";
+const type = detectProjectType(["Cargo.toml", "Makefile"]); // "cargo"
+const commands = buildCommandMap(type); // cargo argv arrays
+```
+
+A manifest-less repository yields `{}` — never an npm fallback — so no capability tool is ever wired to a command guaranteed to fail.
+
 ### Context handoff
 
 A long backlog can fill the orchestrator session's context window before every wave is done. The bundled `context-watchdog` hook (a `PostToolUse` hook) estimates context usage from the session transcript and, past a configurable threshold (default 40%), writes `.orchestrate/context-flag.json`. The orchestrator finishes the current slice, checkpoints, and calls `spawn_successor` to launch a new interactive Claude Code session that resumes from `run-state.json` — then the predecessor exits. The successor clears the stale flag on startup, so there is no handoff loop.
