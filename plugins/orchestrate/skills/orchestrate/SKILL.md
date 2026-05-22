@@ -216,6 +216,21 @@ slice — its final state and pull request.
 These are the per-slice steps the wave loop invokes. Update the slice's entry in
 `run-state.json` and write the file at every state change.
 
+**The result-envelope contract.** Every subagent ends its turn with a **result
+envelope** — a fenced ` ```orchestrate-envelope ` JSON block conforming to a
+defined schema. The orchestrator determines a subagent's status and
+changed-file set **only** from this validated envelope; it never reads the
+subagent's prose. After each subagent (investigator, implementer, reviewer,
+conflict-resolver) returns, call the `validate_envelope` MCP tool with the
+subagent's verbatim returned text and its `role`:
+
+- `status: "valid"` — use the parsed `envelope` as the single source of the
+  subagent's outcome and `filesChanged`.
+- `status: "invalid"` (truncated, malformed, or off-schema) or
+  `status: "missing"` (no envelope emitted) — the subagent's result cannot be
+  trusted. The slice has **FAILED** (see *Failure handling*). A truncated
+  envelope is never silently accepted.
+
 1. **Create the worktree.** Set the slice `state` to `in-progress`, write its
    `sliceBranch` (`orchestrate/slice-<N>`) and the `worktreePath` you will use
    into the slice entry, and checkpoint — so an interruption here is resumable.
@@ -237,25 +252,35 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
      has **FAILED**.
 3. **Run the investigator (higher tiers only).** If `routing.investigator` is
    non-null, spawn the `orchestrate:investigator-<effort>` subagent — `<effort>`
-   and the Agent `model` override both come from `routing.investigator`. Its prompt
-   carries the issue and the repository root; keep its returned brief for the
-   implementer. If `routing.investigator` is null, skip this step.
+   and the Agent `model` override both come from `routing.investigator`. Its
+   prompt carries the issue and the repository root. Validate its returned text
+   with `validate_envelope` (role `investigator`); a `valid` envelope is the
+   research brief to keep for the implementer. An `invalid` or `missing`
+   envelope is a failed investigation pass — the slice has **FAILED** (the
+   investigator is read-only, so no worktree fallback applies). If
+   `routing.investigator` is null, skip this step.
 4. **Run the implementer.** Spawn the `orchestrate:implementer-<effort>`
-   subagent — `<effort>` and the `model` override from `routing.implementer`. Its prompt
-   must carry the issue number/title/body, the worktree path (every change goes
-   there), the investigator's brief if one was produced, an instruction to
-   verify with the capability tools using the worktree path as `repoPath`, and
-   a reminder not to commit, push, or run git. If it returns `blocked`, the
-   slice has **FAILED**.
+   subagent — `<effort>` and the `model` override from `routing.implementer`. Its
+   prompt must carry the issue number/title/body, the worktree path (every
+   change goes there), the investigator's brief if one was produced, an
+   instruction to verify with the capability tools using the worktree path as
+   `repoPath`, and a reminder not to commit, push, or run git. Validate its
+   returned text with `validate_envelope` (role `implementer`). On a `valid`
+   envelope, an envelope `status` of `blocked` means the slice has **FAILED**;
+   `completed` proceeds. An `invalid` or `missing` envelope also means the slice
+   has **FAILED**.
 5. **Run the reviewer.** Spawn the `orchestrate:reviewer-<effort>` subagent —
    `<effort>` and the `model` override from `routing.reviewer` — in the same
-   worktree. Its prompt must carry the issue, the worktree path, the
-   implementer's `filesChanged` list and `notes`, and the investigator's brief
-   if one was produced. If it returns `failed`, the slice has **FAILED**.
+   worktree. Its prompt must carry the issue, the worktree path, the implementer
+   envelope's `filesChanged` and `notes`, and the investigator's brief if one
+   was produced. Validate its returned text with `validate_envelope` (role
+   `reviewer`). On a `valid` envelope, an envelope `status` of `failed` means
+   the slice has **FAILED**; `passed` proceeds. An `invalid` or `missing`
+   envelope also means the slice has **FAILED**.
 6. **Commit and push.** Stage only the files the subagents reported changing —
-   the union of the implementer's and reviewer's `filesChanged` lists. Never
-   `git add -A`: the capability tools leave untracked build artifacts in the
-   worktree.
+   the union of the `filesChanged` arrays from the validated implementer and
+   reviewer envelopes. Never `git add -A`: the capability tools leave untracked
+   build artifacts in the worktree.
 
    ```
    git -C <worktree-path> add -- <file> <file> ...
@@ -319,15 +344,18 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
       and the `model` override from `routing.conflict-resolver`. Its prompt
       must carry the issue, the worktree path, and the list of conflicted
       files.
-   5. If it returns `failed`, abort and the slice has **FAILED**:
-      `git -C <worktree-path> merge --abort`.
-   6. If it returns `resolved`, stage the resolved files and **confirm no
-      conflict markers remain** — inspect `git -C <worktree-path> diff --cached`
-      for leftover `<<<<<<<`, `=======`, or `>>>>>>>` lines. If any remain, the
-      resolution is incomplete: `git -C <worktree-path> merge --abort` and the
-      slice has **FAILED**. Otherwise complete the merge, push, and merge the pull
-      request — if `gh pr merge` fails (the resolution did not make the pull
-      request mergeable), the slice has **FAILED**; the one attempt is spent.
+   5. Validate its returned text with `validate_envelope` (role
+      `conflict-resolver`). An `invalid` or `missing` envelope, or a `valid`
+      envelope with `status: "failed"`, means resolution failed: abort and the
+      slice has **FAILED** — `git -C <worktree-path> merge --abort`.
+   6. On a `valid` envelope with `status: "resolved"`, stage the resolved files
+      and **confirm no conflict markers remain** — inspect
+      `git -C <worktree-path> diff --cached` for leftover `<<<<<<<`, `=======`,
+      or `>>>>>>>` lines. If any remain, the resolution is incomplete:
+      `git -C <worktree-path> merge --abort` and the slice has **FAILED**.
+      Otherwise complete the merge, push, and merge the pull request — if
+      `gh pr merge` fails (the resolution did not make the pull request
+      mergeable), the slice has **FAILED**; the one attempt is spent.
 
       ```
       git -C <worktree-path> add -- <resolved file> ...
@@ -372,15 +400,32 @@ To hand off:
 
 ## Failure handling
 
-A slice **FAILS** when `create_worktree` errors, the implementer returns
-`blocked`, the reviewer returns `failed`, the staged changeset is empty, or a
-merge conflict the `conflict-resolver` cannot fix. On a FAILED slice:
+A slice **FAILS** when `create_worktree` errors, a subagent's result envelope
+is invalid or missing (`validate_envelope` returns `invalid` or `missing`), a
+validated implementer envelope has `status: "blocked"`, a validated reviewer
+envelope has `status: "failed"`, the staged changeset is empty, or a merge
+conflict the `conflict-resolver` cannot fix. The orchestrator decides FAILURE
+**only** from the validated envelope and tool results — never from a subagent's
+prose. An invalid or missing envelope is always a FAILED slice; it is never
+treated as success.
+
+On a FAILED slice:
 
 - Set its `state` to `failed` with a `failureReason`, checkpoint, and
   transition the issue's tracker label:
   `gh issue edit <N> --remove-label ready-for-agent --add-label needs-triage`.
 - Do **not** merge it. **Preserve its worktree** — leave it on disk for a
   developer to inspect. Do not call `remove_worktree`.
+- **Recover the changed-file set when the envelope was the failure cause.** If
+  the slice failed because a worker subagent's envelope was `invalid` or
+  `missing` — so its `filesChanged` array is unavailable or untrustworthy — call
+  the `recover_changed_files` MCP tool with the slice's `worktreePath`. It
+  inspects the preserved worktree directly with `git status` and returns the
+  full changed-file set (build artifacts included), so the `failureReason` can
+  record what the interrupted subagent had touched for the developer's
+  inspection. This fallback applies to the implementer, reviewer, and
+  conflict-resolver only — the investigator is read-only and leaves no worktree
+  changes to recover.
 - **Continue the wave.** A failed slice never cancels the other slices in its
   wave — they are independent and proceed normally.
 

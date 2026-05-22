@@ -149,6 +149,18 @@ _Avoid_: main, master, trunk (the integration base is `development`, distinct fr
 Removal of a concluded run's run directory, worktrees, and umbrella/slice branches — gated on that run's final integration pull request having been merged into the **Integration base**.
 _Avoid_: purge, garbage collection, prune
 
+**Result envelope**:
+The machine-checkable structured result every orchestrate subagent emits as the last of its turn — a fenced ` ```orchestrate-envelope ` JSON block conforming to a per-role schema (a `discriminatedUnion` on `role`). Worker roles (implementer, reviewer, conflict-resolver) carry `status`, `filesChanged`, `verification`, and `notes`; the read-only investigator carries a research brief and no `status`/`filesChanged`. It is the orchestrator's only source of a subagent's status and changed-file set — the orchestrator never parses subagent prose.
+_Avoid_: result blob, subagent summary, return payload
+
+**Envelope validator**:
+The deterministic `validate_envelope` MCP tool that classifies a subagent's returned text into exactly one of `valid` (a schema-conforming envelope for the expected role), `invalid` (an envelope was attempted but is truncated, malformed, or off-schema), or `missing` (no envelope block found). A truncated envelope is always reported `invalid`, never silently accepted.
+_Avoid_: envelope parser, schema checker (validator is the contract name; it classifies, it does not merely parse)
+
+**Worktree fallback**:
+The orchestrator's recovery path, the `recover_changed_files` MCP tool, for when a subagent's **Result envelope** is missing or invalid: it inspects the slice worktree directly with `git status` and returns the full changed-file set (build artifacts included), treating the worktree as the source of truth. Applies to the implementer, reviewer, and conflict-resolver only — the read-only investigator leaves no worktree changes to recover.
+_Avoid_: git-status recovery, changed-file scan (worktree fallback is the precise term — it is the fallback, not the primary path)
+
 ## Relationships
 
 - A **Distribution** owns at most one **Initializer** and at most one **Customizer**.
@@ -166,6 +178,8 @@ _Avoid_: purge, garbage collection, prune
 - Sibling **Orchestration runs** in the same repository must own disjoint **Run partitions** — one parent PRD's children each.
 - A **Driver session** executes exactly one **Orchestration run**; the context-watchdog binds a run by matching the **Driver session** identity recorded in run-state.
 - **Run cleanup** acts on an **Orchestration run** only after its final pull request has merged into the **Integration base**.
+- Every orchestrate subagent returns exactly one **Result envelope**; the **Envelope validator** classifies it, and the orchestrator acts only on that classification — never on subagent prose.
+- The **Worktree fallback** runs only when the **Envelope validator** reports a worker subagent's **Result envelope** `invalid` or `missing` — it never substitutes for a `valid` envelope.
 
 ## Example dialogue
 

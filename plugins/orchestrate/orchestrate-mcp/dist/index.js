@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs6, exportName) {
+    function addFormats(ajv, list, fs7, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs6[f]);
+        ajv.addFormat(f, fs7[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -22948,6 +22948,256 @@ async function searchStructural(input, opts = {}) {
   }
 }
 
+// src/tools/validate-envelope.ts
+var verificationEntrySchema = external_exports.object({
+  capability: external_exports.enum(["tests", "typecheck", "build", "lint"]).describe("Which capability tool was run."),
+  result: external_exports.enum(["passed", "failed", "not-configured"]).describe(
+    "Outcome of that run. 'not-configured' means the verb has no command set."
+  )
+});
+var implementerEnvelopeSchema = external_exports.object({
+  role: external_exports.literal("implementer").describe("Discriminant \u2014 the implementer role."),
+  status: external_exports.enum(["completed", "blocked"]).describe(
+    "Outcome. 'completed' = acceptance criteria met and every configured capability tool passed; 'blocked' = the implementer could not finish."
+  ),
+  filesChanged: external_exports.array(external_exports.string()).describe(
+    "Files the implementer created or edited, as paths relative to the worktree root. An empty array means no file was changed."
+  ),
+  verification: external_exports.array(verificationEntrySchema).describe("Each capability tool the implementer ran and its result."),
+  notes: external_exports.string().describe(
+    "Free-form notes for the orchestrator or a later reviewer \u2014 assumptions, partial work, or, when blocked, exactly what stopped the implementer."
+  )
+});
+var reviewerEnvelopeSchema = external_exports.object({
+  role: external_exports.literal("reviewer").describe("Discriminant \u2014 the reviewer role."),
+  status: external_exports.enum(["passed", "failed"]).describe(
+    "Outcome. 'passed' = acceptance criteria met, code sound, every configured capability tool passed; 'failed' = an unrecoverable blocker."
+  ),
+  filesChanged: external_exports.array(external_exports.string()).describe(
+    "Files the reviewer edited during review, relative to the worktree root. An empty array means the reviewer changed nothing."
+  ),
+  verification: external_exports.array(verificationEntrySchema).describe("Each capability tool the reviewer ran and its result."),
+  notes: external_exports.string().describe(
+    "Free-form notes \u2014 what was fixed and why, or, when failed, the exact blocker and why it is unsafe to fix inline."
+  )
+});
+var conflictResolverEnvelopeSchema = external_exports.object({
+  role: external_exports.literal("conflict-resolver").describe("Discriminant \u2014 the conflict-resolver role."),
+  status: external_exports.enum(["resolved", "failed"]).describe(
+    "Outcome. 'resolved' = every conflict marker gone and every configured capability tool passed; 'failed' = a conflict that could not be resolved correctly."
+  ),
+  filesChanged: external_exports.array(external_exports.string()).describe(
+    "The conflicted files the resolver edited, relative to the worktree root."
+  ),
+  verification: external_exports.array(verificationEntrySchema).describe("Each capability tool the conflict-resolver ran and its result."),
+  notes: external_exports.string().describe(
+    "Free-form notes \u2014 how each conflict was reconciled, or, when failed, the exact conflict that could not be resolved safely."
+  )
+});
+var investigatorEnvelopeSchema = external_exports.object({
+  role: external_exports.literal("investigator").describe("Discriminant \u2014 the investigator role."),
+  relevantFiles: external_exports.array(external_exports.string()).describe(
+    "Paths, relative to the repository root, the implementer will likely need to read or change."
+  ),
+  patterns: external_exports.string().describe(
+    "Existing conventions in the affected areas the implementer must follow."
+  ),
+  risks: external_exports.string().describe(
+    "Edge cases, failure modes, affected callers, and invariants to preserve."
+  ),
+  approach: external_exports.string().describe("A suggested implementation approach \u2014 what to change and why."),
+  notes: external_exports.string().describe("Anything else that does not fit the fields above.")
+});
+var envelopeSchema = external_exports.discriminatedUnion("role", [
+  implementerEnvelopeSchema,
+  reviewerEnvelopeSchema,
+  conflictResolverEnvelopeSchema,
+  investigatorEnvelopeSchema
+]);
+var ENVELOPE_ROLES = [
+  "implementer",
+  "reviewer",
+  "conflict-resolver",
+  "investigator"
+];
+var validateEnvelopeInputSchema = external_exports.object({
+  text: external_exports.string().describe(
+    "The raw, verbatim text a subagent returned as its final message. The validator locates the ```orchestrate-envelope fenced block within it."
+  ),
+  role: external_exports.enum(ENVELOPE_ROLES).describe(
+    "The role the subagent was spawned as. The located envelope must declare this same role \u2014 a role mismatch is reported as an invalid envelope."
+  )
+});
+var validateEnvelopeOutputSchema = external_exports.object({
+  status: external_exports.enum(["valid", "invalid", "missing"]).describe(
+    "Outcome discriminant. 'valid' = a well-formed envelope matching the expected role was found; 'invalid' = an envelope was attempted but is truncated, malformed, or does not match the schema (a truncated envelope is ALWAYS reported invalid, never silently accepted); 'missing' = no orchestrate-envelope block was found at all."
+  ),
+  role: external_exports.enum(ENVELOPE_ROLES).describe("The role the envelope was validated against \u2014 echoes the input."),
+  envelope: envelopeSchema.optional().describe(
+    "The parsed, schema-conforming envelope. Present only when status='valid'."
+  ),
+  errorCode: external_exports.enum(["TRUNCATED_OR_MALFORMED", "SCHEMA_MISMATCH"]).optional().describe(
+    "Machine-readable reason an attempted envelope was rejected. Present when status='invalid'. 'TRUNCATED_OR_MALFORMED' = the fenced block could not be parsed as JSON (truncated mid-turn, or not JSON); 'SCHEMA_MISMATCH' = it parsed as JSON but does not match the role's envelope schema (a missing field, wrong role, or bad value)."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Human-readable description of why the envelope is invalid or missing. Present when status='invalid' or status='missing'."
+  )
+});
+var FENCE_TAG = "orchestrate-envelope";
+function extractEnvelopeBlocks(text) {
+  const lines = text.split("\n");
+  const blocks = [];
+  let inBlock = false;
+  let buffer = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!inBlock) {
+      if (trimmed === "```" + FENCE_TAG) {
+        inBlock = true;
+        buffer = [];
+      }
+    } else {
+      if (trimmed === "```") {
+        blocks.push(buffer.join("\n"));
+        inBlock = false;
+      } else {
+        buffer.push(line);
+      }
+    }
+  }
+  return blocks;
+}
+function hasUnclosedEnvelopeFence(text) {
+  const lines = text.split("\n");
+  let openCount = 0;
+  let inBlock = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!inBlock) {
+      if (trimmed === "```" + FENCE_TAG) {
+        inBlock = true;
+        openCount++;
+      }
+    } else if (trimmed === "```") {
+      inBlock = false;
+    }
+  }
+  return inBlock && openCount > 0;
+}
+function validateEnvelope(input) {
+  const { text, role } = input;
+  const blocks = extractEnvelopeBlocks(text);
+  const truncated = hasUnclosedEnvelopeFence(text);
+  if (blocks.length === 0 && !truncated) {
+    return {
+      status: "missing",
+      role,
+      errorMessage: `No \`\`\`${FENCE_TAG} block was found in the subagent's output. The subagent did not emit a result envelope.`
+    };
+  }
+  if (truncated) {
+    return {
+      status: "invalid",
+      role,
+      errorCode: "TRUNCATED_OR_MALFORMED",
+      errorMessage: `An opening \`\`\`${FENCE_TAG} fence was found with no closing fence \u2014 the subagent's turn was truncated mid-envelope. A truncated envelope is never accepted.`
+    };
+  }
+  const lastBlock = blocks[blocks.length - 1];
+  let parsed;
+  try {
+    parsed = JSON.parse(lastBlock);
+  } catch (err) {
+    return {
+      status: "invalid",
+      role,
+      errorCode: "TRUNCATED_OR_MALFORMED",
+      errorMessage: `The \`\`\`${FENCE_TAG} block does not contain valid JSON: ${err instanceof Error ? err.message : String(err)}. The envelope is truncated or malformed.`
+    };
+  }
+  const result = envelopeSchema.safeParse(parsed);
+  if (!result.success) {
+    const detail = result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+    return {
+      status: "invalid",
+      role,
+      errorCode: "SCHEMA_MISMATCH",
+      errorMessage: `The envelope does not match the expected schema: ${detail}.`
+    };
+  }
+  if (result.data.role !== role) {
+    return {
+      status: "invalid",
+      role,
+      errorCode: "SCHEMA_MISMATCH",
+      errorMessage: `The envelope declares role "${result.data.role}" but the subagent was spawned as "${role}".`
+    };
+  }
+  return {
+    status: "valid",
+    role,
+    envelope: result.data
+  };
+}
+
+// src/tools/recover-changed-files.ts
+var fs6 = __toESM(require("fs"));
+var recoverChangedFilesInputSchema = external_exports.object({
+  worktreePath: external_exports.string().describe(
+    "Absolute path to the slice worktree to inspect. The recovery treats this worktree as the source of truth for the changed-file set."
+  )
+});
+var recoverChangedFilesOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the changed-file set was recovered; 'error' = the worktree could not be inspected."
+  ),
+  changedFiles: external_exports.array(external_exports.string()).optional().describe(
+    "Every changed path in the worktree \u2014 tracked modifications, staged changes, AND untracked files (build artifacts included; no filter is applied). Each entry is a single real path relative to the worktree root; a rename emits both its source and destination path, never an 'old -> new' composite. Present when status='ok' (an empty array means a clean worktree)."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT", "PATH_NOT_FOUND", "GIT_ERROR"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'INVALID_INPUT' = the path would be parsed by git as an option flag; 'PATH_NOT_FOUND' = the worktree path does not exist on disk; 'GIT_ERROR' = git could not report status (e.g. not a git worktree)."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='error'."
+  )
+});
+async function recoverChangedFiles(input) {
+  const { worktreePath } = input;
+  const guardErr = optionInjectionError("worktreePath", worktreePath);
+  if (guardErr) {
+    return {
+      status: "error",
+      errorCode: "INVALID_INPUT",
+      errorMessage: guardErr
+    };
+  }
+  if (!fs6.existsSync(worktreePath)) {
+    return {
+      status: "error",
+      errorCode: "PATH_NOT_FOUND",
+      errorMessage: `Worktree path does not exist: ${worktreePath}`
+    };
+  }
+  let porcelain;
+  try {
+    const { stdout } = await gitExecFile(
+      ["status", "--porcelain", "-z"],
+      worktreePath
+    );
+    porcelain = stdout;
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "GIT_ERROR",
+      errorMessage: cleanGitError(err)
+    };
+  }
+  return {
+    status: "ok",
+    changedFiles: parsePorcelainZ(porcelain)
+  };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
@@ -23202,6 +23452,58 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleSearchStructural
+);
+var handleValidateEnvelope = async (input) => {
+  const result = validateEnvelope(input);
+  let text;
+  if (result.status === "valid") {
+    text = `Valid ${result.role} envelope.`;
+  } else if (result.status === "invalid") {
+    text = `Invalid ${result.role} envelope [${result.errorCode}]: ${result.errorMessage}`;
+  } else {
+    text = `Missing ${result.role} envelope: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "validate_envelope",
+  {
+    title: "Validate Subagent Result Envelope",
+    description: "Validates a subagent's result envelope \u2014 the ```orchestrate-envelope fenced JSON block a subagent emits as its final message \u2014 against the defined schema for its role. Returns a discriminated `status`: 'valid' (a well-formed envelope matching the role, with the parsed `envelope`), 'invalid' (an envelope was attempted but is truncated, malformed, or off-schema \u2014 a truncated envelope is ALWAYS invalid, never silently accepted), or 'missing' (no envelope block was found). The orchestrator uses this instead of parsing subagent prose for status or changed files.",
+    inputSchema: validateEnvelopeInputSchema.shape,
+    outputSchema: validateEnvelopeOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleValidateEnvelope
+);
+var handleRecoverChangedFiles = async (input) => {
+  const result = await recoverChangedFiles(input);
+  let text;
+  if (result.status === "ok") {
+    text = `Recovered ${result.changedFiles.length} changed file(s) from the worktree.`;
+  } else {
+    text = `Changed-file recovery failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "recover_changed_files",
+  {
+    title: "Recover Changed Files From a Worktree",
+    description: "Recovers the changed-file set of a slice worktree by inspecting it directly with 'git status --porcelain -z' \u2014 the orchestrator's fallback for when a subagent's result envelope is missing or invalid and its `filesChanged` list cannot be trusted. Returns ALL changes (tracked, staged, and untracked alike \u2014 build artifacts NOT filtered); a rename emits both real paths, never an 'old -> new' composite. Discriminated `status` of 'ok' or 'error'.",
+    inputSchema: recoverChangedFilesInputSchema.shape,
+    outputSchema: recoverChangedFilesOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRecoverChangedFiles
 );
 async function main() {
   const transport = new StdioServerTransport();
