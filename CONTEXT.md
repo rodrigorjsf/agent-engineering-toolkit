@@ -189,6 +189,10 @@ _Avoid_: git-status recovery, changed-file scan (worktree fallback is the precis
 The deliberate decision that all eight orchestrate subagents (`investigator`, `implementer`, `reviewer`, `conflict-resolver`, both `-standard` and `-deep` variants) do **not** call an advisor tool. The `advisor` tool is intentionally absent from every subagent's `tools:` frontmatter. Advisor passes, when used, run at the **orchestrator boundary** (the driver session running the `orchestrate` skill), not inside any subagent. The policy is expressed as an explicit `## Advisor policy` section — word-for-word identical between the `-standard` and `-deep` variant of each role — so the decision is self-evident from the definition file. See ADR-0009.
 _Avoid_: no-advisor rule, advisor ban (the policy is positive — advisor responsibility lives at the orchestrator boundary, not absent from the system)
 
+**Investigator scope guard**:
+The standing constraint — expressed as a `## Scope-boundary guard` section in both `investigator-standard.md` and `investigator-deep.md` — that limits the investigator's brief to work traceable to the slice's acceptance criteria. Every item in `relevantFiles`, `approach`, and `notes` must trace to at least one acceptance criterion; work belonging to a sibling or downstream slice must be dropped. Enforced at the orchestrator boundary by a brief-scope diff: after `validate_envelope` returns `valid`, the orchestrator compares the brief against the acceptance criteria it supplied as the hard scope boundary, and treats an over-scoped brief as a failed investigation pass (the slice **FAILS** before the implementer runs).
+_Avoid_: scope check, brief filter (the guard is a positive constraint on what the brief may contain, enforced at two points — inside the investigator definition and at the orchestrator boundary)
+
 ## Relationships
 
 - A **Distribution** owns at most one **Initializer** and at most one **Customizer**.
