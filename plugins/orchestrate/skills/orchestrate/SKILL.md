@@ -1,6 +1,6 @@
 ---
 name: orchestrate
-description: Implement a backlog of ready-for-agent GitHub issues end to end — order them into dependency waves, run implementer and reviewer subagents in isolated worktrees, merge slice pull requests into an umbrella branch, and checkpoint progress so an interrupted run resumes. Use when the user wants to autonomously orchestrate agent-driven implementation of tracked issues, or invokes /orchestrate.
+description: Implement a backlog of ready-for-agent GitHub issues end to end — order them into dependency waves, run implementer and reviewer subagents in isolated worktrees, merge slice pull requests into an umbrella branch, and checkpoint progress so an interrupted run resumes. Use when the user wants to autonomously orchestrate agent-driven implementation of tracked issues, or invokes /orchestrate — including /orchestrate clean to remove the footprint of concluded runs.
 ---
 
 # Orchestrate
@@ -66,6 +66,33 @@ and the successor launcher; without it, built-in defaults apply (see
 it enables the investigator and reviewer subagents' structural code search,
 which otherwise falls back to text search.
 
+## 0. Modes — run vs. clean
+
+This skill has two modes, selected by the invocation argument.
+
+- **No `clean` argument** (`/orchestrate` or `/orchestrate <PRD#>`) — the normal
+  orchestration run. Proceed through sections 1–4 below.
+- **The `clean` argument** (`/orchestrate clean`, optionally
+  `/orchestrate clean --force`) — the **`/orchestrate-clean` mode**. Run **only**
+  the cleanup path described here, then **stop**. Do **not** discover or start a
+  run, do not read the backlog, do not create branches.
+
+### `/orchestrate-clean` mode
+
+`/orchestrate clean` removes the leftover footprint of concluded runs on demand
+— the same cleanup the start-of-run sweep (section 1) performs automatically.
+When invoked with the `clean` argument:
+
+1. Resolve the repository root: `git rev-parse --show-toplevel`.
+2. Run the **cleanup sweep** exactly as section 1 describes it below — enumerate
+   `.orchestrate/runs/*/run-state.json`, resolve each run's merge verdict with
+   `gh pr view`, and call the `clean_runs` MCP tool with the verdict map. If the
+   `--force` argument was passed, set `force: true` in the `clean_runs` call.
+3. Report the `clean_runs` result to the user — per run, its `action`
+   (`removed`, `preserved`, or `skipped`), its `reason`, and the removed or
+   preserved worktrees and branches — then **stop**. `/orchestrate clean` never
+   starts an orchestration run.
+
 ## 1. Start or resume the run
 
 On startup, set a completion goal with `/goal` so the session keeps working
@@ -73,6 +100,41 @@ turn after turn and does not yield control before the run is done. Phrase it
 as a checkable end-state, e.g. `/goal the orchestrate run has opened its final
 integration pull request, or a successor session has been launched`. An
 autonomous run must not stop mid-wave.
+
+### Start-of-run cleanup sweep
+
+Before discovering or starting a run, sweep away the footprint of concluded
+runs so the `.orchestrate/runs/` directory does not accumulate. This same sweep
+is what `/orchestrate clean` (section 0) runs on demand.
+
+1. Enumerate every `.orchestrate/runs/*/run-state.json`. For each run whose
+   `status` is `completed` and whose `finalPullRequest` is **non-null**, resolve
+   the run's **merge verdict** — the gate is strictly the final pull request
+   having **merged** into the integration base, not merely being open:
+
+   ```
+   gh pr view <finalPullRequest> --json state,mergedAt
+   ```
+
+   - `state` is `MERGED` and `mergedAt` is non-null → verdict `merged`.
+   - `state` is `OPEN` → verdict `open`.
+   - `state` is `CLOSED` and `mergedAt` is null → verdict `closed-unmerged`.
+   - The command errors or the result cannot be parsed → verdict `unknown`.
+
+   A run whose `status` is **not** `completed`, or whose `finalPullRequest` is
+   `null`, is **never** swept — it has not concluded. **Never** include the
+   current run, or any run still `in-progress`, in the verdict map: omitting a
+   run from the map tells `clean_runs` to leave it strictly intact.
+2. Call the **`clean_runs` MCP tool** with the repository root as `repoPath` and
+   the per-run `verdicts` map you built. The tool removes each `merged` run's
+   worktrees, its umbrella and slice branches (local and remote), and its run
+   directory; it leaves every other run intact and reports it. A `failed`-slice
+   worktree is preserved (and that run's directory kept) so a developer can
+   still inspect it. `clean_runs` is git + filesystem only — it never shells
+   `gh`; the merge verdict you resolved above is the GitHub half of the gate.
+3. The sweep is best-effort and idempotent — an already-absent branch or
+   worktree is success, not error. Note the result, then continue to discover
+   or start the run; a cleanup hiccup never blocks the run itself.
 
 Every run keeps its ephemeral state in a **per-run directory**,
 `.orchestrate/runs/<runId>/`, holding that run's `run-state.json`,

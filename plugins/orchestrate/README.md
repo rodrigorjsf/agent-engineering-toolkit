@@ -56,6 +56,7 @@ The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing 
 | `resolve_routing` | Resolve the model and effort variant for each role from a complexity tier |
 | `validate_envelope` | Validate a subagent's result envelope against its role schema — distinguishes a valid, a truncated/invalid, and a missing envelope |
 | `recover_changed_files` | Recover a worktree's changed-file set by inspecting it directly — the orchestrator's fallback when an envelope is missing or invalid |
+| `clean_runs` | Remove a concluded run's worktrees, branches, and run directory once its final pull request has merged — git + filesystem only |
 | `render_dashboard` / `render_graph` / `render_report` | Render standalone HTML artifacts from the run state |
 | `spawn_successor` | Launch a fresh Claude Code session that resumes the run |
 | `search_structural` | Syntax-aware (ast-grep) code search, with a text-search fallback |
@@ -130,6 +131,28 @@ If the plugin is installed at user scope (the default), the namespace prefix is 
 ```
 
 The run is autonomous — it processes the whole backlog, resolves conflicts, checkpoints, hands off if its context fills, and ends by opening the final umbrella pull request. To resume an interrupted run, invoke `/orchestrate` again in the same repository: it scans `.orchestrate/runs/*/run-state.json` for an in-progress run and continues from the last checkpoint.
+
+### Cleaning up concluded runs
+
+Each run leaves a footprint behind — its run directory under `.orchestrate/runs/`, its worktrees, and its umbrella and slice branches. Every `/orchestrate` invocation begins with a **start-of-run sweep** that removes the footprint of any run whose final integration pull request has already merged into `development`, so leftovers do not accumulate.
+
+To run the same cleanup on demand without starting a run, invoke the `clean` mode:
+
+```bash
+/orchestrate clean
+```
+
+`/orchestrate clean` enumerates every run under `.orchestrate/runs/`, checks each one's final pull request, and:
+
+- **Removes** a run whose final pull request has **merged** into `development` — its run directory, its worktrees, and its umbrella and slice branches (locally and on the remote).
+- **Leaves intact and reports** a run whose final pull request is still open or was closed unmerged — cleanup is gated strictly on the merge.
+- **Preserves** a failed slice's worktree (and keeps that run's directory) so you can still inspect it. Pass `--force` to remove failed-slice worktrees too:
+
+```bash
+/orchestrate clean --force
+```
+
+`/orchestrate clean` never starts an orchestration run — it cleans up and stops. The merge check is best-effort and idempotent, so re-running it is always safe.
 
 ## Importing Into Another Project
 
