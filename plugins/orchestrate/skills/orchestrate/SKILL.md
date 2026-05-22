@@ -84,26 +84,64 @@ Every run keeps its ephemeral state in a **per-run directory**,
 `.orchestrate/` top level. The run directory's schema and rationale are in
 `references/run-state.md`.
 
-**Discover the active run.** Scan `.orchestrate/runs/*/run-state.json` for a run
-whose `status` is `in-progress`.
+**Read the invocation argument.** `/orchestrate` accepts an optional parent-PRD
+issue number — `/orchestrate <PRD#>` scopes this run to that PRD's children
+(the **run partition**); `/orchestrate` with no argument runs the whole backlog
+as one partition, unchanged. The argument decides both the `runId` form and how
+the run-discovery scan below matches:
 
-- **A run directory with an `in-progress` `run-state.json` exists** — resume it.
-  Its `runId` is the directory name. First clear that run's stale handoff flag:
-  if `.orchestrate/runs/<runId>/context-flag.json` exists, delete it — it is the
+- **`/orchestrate <PRD#>`** — a **partitioned run**. Its `runId` is
+  `prd<N>-<timestamp>` (the invoked `<PRD#>` as `<N>`). It owns only that PRD's
+  child issues.
+- **`/orchestrate` with no argument** — a **whole-backlog run**. Its `runId` is
+  `backlog-<timestamp>`. It owns the entire `ready-for-agent` backlog.
+
+The `prd<N>-` / `backlog-` prefix is durable, persisted in the `runId`, and
+self-documenting — it is the key the run-discovery scan parses to decide which
+in-progress run a new invocation matches.
+
+**Discover the active run.** Scan **every** `.orchestrate/runs/*/run-state.json`
+whose `status` is `in-progress`. For each, parse the run's match key from its
+`runId` directory name — the `prd<N>-` prefix names a partitioned run for PRD
+`<N>`, the `backlog-` prefix names a whole-backlog run. Then match against the
+current invocation:
+
+- **`/orchestrate <PRD#>`** — collect every in-progress run whose `runId`
+  starts `prd<N>-` for the invoked `<N>`.
+- **`/orchestrate` with no argument** — collect every in-progress run whose
+  `runId` starts `backlog-`.
+
+A bare-timestamp `runId` (no `prd<N>-`/`backlog-` prefix — a legacy run from
+before this scheme) matches neither and is invisible to the scan; the new
+prefixes are the only match keys. Then act on the count of matches:
+
+- **Zero matches** — no in-progress run for this invocation. Start a fresh run
+  below.
+- **Exactly one match** — resume it. Its `runId` is the directory name. First
+  clear that run's stale handoff flag: if
+  `.orchestrate/runs/<runId>/context-flag.json` exists, delete it — it is the
   predecessor's handoff trigger, now consumed, and leaving it would make this
   session hand off immediately (section 2, step 4). Then load the whole
   `run-state.json`, preserving every top-level field — `runId`,
   `umbrellaBranch`, `parentIssue`, `waves`, `completedWaves`,
-  `finalPullRequest`, and `slices`. Every slice in a terminal state (`passed`,
-  `failed`, `skipped`) is left untouched — completed work is never redone. Every
-  slice still `in-progress` was interrupted before finishing: discard its
-  partial artifacts so it re-processes cleanly — if it has a `worktreePath`,
-  call `remove_worktree` (`force: true`); delete its `sliceBranch` if it exists
-  (locally, and on the remote if it was pushed) — deleting the remote branch
-  also auto-closes any orphaned slice pull request GitHub opened for it, so
-  re-processing produces a clean branch and PR with no manual PR cleanup needed
-  — then coerce that slice back to `pending`. Skip to section 2.
-- **No run directory holds an `in-progress` run** — start a fresh run below.
+  `finalPullRequest`, and `slices`. **Resume reloads only the matched run's
+  partition and run directory** — the `slices` and `waves` already persisted in
+  its `run-state.json` are the run's scope, fixed at fresh-run time. Do **not**
+  re-fetch the backlog, do **not** re-call `filter_to_one_parent_prd` or
+  `partition_backlog`: a resumed run never widens or re-derives its own scope.
+  Every slice in a terminal state (`passed`, `failed`, `skipped`) is left
+  untouched — completed work is never redone. Every slice still `in-progress`
+  was interrupted before finishing: discard its partial artifacts so it
+  re-processes cleanly — if it has a `worktreePath`, call `remove_worktree`
+  (`force: true`); delete its `sliceBranch` if it exists (locally, and on the
+  remote if it was pushed) — deleting the remote branch also auto-closes any
+  orphaned slice pull request GitHub opened for it, so re-processing produces a
+  clean branch and PR with no manual PR cleanup needed — then coerce that slice
+  back to `pending`. Skip to section 2.
+- **Two or more matches** — a **loud error**. Two in-progress runs for the same
+  PRD (or two in-progress whole-backlog runs) must never be silently resolved
+  by picking one. Report every matching `runId` and stop. The operator resolves
+  the ambiguity — finishing or cleaning up one of the runs — before re-invoking.
 
 ### Fresh run
 
@@ -120,8 +158,12 @@ whose `status` is `in-progress`.
      is also a safe no-op on a repository already configured by hand.
    - Fetch so branch operations use current refs: `git fetch origin`.
    - Confirm the integration base: `git rev-parse --verify origin/development`.
-   - Generate a `runId` from the current timestamp including seconds, e.g.
-     `20260521-015143`.
+   - Generate a `runId` by joining the invocation prefix to the current
+     timestamp including seconds. For `/orchestrate <PRD#>` the prefix is
+     `prd<N>-` (the invoked `<PRD#>` as `<N>`), so the `runId` is
+     `prd195-20260521-015143`. For `/orchestrate` with no argument the prefix
+     is `backlog-`, so the `runId` is `backlog-20260521-015143`. The prefix is
+     never omitted — it is what the run-discovery scan (above) keys on.
 2. Read the whole backlog — every open issue with the `ready-for-agent` label.
    Always use `--json`; plain `gh issue view` can fail on the projectCards
    deprecation:
@@ -159,27 +201,38 @@ whose `status` is `in-progress`.
    of how easy any single edit is. Do not tier a slice down just because each
    target is trivial; the count of targets is itself a cost.
 
-   Once every issue is parsed, call the **`partition_backlog` MCP tool** to
-   split the backlog into `slices` and `parentIssue`:
+   Once every issue is parsed, narrow the backlog if this is a partitioned run,
+   then call the **`partition_backlog` MCP tool** to split it into `slices` and
+   `parentIssue`:
 
-   - Pass the full backlog as the `issues` array to `partition_backlog`. It
-     returns `{ slices, parentIssue }`.
-   - `slices` is the subset of issues to process as implementation work — any
-     issue detected as the parent PRD is automatically excluded.
-   - `parentIssue` is the detected parent PRD, or `null`. The parent PRD is
-     only the progress-comment target (section 2 step 6) — it is **never**
-     enrolled as a slice.
+   - **Partitioned run (`/orchestrate <PRD#>`)** — first call the
+     **`filter_to_one_parent_prd` MCP tool**: pass the full backlog as `issues`
+     and the invoked `<PRD#>` as `prdNumber`. It returns only the issues whose
+     `parent` field equals `<PRD#>` — the run partition. If that filtered set
+     is **empty** (a wrong PRD number, or a PRD whose children are not yet
+     `ready-for-agent`), report "PRD #<PRD#> has no ready-for-agent children"
+     and stop — the same clean no-op as an empty backlog. Otherwise pass the
+     **filtered** set as the `issues` array to `partition_backlog`.
+   - **Whole-backlog run (`/orchestrate` no argument)** — pass the full backlog
+     directly as the `issues` array to `partition_backlog`; no filter step.
+   - `partition_backlog` returns `{ slices, parentIssue }`. `slices` is the
+     subset of issues to process as implementation work — any issue detected as
+     the parent PRD is automatically excluded. `parentIssue` is the detected
+     parent PRD, or `null` — only the progress-comment target (section 2
+     step 6), **never** enrolled as a slice.
    - Detection uses two signals in order: (1) a `Parent` field reference — if
      any issue names another backlog issue as its parent, that issue is the
      parent PRD; (2) the `PRD:` title heuristic — if no explicit parent
      reference exists, any issue whose title starts with `PRD:` (case-
      insensitive) is treated as the parent PRD. This ensures a decomposed PRD
      is never accidentally implemented as a slice.
-
-   To scope a run to one parent PRD's children (e.g. `/orchestrate <PRD#>`),
-   call the **`filter_to_one_parent_prd` MCP tool** first — pass the full
-   backlog and the `prdNumber`; it returns only the issues whose `parent` field
-   equals `prdNumber`, which you then pass to `partition_backlog`.
+   - **Partitioned run — hard-set `parentIssue`.** For a `/orchestrate <PRD#>`
+     run, `filter_to_one_parent_prd` has already removed the parent PRD from
+     the input, so the `parentIssue` `partition_backlog` returns may be `null`
+     or a mis-detected child. Ignore that value and use the invoked `<PRD#>` as
+     the run's `parentIssue` — write `<PRD#>` into `run-state.parentIssue`
+     (step 6) regardless of what `partition_backlog` returned. For a
+     whole-backlog run, keep the `parentIssue` `partition_backlog` returned.
 
 4. Call the `plan_waves` MCP tool with one entry per **slice** (not the full
    backlog — the parent PRD is excluded):
@@ -198,9 +251,13 @@ whose `status` is `in-progress`.
    `run-state.json` into it as `.orchestrate/runs/<runId>/run-state.json` with
    **every field the schema declares** (see `references/run-state.md`):
    - Top level: `runId`, `status: "in-progress"`, `umbrellaBranch`,
-     `integrationBase: "development"`, `parentIssue` (the parent PRD number, or
-     null), `startedAt` and `updatedAt` (current UTC time), the `waves` from
-     `plan_waves`, `completedWaves: 0`, `finalPullRequest: null`.
+     `integrationBase: "development"`, `parentIssue`, `startedAt` and
+     `updatedAt` (current UTC time), the `waves` from `plan_waves`,
+     `completedWaves: 0`, `finalPullRequest: null`. For a partitioned run,
+     `parentIssue` is the invoked `<PRD#>` (the hard-set value from step 3 —
+     never the value `partition_backlog` returned on the already-filtered set).
+     For a whole-backlog run, `parentIssue` is the parent PRD `partition_backlog`
+     detected, or `null`.
    - One `slices` entry per issue: `issue`, `title`, `wave` (its index in
      `waves`), `tier`, `blockedBy`, `state: "pending"`, `sliceBranch:
      "orchestrate/slice-<N>"`, `worktreePath: null`, `pullRequest: null`,
@@ -229,10 +286,31 @@ Process waves in order, starting at index `completedWaves`. For each wave:
    no-op fast-forward — and on a resumed run, since the wave loop is re-entered
    from this step.
 2. **Select the processable slices.** A slice in this wave is processable when
-   its state is `pending` and every id in its `blockedBy` that belongs to the
-   backlog reached `passed`. If any such blocker is `failed` or `skipped`, mark
-   this slice `skipped` with a `failureReason` naming the blocker, checkpoint,
-   and do not process it.
+   its state is `pending`, every **in-partition** blocker it depends on reached
+   `passed`, and every **out-of-partition** blocker is verified resolved.
+
+   - **In-partition blockers** — a `blockedBy` id that is itself a slice in
+     this run's `slices` map. The slice is processable only when every such
+     blocker reached `passed`. If any is `failed` or `skipped`, mark this slice
+     `skipped` with a `failureReason` naming the blocker, checkpoint, and do not
+     process it.
+   - **Out-of-partition blockers** — a `blockedBy` id that is **not** a slice
+     in this run's `slices` map. This happens on a partitioned run: a child
+     issue may be blocked by an issue outside its parent PRD. `plan_waves` does
+     not order such a blocker — it treats any id outside its input set as
+     already satisfied — so the orchestrator must verify the blocker's **real**
+     tracker state itself before the dependent slice runs:
+
+     ```
+     gh issue view <blocker-id> --json state
+     ```
+
+     A `state` of `CLOSED` (the issue is merged or closed) → the blocker is
+     resolved; the dependent slice proceeds. A `state` of `OPEN` → the external
+     blocker is unmet; mark the dependent slice `skipped` with a `failureReason`
+     naming the external blocker issue (e.g. "blocked by #<id>, an issue
+     outside this run's partition that is still open"), checkpoint, and do not
+     process it. Never silently assume an out-of-partition blocker is done.
 3. **Process the slices.** Run section 3 for every processable slice. Slices in
    a wave are independent, so parallelize: when several slices are at the same
    subagent stage (investigation, implementation, review), spawn those
@@ -553,7 +631,9 @@ A slice is **SKIPPED** (state `skipped`) when one of its blockers did not reach
 `failureReason` and checkpoint. Its tracker label stays `ready-for-agent` so a
 later run can retry it once the blocker is resolved.
 
-Other stop conditions: an empty backlog is a clean no-op; a `plan_waves`
+Other stop conditions: an empty backlog is a clean no-op, as is a
+`/orchestrate <PRD#>` run whose PRD has no `ready-for-agent` children
+(`filter_to_one_parent_prd` returns an empty set); a `plan_waves`
 `CYCLE_DETECTED` result stops the run before any branch is created.
 
 ## Tracker updates

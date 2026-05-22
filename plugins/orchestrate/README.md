@@ -159,6 +159,27 @@ If the plugin is installed at user scope (the default), the namespace prefix is 
 
 The run is autonomous — it processes the whole backlog, resolves conflicts, checkpoints, hands off if its context fills, and ends by opening the final umbrella pull request. To resume an interrupted run, invoke `/orchestrate` again in the same repository: it scans `.orchestrate/runs/*/run-state.json` for an in-progress run and continues from the last checkpoint.
 
+### Scoping a run to one parent PRD
+
+Pass a parent-PRD issue number to scope the run to that PRD's children only:
+
+```bash
+/orchestrate 195
+```
+
+This runs just the issues whose **Parent** section names PRD #195 — the run's *partition*. Its `runId` is `prd195-<timestamp>` and its umbrella branch is `orchestrate/umbrella-prd195-<timestamp>`. A no-argument `/orchestrate` runs the whole backlog as one partition, with a `backlog-<timestamp>` runId, exactly as before.
+
+Because each partitioned run owns a disjoint set of issues and its own run directory and umbrella branch, you can run **two orchestrations concurrently** in the same repository — one per parent PRD:
+
+```bash
+/orchestrate 195      # window A — PRD #195's children
+/orchestrate 210      # window B — PRD #210's children
+```
+
+On startup the orchestrator scans every in-progress run and matches it by the `prd<N>-` / `backlog-` prefix of its `runId`. Invoking `/orchestrate 195` again while a `prd195-` run is still in progress **resumes** that run rather than starting a duplicate; the resumed run reloads only its own partition and never widens its scope. Two in-progress runs for the same PRD is reported as a loud error, never silently resolved.
+
+When a partitioned run's child issue is blocked by an issue **outside** the partition, the orchestrator verifies that external blocker's real state on the tracker before the dependent slice runs — if the blocker is still open, the dependent slice is skipped with a reason naming it.
+
 ## Importing Into Another Project
 
 To run orchestrate against another repository, that repository needs:
