@@ -3226,8 +3226,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path8) {
-      let input = path8;
+    function removeDotSegments(path9) {
+      let input = path9;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3479,8 +3479,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path8, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path8 && path8 !== "/" ? path8 : void 0;
+        const [path9, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path9 && path9 !== "/" ? path9 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs8, exportName) {
+    function addFormats(ajv, list, fs11, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs8[f]);
+        ajv.addFormat(f, fs11[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -7364,8 +7364,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path8, errorMaps, issueData } = params;
-  const fullPath = [...path8, ...issueData.path || []];
+  const { data, path: path9, errorMaps, issueData } = params;
+  const fullPath = [...path9, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7481,11 +7481,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path8, key) {
+  constructor(parent, value, path9, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path8;
+    this._path = path9;
     this._key = key;
   }
   get path() {
@@ -11123,10 +11123,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path8) {
-  if (!path8)
+function getElementAtPath(obj, path9) {
+  if (!path9)
     return obj;
-  return path8.reduce((acc, key) => acc?.[key], obj);
+  return path9.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11446,11 +11446,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path8, issues) {
+function prefixIssues(path9, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path8);
+    iss.path.unshift(path9);
     return iss;
   });
 }
@@ -21176,14 +21176,14 @@ function optionInjectionError(field, value) {
 }
 function cleanGitError(err) {
   if (err instanceof GitExecError && err.stderr.trim().length > 0) {
-    const firstLine8 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-    if (firstLine8) {
-      return firstLine8;
+    const firstLine9 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+    if (firstLine9) {
+      return firstLine9;
     }
   }
   const message = err instanceof Error ? err.message : String(err);
-  const firstLine7 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-  return firstLine7 ?? "Unknown git error";
+  const firstLine8 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return firstLine8 ?? "Unknown git error";
 }
 
 // src/tools/run-command.ts
@@ -23084,8 +23084,8 @@ var verificationEntrySchema = external_exports.object({
 });
 var implementerEnvelopeSchema = external_exports.object({
   role: external_exports.literal("implementer").describe("Discriminant \u2014 the implementer role."),
-  status: external_exports.enum(["completed", "blocked"]).describe(
-    "Outcome. 'completed' = acceptance criteria met and every configured capability tool passed; 'blocked' = the implementer could not finish."
+  status: external_exports.enum(["completed", "incomplete", "blocked"]).describe(
+    "Outcome. 'completed' = acceptance criteria met and every configured capability tool passed; 'incomplete' = the implementer's graceful turn-budget self-report \u2014 it foresaw it could not finish within the remaining turns and stopped cleanly with the partial work recorded, rather than being cut off mid-sentence (a hard turn-limit cutoff instead leaves an unclosed fence and is reported 'invalid'); 'blocked' = the implementer hit an unrecoverable obstacle and could not finish. 'incomplete' and 'blocked' are both non-success outcomes but stay distinct: 'incomplete' is partial and resumable, 'blocked' is an obstacle that must be cleared first."
   ),
   filesChanged: external_exports.array(external_exports.string()).describe(
     "Files the implementer created or edited, as paths relative to the worktree root. An empty array means no file was changed."
@@ -23670,6 +23670,461 @@ async function cleanRuns(input) {
   return { status: "ok", runs };
 }
 
+// src/tools/verify-changeset.ts
+var fs8 = __toESM(require("fs"));
+var verifyChangesetInputSchema = external_exports.object({
+  worktreePath: external_exports.string().describe(
+    "Absolute path to the slice worktree to inspect. The verification treats this worktree as the source of truth for what was actually changed."
+  ),
+  declaredFiles: external_exports.array(external_exports.string()).describe(
+    "The changed-file set the implementer DECLARED in its result envelope (`filesChanged`), as paths relative to the worktree root. An empty array means the implementer claimed it changed nothing. Order and duplicates are ignored \u2014 the comparison is set-based."
+  )
+});
+var verifyChangesetOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the worktree was inspected and the comparison ran; 'error' = the worktree could not be inspected."
+  ),
+  match: external_exports.enum([
+    "matched",
+    "mismatch",
+    "clean",
+    "empty-but-declared",
+    "suspiciously-empty"
+  ]).optional().describe(
+    "The set-comparison verdict. Present when status='ok'. 'matched' = the declared set equals the worktree changeset; 'clean' = nothing was declared and the worktree is clean (a no-op slice); 'mismatch' = the declared set and the worktree changeset differ in at least one direction (see declaredButAbsent and presentButUndeclared); 'empty-but-declared' = files were declared but the worktree is entirely clean \u2014 the implementer's edits never landed on disk; 'suspiciously-empty' = nothing was declared but the worktree DOES have changes \u2014 the implementer under-reported its work. Only 'matched' and 'clean' mean the declared set can be trusted as-is."
+  ),
+  actualFiles: external_exports.array(external_exports.string()).optional().describe(
+    "Every changed path the worktree actually carries \u2014 tracked modifications, staged changes, and untracked files alike (build artifacts NOT filtered). A rename emits both its source and destination path, never an 'old -> new' composite. Present when status='ok' (an empty array means a clean worktree)."
+  ),
+  declaredButAbsent: external_exports.array(external_exports.string()).optional().describe(
+    "Files the implementer declared in `filesChanged` that are NOT in the worktree changeset \u2014 declared but never actually changed on disk. Present when status='ok'; empty when every declared file is real."
+  ),
+  presentButUndeclared: external_exports.array(external_exports.string()).optional().describe(
+    "Files the worktree actually changed that the implementer did NOT declare \u2014 undeclared collateral the orchestrator would otherwise miss when staging only the declared set. Present when status='ok'; empty when the implementer declared everything it touched."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT", "PATH_NOT_FOUND", "GIT_ERROR"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'INVALID_INPUT' = the path would be parsed by git as an option flag; 'PATH_NOT_FOUND' = the worktree path does not exist on disk; 'GIT_ERROR' = git could not report status (e.g. not a git worktree)."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='error'."
+  )
+});
+async function verifyChangeset(input) {
+  const { worktreePath, declaredFiles } = input;
+  const guardErr = optionInjectionError("worktreePath", worktreePath);
+  if (guardErr) {
+    return {
+      status: "error",
+      errorCode: "INVALID_INPUT",
+      errorMessage: guardErr
+    };
+  }
+  if (!fs8.existsSync(worktreePath)) {
+    return {
+      status: "error",
+      errorCode: "PATH_NOT_FOUND",
+      errorMessage: `Worktree path does not exist: ${worktreePath}`
+    };
+  }
+  let porcelain;
+  try {
+    const { stdout } = await gitExecFile(
+      ["status", "--porcelain", "-z"],
+      worktreePath
+    );
+    porcelain = stdout;
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "GIT_ERROR",
+      errorMessage: cleanGitError(err)
+    };
+  }
+  const actualFiles = parsePorcelainZ(porcelain);
+  const declaredSet = new Set(declaredFiles);
+  const actualSet = new Set(actualFiles);
+  const declaredButAbsent = [...declaredSet].filter((f) => !actualSet.has(f)).sort();
+  const presentButUndeclared = [...actualSet].filter((f) => !declaredSet.has(f)).sort();
+  const match = classifyMatch(
+    declaredSet.size,
+    actualSet.size,
+    declaredButAbsent.length,
+    presentButUndeclared.length
+  );
+  return {
+    status: "ok",
+    match,
+    actualFiles,
+    declaredButAbsent,
+    presentButUndeclared
+  };
+}
+function classifyMatch(declaredCount, actualCount, absentCount, undeclaredCount) {
+  if (declaredCount === 0 && actualCount === 0) {
+    return "clean";
+  }
+  if (declaredCount > 0 && actualCount === 0) {
+    return "empty-but-declared";
+  }
+  if (declaredCount === 0 && actualCount > 0) {
+    return "suspiciously-empty";
+  }
+  if (absentCount === 0 && undeclaredCount === 0) {
+    return "matched";
+  }
+  return "mismatch";
+}
+
+// src/tools/bootstrap-config.ts
+var path8 = __toESM(require("path"));
+var fs10 = __toESM(require("fs"));
+
+// src/tools/detect-project.ts
+var fs9 = __toESM(require("fs"));
+var DETECTION_RULES = [
+  { manifest: "package.json", type: "npm" },
+  { manifest: "Cargo.toml", type: "cargo" },
+  { manifest: "pyproject.toml", type: "python" },
+  { manifest: "Makefile", type: "make" }
+];
+var COMMAND_MAPS = {
+  npm: {
+    tests: ["npm", "test"],
+    typecheck: ["npm", "run", "typecheck"],
+    build: ["npm", "run", "build"],
+    lint: ["npm", "run", "lint"]
+  },
+  cargo: {
+    tests: ["cargo", "test"],
+    typecheck: ["cargo", "check"],
+    build: ["cargo", "build"],
+    lint: ["cargo", "clippy"]
+  },
+  python: {
+    tests: ["pytest"],
+    typecheck: ["mypy", "."],
+    build: ["python", "-m", "build"],
+    lint: ["ruff", "check", "."]
+  },
+  make: {
+    tests: ["make", "test"],
+    typecheck: ["make", "typecheck"],
+    build: ["make", "build"],
+    lint: ["make", "lint"]
+  }
+};
+function detectProjectType(manifestsPresent) {
+  const present = new Set(manifestsPresent);
+  for (const rule of DETECTION_RULES) {
+    if (present.has(rule.manifest)) {
+      return rule.type;
+    }
+  }
+  return "none";
+}
+function buildCommandMap(type) {
+  if (type === "none") {
+    return {};
+  }
+  return { ...COMMAND_MAPS[type] };
+}
+function detectCommandMap(repoRoot) {
+  let entries;
+  try {
+    entries = fs9.readdirSync(repoRoot);
+  } catch {
+    return {};
+  }
+  const manifests = DETECTION_RULES.map((r) => r.manifest);
+  const presentManifests = entries.filter((e) => manifests.includes(e));
+  const projectType = detectProjectType(presentManifests);
+  return buildCommandMap(projectType);
+}
+
+// src/tools/bootstrap-config.ts
+var DEFAULT_CONTEXT_WINDOW_TOKENS = 2e5;
+var ONE_MILLION_TOKENS = 1e6;
+var MODEL_CONTEXT_WINDOW = {
+  opus: DEFAULT_CONTEXT_WINDOW_TOKENS,
+  sonnet: DEFAULT_CONTEXT_WINDOW_TOKENS,
+  haiku: DEFAULT_CONTEXT_WINDOW_TOKENS,
+  "claude-opus-4-7[1m]": ONE_MILLION_TOKENS,
+  "claude-opus-4-1[1m]": ONE_MILLION_TOKENS,
+  "claude-sonnet-4-5[1m]": ONE_MILLION_TOKENS,
+  "claude-sonnet-4[1m]": ONE_MILLION_TOKENS
+};
+var DEFAULT_ROUTING_CONFIG = {
+  trivial: {
+    investigator: null,
+    implementer: { model: "sonnet", effort: "standard" },
+    reviewer: { model: "sonnet", effort: "standard" },
+    "conflict-resolver": { model: "sonnet", effort: "standard" }
+  },
+  standard: {
+    investigator: null,
+    implementer: { model: "sonnet", effort: "standard" },
+    reviewer: { model: "opus", effort: "standard" },
+    "conflict-resolver": { model: "opus", effort: "standard" }
+  },
+  complex: {
+    investigator: { model: "opus", effort: "deep" },
+    implementer: { model: "opus", effort: "deep" },
+    reviewer: { model: "opus", effort: "deep" },
+    "conflict-resolver": { model: "opus", effort: "deep" }
+  }
+};
+var RUNS_GITIGNORE_LINE = ".orchestrate/runs/";
+var bootstrapConfigInputSchema = external_exports.object({
+  repoPath: external_exports.string().optional().describe(
+    "Path to the project root the .orchestrate/ configuration is bootstrapped into. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default, which is not guaranteed to be the project root."
+  ),
+  model: external_exports.string().optional().describe(
+    "The model identifier of the running orchestrator session (e.g. 'opus' or 'claude-opus-4-7[1m]'). The MCP process cannot see the calling LLM's model, so the caller passes it. It is mapped to a context-window token count via an explicit table; an unknown or absent model falls back to 200000. Ignored when contextWindowTokens is set."
+  ),
+  contextWindowTokens: external_exports.number().optional().describe(
+    "An explicit context-window token count for the running session. When supplied as a positive integer it takes precedence over the model table. A non-positive or non-integer value is ignored and the run falls back to the model table, then to 200000."
+  )
+});
+var bootstrapConfigOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the bootstrap completed (every file either written or already present); 'error' = a filesystem write failed and the configuration is incomplete."
+  ),
+  projectType: external_exports.enum(["npm", "cargo", "python", "make", "none"]).optional().describe(
+    "The detected project type. 'none' means no recognized manifest \u2014 commands.json is written empty. Present when status='ok'."
+  ),
+  contextWindowTokens: external_exports.number().optional().describe(
+    "The context-window token count written into handoff.json. Always a positive integer \u2014 never NaN. Present when status='ok'."
+  ),
+  contextWindowSource: external_exports.enum(["explicit", "model-table", "default"]).optional().describe(
+    "How contextWindowTokens was resolved. 'explicit' = a valid contextWindowTokens input; 'model-table' = a recognized model id; 'default' = an unknown/absent model fell back to 200000. Present when status='ok'."
+  ),
+  files: external_exports.object({
+    commandsJson: external_exports.enum(["written", "already-present"]),
+    routingJson: external_exports.enum(["written", "already-present"]),
+    handoffJson: external_exports.enum(["written", "already-present"])
+  }).optional().describe(
+    "Per-config-file outcome. 'written' = the bootstrapper created it; 'already-present' = it existed and was left untouched (a committed config is never overwritten). Present when status='ok'."
+  ),
+  runsDir: external_exports.enum(["created", "already-present"]).optional().describe(
+    "Outcome for the .orchestrate/runs/ directory. Present when status='ok'."
+  ),
+  gitignore: external_exports.enum(["created-with-line", "line-added", "already-present"]).optional().describe(
+    "Outcome for the .gitignore entry. 'created-with-line' = no .gitignore existed, one was created with the .orchestrate/runs/ line; 'line-added' = the line was appended to an existing file; 'already-present' = the line was already there. Present when status='ok'."
+  ),
+  errorCode: external_exports.enum(["WRITE_FAILED"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'WRITE_FAILED' = a filesystem operation (mkdir or write) failed."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='error'."
+  )
+});
+function firstLine7(message) {
+  const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return line ?? message.trim();
+}
+function toJsonFile(value) {
+  return `${JSON.stringify(value, null, 2)}
+`;
+}
+function resolveContextWindow(input) {
+  const explicit = input.contextWindowTokens;
+  if (typeof explicit === "number" && Number.isInteger(explicit) && explicit > 0) {
+    return { tokens: explicit, source: "explicit" };
+  }
+  if (input.model !== void 0) {
+    const fromTable = MODEL_CONTEXT_WINDOW[input.model];
+    if (fromTable !== void 0) {
+      return { tokens: fromTable, source: "model-table" };
+    }
+  }
+  return { tokens: DEFAULT_CONTEXT_WINDOW_TOKENS, source: "default" };
+}
+function buildCommandsConfig(repoRoot) {
+  let entries;
+  try {
+    entries = fs10.readdirSync(repoRoot);
+  } catch {
+    entries = [];
+  }
+  const projectType = detectProjectType(entries);
+  const capabilities = detectCommandMap(repoRoot);
+  const config2 = { ...capabilities };
+  if (projectType === "npm") {
+    config2.install = ["npm", "ci"];
+  }
+  return { config: config2, projectType };
+}
+function writeIfAbsent(filePath, content) {
+  if (fs10.existsSync(filePath)) {
+    return { kind: "already-present" };
+  }
+  try {
+    fs10.writeFileSync(filePath, content);
+    return { kind: "written" };
+  } catch (err) {
+    return {
+      kind: "error",
+      message: firstLine7(err instanceof Error ? err.message : String(err))
+    };
+  }
+}
+function ensureGitignoreEntry(repoRoot) {
+  const gitignorePath = path8.join(repoRoot, ".gitignore");
+  let existing;
+  try {
+    existing = fs10.readFileSync(gitignorePath, "utf8");
+  } catch {
+    existing = null;
+  }
+  if (existing === null) {
+    try {
+      fs10.writeFileSync(gitignorePath, `${RUNS_GITIGNORE_LINE}
+`);
+      return { kind: "created-with-line" };
+    } catch (err) {
+      return {
+        kind: "error",
+        message: firstLine7(err instanceof Error ? err.message : String(err))
+      };
+    }
+  }
+  const alreadyListed = existing.split("\n").map((l) => l.trim()).some((l) => l === ".orchestrate/runs/" || l === ".orchestrate/runs");
+  if (alreadyListed) {
+    return { kind: "already-present" };
+  }
+  const separator = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
+  try {
+    fs10.appendFileSync(
+      gitignorePath,
+      `${separator}${RUNS_GITIGNORE_LINE}
+`
+    );
+    return { kind: "line-added" };
+  } catch (err) {
+    return {
+      kind: "error",
+      message: firstLine7(err instanceof Error ? err.message : String(err))
+    };
+  }
+}
+function bootstrapConfig(input) {
+  const repoRoot = input.repoPath ?? process.cwd();
+  const orchestrateDir = path8.join(repoRoot, ".orchestrate");
+  const runsDir = path8.join(orchestrateDir, "runs");
+  const runsDirExisted = fs10.existsSync(runsDir);
+  try {
+    fs10.mkdirSync(runsDir, { recursive: true });
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "WRITE_FAILED",
+      errorMessage: `Failed to create ${runsDir}: ${firstLine7(
+        err instanceof Error ? err.message : String(err)
+      )}`
+    };
+  }
+  const { config: commandsConfig, projectType } = buildCommandsConfig(repoRoot);
+  const contextWindow = resolveContextWindow(input);
+  const validatedCommands = commandsConfigSchema.safeParse(commandsConfig);
+  if (!validatedCommands.success) {
+    const detail = validatedCommands.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+    return {
+      status: "error",
+      errorCode: "WRITE_FAILED",
+      errorMessage: `Derived commands.json failed schema validation: ${detail}`
+    };
+  }
+  const commandsResult = writeIfAbsent(
+    path8.join(orchestrateDir, "commands.json"),
+    toJsonFile(validatedCommands.data)
+  );
+  if (commandsResult.kind === "error") {
+    return {
+      status: "error",
+      errorCode: "WRITE_FAILED",
+      errorMessage: `Failed to write commands.json: ${commandsResult.message}`
+    };
+  }
+  const routingResult = writeIfAbsent(
+    path8.join(orchestrateDir, "routing.json"),
+    toJsonFile(DEFAULT_ROUTING_CONFIG)
+  );
+  if (routingResult.kind === "error") {
+    return {
+      status: "error",
+      errorCode: "WRITE_FAILED",
+      errorMessage: `Failed to write routing.json: ${routingResult.message}`
+    };
+  }
+  const handoffConfig = {
+    watchdog: {
+      thresholdPercent: 40,
+      contextWindowTokens: contextWindow.tokens
+    },
+    successor: {
+      claudeArgs: [
+        "--remote-control",
+        "orchestrate-successor",
+        "--permission-mode",
+        "auto"
+      ],
+      resumePrompt: "/orchestrate",
+      terminals: [
+        {
+          name: "windows-terminal",
+          argv: [
+            "wt.exe",
+            "new-tab",
+            "--title",
+            "orchestrate-successor",
+            "wsl.exe",
+            "--",
+            "bash",
+            "-lc",
+            "{claudeCommand}"
+          ]
+        },
+        {
+          name: "warp",
+          argv: ["warp-terminal", "--", "bash", "-lc", "{claudeCommand}"]
+        }
+      ]
+    }
+  };
+  const handoffResult = writeIfAbsent(
+    path8.join(orchestrateDir, "handoff.json"),
+    toJsonFile(handoffConfig)
+  );
+  if (handoffResult.kind === "error") {
+    return {
+      status: "error",
+      errorCode: "WRITE_FAILED",
+      errorMessage: `Failed to write handoff.json: ${handoffResult.message}`
+    };
+  }
+  const gitignoreResult = ensureGitignoreEntry(repoRoot);
+  if (gitignoreResult.kind === "error") {
+    return {
+      status: "error",
+      errorCode: "WRITE_FAILED",
+      errorMessage: `Failed to update .gitignore: ${gitignoreResult.message}`
+    };
+  }
+  return {
+    status: "ok",
+    projectType,
+    contextWindowTokens: contextWindow.tokens,
+    contextWindowSource: contextWindow.source,
+    files: {
+      commandsJson: commandsResult.kind,
+      routingJson: routingResult.kind,
+      handoffJson: handoffResult.kind
+    },
+    runsDir: runsDirExisted ? "already-present" : "created",
+    gitignore: gitignoreResult.kind
+  };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
@@ -24037,6 +24492,40 @@ var handleCleanRuns = async (input) => {
     content: [{ type: "text", text }]
   };
 };
+var handleVerifyChangeset = async (input) => {
+  const result = await verifyChangeset(input);
+  let text;
+  if (result.status === "ok") {
+    const counts = `${result.declaredButAbsent.length} declared-but-absent, ${result.presentButUndeclared.length} present-but-undeclared`;
+    text = `Changeset verification: ${result.match} (${counts}).`;
+  } else {
+    text = `Changeset verification failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+var handleBootstrapConfig = async (input) => {
+  const result = bootstrapConfig(input);
+  let text;
+  if (result.status === "ok") {
+    const f = result.files;
+    const written = [
+      f.commandsJson === "written" ? "commands.json" : null,
+      f.routingJson === "written" ? "routing.json" : null,
+      f.handoffJson === "written" ? "handoff.json" : null
+    ].filter((n) => n !== null);
+    const filesNote = written.length > 0 ? `wrote ${written.join(", ")}` : "all config files already present";
+    text = `Bootstrapped .orchestrate/ config for a ${result.projectType} project (${filesNote}; context window ${result.contextWindowTokens} tokens, source: ${result.contextWindowSource}; runs dir ${result.runsDir}; .gitignore ${result.gitignore}).`;
+  } else {
+    text = `Bootstrap failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
 registerTool(
   "clean_runs",
   {
@@ -24048,6 +24537,30 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleCleanRuns
+);
+registerTool(
+  "verify_changeset",
+  {
+    title: "Verify a Worktree Changeset Against the Declared File Set",
+    description: "Compares a slice worktree's ACTUAL changeset \u2014 inspected with 'git status --porcelain -z' \u2014 against the changed-file set the implementer DECLARED in its result envelope. The orchestrator calls this after every implementer returns, before trusting a 'completed' envelope. The comparison is a cheap set comparison, not a semantic scope check: order and duplicates are ignored, and the issue body is never parsed. Returns a `match` verdict \u2014 'matched', 'clean', 'mismatch', 'empty-but-declared' (edits never landed), or 'suspiciously-empty' (work under-reported) \u2014 plus the divergent paths in `declaredButAbsent` and `presentButUndeclared`. Discriminated `status` of 'ok' or 'error'.",
+    inputSchema: verifyChangesetInputSchema.shape,
+    outputSchema: verifyChangesetOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleVerifyChangeset
+);
+registerTool(
+  "bootstrap_config",
+  {
+    title: "Bootstrap Orchestrate Configuration",
+    description: "Sets up a repository's .orchestrate/ configuration for a first-ever orchestrate run. Detects the project type and writes a project-aware commands.json (with `install` for npm only, empty for an unrecognized project), writes routing.json from the shipped defaults, and writes handoff.json with a context-window size derived from the running model \u2014 pass the model id (or an explicit contextWindowTokens) as input; the MCP process cannot see the calling LLM's model. An unknown or absent model falls back to 200000. Creates .orchestrate/runs/ and idempotently adds it to the repository's .gitignore. Every step is idempotent: an existing config file is never overwritten and the .gitignore line is never duplicated. Returns a discriminated `status` of 'ok' or 'error'.",
+    inputSchema: bootstrapConfigInputSchema.shape,
+    outputSchema: bootstrapConfigOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleBootstrapConfig
 );
 async function main() {
   const transport = new StdioServerTransport();

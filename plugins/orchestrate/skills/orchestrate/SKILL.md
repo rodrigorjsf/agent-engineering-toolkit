@@ -51,15 +51,18 @@ Check these before starting. If one is missing, report it and stop.
 - Branch protection does not block merges into `orchestrate/umbrella-*` or
   `orchestrate/slice-*` branches — the auto-merge needs them open.
 
-The target project should also have committed `.orchestrate/commands.json` and
-`.orchestrate/routing.json` (see the plugin's `templates/`). Without
+The target project's `.orchestrate/` configuration — `commands.json`,
+`routing.json`, and the optional `handoff.json` — may be **bootstrapped on the
+first run** by the `bootstrap_config` MCP tool (section 1, Fresh run, step 1),
+or committed ahead of time from the plugin's `templates/`. Without
 `commands.json` the capability tools return `not-configured`, which is
-tolerated. If the project's capability commands need installed dependencies,
+tolerated. When the project's capability commands need installed dependencies,
 `commands.json` must also set an `install` command — `create_worktree` runs it
 in every fresh worktree, which checks out only tracked files and so has no
-dependency directory of its own. Without `routing.json` the `resolve_routing`
-tool errors and the run falls back to the `-standard` variant of every role
-with no model override.
+dependency directory of its own; the bootstrapper sets `install` automatically
+for an npm project. Without `routing.json` the `resolve_routing` tool errors
+and the run falls back to the `-standard` variant of every role with no model
+override.
 An optional `.orchestrate/handoff.json` tunes the context-watchdog threshold
 and the successor launcher; without it, built-in defaults apply (see
 `references/context-handoff.md`). Installing the `ast-grep` CLI is optional —
@@ -143,35 +146,93 @@ Every run keeps its ephemeral state in a **per-run directory**,
 `.orchestrate/` top level. The run directory's schema and rationale are in
 `references/run-state.md`.
 
-**Discover the active run.** Scan `.orchestrate/runs/*/run-state.json` for a run
-whose `status` is `in-progress`.
+**Read the invocation argument.** `/orchestrate` accepts an optional parent-PRD
+issue number — `/orchestrate <PRD#>` scopes this run to that PRD's children
+(the **run partition**); `/orchestrate` with no argument runs the whole backlog
+as one partition, unchanged. The argument decides both the `runId` form and how
+the run-discovery scan below matches:
 
-- **A run directory with an `in-progress` `run-state.json` exists** — resume it.
-  Its `runId` is the directory name. First clear that run's stale handoff flag:
-  if `.orchestrate/runs/<runId>/context-flag.json` exists, delete it — it is the
+- **`/orchestrate <PRD#>`** — a **partitioned run**. Its `runId` is
+  `prd<N>-<timestamp>` (the invoked `<PRD#>` as `<N>`). It owns only that PRD's
+  child issues.
+- **`/orchestrate` with no argument** — a **whole-backlog run**. Its `runId` is
+  `backlog-<timestamp>`. It owns the entire `ready-for-agent` backlog.
+
+The `prd<N>-` / `backlog-` prefix is durable, persisted in the `runId`, and
+self-documenting — it is the key the run-discovery scan parses to decide which
+in-progress run a new invocation matches.
+
+**Discover the active run.** Scan **every** `.orchestrate/runs/*/run-state.json`
+whose `status` is `in-progress`. For each, parse the run's match key from its
+`runId` directory name — the `prd<N>-` prefix names a partitioned run for PRD
+`<N>`, the `backlog-` prefix names a whole-backlog run. Then match against the
+current invocation:
+
+- **`/orchestrate <PRD#>`** — collect every in-progress run whose `runId`
+  starts `prd<N>-` for the invoked `<N>`.
+- **`/orchestrate` with no argument** — collect every in-progress run whose
+  `runId` starts `backlog-`.
+
+A bare-timestamp `runId` (no `prd<N>-`/`backlog-` prefix — a legacy run from
+before this scheme) matches neither and is invisible to the scan; the new
+prefixes are the only match keys. Then act on the count of matches:
+
+- **Zero matches** — no in-progress run for this invocation. Start a fresh run
+  below.
+- **Exactly one match** — resume it. Its `runId` is the directory name. First
+  clear that run's stale handoff flag: if
+  `.orchestrate/runs/<runId>/context-flag.json` exists, delete it — it is the
   predecessor's handoff trigger, now consumed, and leaving it would make this
   session hand off immediately (section 2, step 4). Then load the whole
   `run-state.json`, preserving every top-level field — `runId`,
   `umbrellaBranch`, `parentIssue`, `waves`, `completedWaves`,
-  `finalPullRequest`, and `slices`. Every slice in a terminal state (`passed`,
-  `failed`, `skipped`) is left untouched — completed work is never redone. Every
-  slice still `in-progress` was interrupted before finishing: discard its
-  partial artifacts so it re-processes cleanly — if it has a `worktreePath`,
-  call `remove_worktree` (`force: true`); delete its `sliceBranch` if it exists
-  (locally, and on the remote if it was pushed) — deleting the remote branch
-  also auto-closes any orphaned slice pull request GitHub opened for it, so
-  re-processing produces a clean branch and PR with no manual PR cleanup needed
-  — then coerce that slice back to `pending`. Skip to section 2.
-- **No run directory holds an `in-progress` run** — start a fresh run below.
+  `finalPullRequest`, and `slices`. **Refresh the `driverSessionId` field** —
+  this resuming session is a new Claude Code session with a *new* `session_id`,
+  so overwrite `driverSessionId` with the current `$ORCHESTRATE_SESSION_ID`
+  (or `null` if it is empty or unset — applying the same operator notice as the
+  fresh-run step 6). Without this refresh the `context-watchdog` would keep
+  matching the predecessor's stale identity and automatic context-handoff would
+  be lost for the rest of the run. **Resume reloads only the matched run's
+  partition and run directory** — the `slices` and `waves` already persisted in
+  its `run-state.json` are the run's scope, fixed at fresh-run time. Do **not**
+  re-fetch the backlog, do **not** re-call `filter_to_one_parent_prd` or
+  `partition_backlog`: a resumed run never widens or re-derives its own scope.
+  Every slice in a terminal state (`passed`, `failed`, `skipped`) is left
+  untouched — completed work is never redone. Every slice still `in-progress`
+  was interrupted before finishing: discard its partial artifacts so it
+  re-processes cleanly — if it has a `worktreePath`, call `remove_worktree`
+  (`force: true`); delete its `sliceBranch` if it exists (locally, and on the
+  remote if it was pushed) — deleting the remote branch also auto-closes any
+  orphaned slice pull request GitHub opened for it, so re-processing produces a
+  clean branch and PR with no manual PR cleanup needed — then coerce that slice
+  back to `pending`. Checkpoint the refreshed `run-state.json`, then skip to
+  section 2.
+- **Two or more matches** — a **loud error**. Two in-progress runs for the same
+  PRD (or two in-progress whole-backlog runs) must never be silently resolved
+  by picking one. Report every matching `runId` and stop. The operator resolves
+  the ambiguity — finishing or cleaning up one of the runs — before re-invoking.
 
 ### Fresh run
 
 1. Resolve the run context:
    - Repository root: `git rev-parse --show-toplevel`.
+   - **Bootstrap the configuration if this is a first-ever run.** If the
+     repository has no `.orchestrate/` directory, call the `bootstrap_config`
+     MCP tool with the repository root as `repoPath` and this session's model
+     id as `model` (or an explicit `contextWindowTokens`). It detects the
+     project type, writes a project-appropriate `commands.json`,
+     `routing.json`, and `handoff.json`, creates `.orchestrate/runs/`, and adds
+     `.orchestrate/runs/` to the repository's `.gitignore`. Every step is
+     idempotent — an existing committed config is never overwritten — so this
+     is also a safe no-op on a repository already configured by hand.
    - Fetch so branch operations use current refs: `git fetch origin`.
    - Confirm the integration base: `git rev-parse --verify origin/development`.
-   - Generate a `runId` from the current timestamp including seconds, e.g.
-     `20260521-015143`.
+   - Generate a `runId` by joining the invocation prefix to the current
+     timestamp including seconds. For `/orchestrate <PRD#>` the prefix is
+     `prd<N>-` (the invoked `<PRD#>` as `<N>`), so the `runId` is
+     `prd195-20260521-015143`. For `/orchestrate` with no argument the prefix
+     is `backlog-`, so the `runId` is `backlog-20260521-015143`. The prefix is
+     never omitted — it is what the run-discovery scan (above) keys on.
 2. Read the whole backlog — every open issue with the `ready-for-agent` label.
    Always use `--json`; plain `gh issue view` can fail on the projectCards
    deprecation:
@@ -188,30 +249,59 @@ whose `status` is `in-progress`.
    a single parent issue number (`PRD #NNN` line) or `null`. Then assess its
    **complexity tier** — `trivial` (a small, localized change), `standard` (an
    ordinary feature or fix), or `complex` (broad, cross-cutting, or high-risk
-   work). Base the tier on the issue's scope, the number of files it likely
-   touches, and its risk. The tier drives routing in section 3.
+   work). The tier drives routing in section 3.
 
-   Once every issue is parsed, call the **`partition_backlog` MCP tool** to
-   split the backlog into `slices` and `parentIssue`:
+   Weigh **two independent axes** when assessing the tier, and take the higher
+   of the two:
 
-   - Pass the full backlog as the `issues` array to `partition_backlog`. It
-     returns `{ slices, parentIssue }`.
-   - `slices` is the subset of issues to process as implementation work — any
-     issue detected as the parent PRD is automatically excluded.
-   - `parentIssue` is the detected parent PRD, or `null`. The parent PRD is
-     only the progress-comment target (section 2 step 6) — it is **never**
-     enrolled as a slice.
+   - **Conceptual difficulty** — how hard the change is to reason about: subtle
+     logic, non-obvious interactions, high risk if it goes wrong.
+   - **Fan-out** — the number of *independent targets* the slice touches: files,
+     modules, subagent definitions, config entries, or doc surfaces that each
+     need their own edit and their own verification. A slice can be
+     conceptually simple yet have large fan-out — e.g. applying the same small
+     change across many files, or updating a schema plus every definition,
+     skill section, and doc that references it.
+
+   A **wide-but-simple** slice — low conceptual difficulty but high fan-out — is
+   legitimately tiered **up** (e.g. `standard` → `complex`) purely to buy the
+   larger implementer turn budget and an investigation pass: many independent
+   edits plus a capability-tool re-run after each one consume turns regardless
+   of how easy any single edit is. Do not tier a slice down just because each
+   target is trivial; the count of targets is itself a cost.
+
+   Once every issue is parsed, narrow the backlog if this is a partitioned run,
+   then call the **`partition_backlog` MCP tool** to split it into `slices` and
+   `parentIssue`:
+
+   - **Partitioned run (`/orchestrate <PRD#>`)** — first call the
+     **`filter_to_one_parent_prd` MCP tool**: pass the full backlog as `issues`
+     and the invoked `<PRD#>` as `prdNumber`. It returns only the issues whose
+     `parent` field equals `<PRD#>` — the run partition. If that filtered set
+     is **empty** (a wrong PRD number, or a PRD whose children are not yet
+     `ready-for-agent`), report "PRD #<PRD#> has no ready-for-agent children"
+     and stop — the same clean no-op as an empty backlog. Otherwise pass the
+     **filtered** set as the `issues` array to `partition_backlog`.
+   - **Whole-backlog run (`/orchestrate` no argument)** — pass the full backlog
+     directly as the `issues` array to `partition_backlog`; no filter step.
+   - `partition_backlog` returns `{ slices, parentIssue }`. `slices` is the
+     subset of issues to process as implementation work — any issue detected as
+     the parent PRD is automatically excluded. `parentIssue` is the detected
+     parent PRD, or `null` — only the progress-comment target (section 2
+     step 6), **never** enrolled as a slice.
    - Detection uses two signals in order: (1) a `Parent` field reference — if
      any issue names another backlog issue as its parent, that issue is the
      parent PRD; (2) the `PRD:` title heuristic — if no explicit parent
      reference exists, any issue whose title starts with `PRD:` (case-
      insensitive) is treated as the parent PRD. This ensures a decomposed PRD
      is never accidentally implemented as a slice.
-
-   To scope a run to one parent PRD's children (e.g. `/orchestrate <PRD#>`),
-   call the **`filter_to_one_parent_prd` MCP tool** first — pass the full
-   backlog and the `prdNumber`; it returns only the issues whose `parent` field
-   equals `prdNumber`, which you then pass to `partition_backlog`.
+   - **Partitioned run — hard-set `parentIssue`.** For a `/orchestrate <PRD#>`
+     run, `filter_to_one_parent_prd` has already removed the parent PRD from
+     the input, so the `parentIssue` `partition_backlog` returns may be `null`
+     or a mis-detected child. Ignore that value and use the invoked `<PRD#>` as
+     the run's `parentIssue` — write `<PRD#>` into `run-state.parentIssue`
+     (step 6) regardless of what `partition_backlog` returned. For a
+     whole-backlog run, keep the `parentIssue` `partition_backlog` returned.
 
 4. Call the `plan_waves` MCP tool with one entry per **slice** (not the full
    backlog — the parent PRD is excluded):
@@ -229,10 +319,26 @@ whose `status` is `in-progress`.
 6. Create the run directory `.orchestrate/runs/<runId>/`, then write the initial
    `run-state.json` into it as `.orchestrate/runs/<runId>/run-state.json` with
    **every field the schema declares** (see `references/run-state.md`):
-   - Top level: `runId`, `status: "in-progress"`, `umbrellaBranch`,
-     `integrationBase: "development"`, `parentIssue` (the parent PRD number, or
-     null), `startedAt` and `updatedAt` (current UTC time), the `waves` from
-     `plan_waves`, `completedWaves: 0`, `finalPullRequest: null`.
+   - Top level: `runId`, `status: "in-progress"`, `driverSessionId` (see the
+     paragraph below), `umbrellaBranch`, `integrationBase: "development"`,
+     `parentIssue`, `startedAt` and `updatedAt` (current UTC time), the `waves`
+     from `plan_waves`, `completedWaves: 0`, `finalPullRequest: null`. For a
+     partitioned run, `parentIssue` is the invoked `<PRD#>` (the hard-set value
+     from step 3 — never the value `partition_backlog` returned on the
+     already-filtered set). For a whole-backlog run, `parentIssue` is the parent
+     PRD `partition_backlog` detected, or `null`.
+
+   **Record the driver-session identity.** Read the environment variable
+   `$ORCHESTRATE_SESSION_ID` — the orchestrate `SessionStart` hook captures the
+   session's own `session_id` and persists it there. Write its value as
+   `driverSessionId` in `run-state.json`. This binds the global
+   `context-watchdog` to this run when several runs proceed concurrently in one
+   repository (see section 4). If `$ORCHESTRATE_SESSION_ID` is **empty or
+   unset** — the hook did not run, or the environment did not surface it — set
+   `driverSessionId` to `null` and **tell the operator**: the run proceeds
+   normally but **without automatic context-handoff**; should this session's
+   context fill, the operator must resume the run manually by invoking
+   `/orchestrate` in a new session.
    - One `slices` entry per issue: `issue`, `title`, `wave` (its index in
      `waves`), `tier`, `blockedBy`, `state: "pending"`, `sliceBranch:
      "orchestrate/slice-<N>"`, `worktreePath: null`, `pullRequest: null`,
@@ -261,10 +367,31 @@ Process waves in order, starting at index `completedWaves`. For each wave:
    no-op fast-forward — and on a resumed run, since the wave loop is re-entered
    from this step.
 2. **Select the processable slices.** A slice in this wave is processable when
-   its state is `pending` and every id in its `blockedBy` that belongs to the
-   backlog reached `passed`. If any such blocker is `failed` or `skipped`, mark
-   this slice `skipped` with a `failureReason` naming the blocker, checkpoint,
-   and do not process it.
+   its state is `pending`, every **in-partition** blocker it depends on reached
+   `passed`, and every **out-of-partition** blocker is verified resolved.
+
+   - **In-partition blockers** — a `blockedBy` id that is itself a slice in
+     this run's `slices` map. The slice is processable only when every such
+     blocker reached `passed`. If any is `failed` or `skipped`, mark this slice
+     `skipped` with a `failureReason` naming the blocker, checkpoint, and do not
+     process it.
+   - **Out-of-partition blockers** — a `blockedBy` id that is **not** a slice
+     in this run's `slices` map. This happens on a partitioned run: a child
+     issue may be blocked by an issue outside its parent PRD. `plan_waves` does
+     not order such a blocker — it treats any id outside its input set as
+     already satisfied — so the orchestrator must verify the blocker's **real**
+     tracker state itself before the dependent slice runs:
+
+     ```
+     gh issue view <blocker-id> --json state
+     ```
+
+     A `state` of `CLOSED` (the issue is merged or closed) → the blocker is
+     resolved; the dependent slice proceeds. A `state` of `OPEN` → the external
+     blocker is unmet; mark the dependent slice `skipped` with a `failureReason`
+     naming the external blocker issue (e.g. "blocked by #<id>, an issue
+     outside this run's partition that is still open"), checkpoint, and do not
+     process it. Never silently assume an out-of-partition blocker is done.
 3. **Process the slices.** Run section 3 for every processable slice. Slices in
    a wave are independent, so parallelize: when several slices are at the same
    subagent stage (investigation, implementation, review), spawn those
@@ -346,12 +473,22 @@ subagent's verbatim returned text and its `role`:
 3. **Run the investigator (higher tiers only).** If `routing.investigator` is
    non-null, spawn the `orchestrate:investigator-<effort>` subagent — `<effort>`
    and the Agent `model` override both come from `routing.investigator`. Its
-   prompt carries the issue and the repository root. Validate its returned text
-   with `validate_envelope` (role `investigator`); a `valid` envelope is the
-   research brief to keep for the implementer. An `invalid` or `missing`
-   envelope is a failed investigation pass — the slice has **FAILED** (the
-   investigator is read-only, so no worktree fallback applies). If
-   `routing.investigator` is null, skip this step.
+   prompt must carry the issue number/title/body **and the slice's acceptance
+   criteria explicitly named as the hard scope boundary** — the canonical per-
+   slice scope established by the backlog partitioner. The investigator must
+   not propose work that falls outside those acceptance criteria. Validate its
+   returned text with `validate_envelope` (role `investigator`); on `valid`,
+   **diff the returned brief against the acceptance criteria before forwarding
+   it to the implementer**: inspect the brief's `relevantFiles`, `approach`,
+   and `notes` for any work that does not trace to at least one acceptance
+   criterion. If the brief includes work from a sibling or downstream slice —
+   files, approaches, or recommendations that the acceptance criteria do not
+   require — the brief is over-scoped: treat it as a failed investigation pass
+   (the slice has **FAILED**). A brief that is correctly scoped to the
+   acceptance criteria is forwarded to the implementer as the research brief.
+   An `invalid` or `missing` envelope is a failed investigation pass — the
+   slice has **FAILED** (the investigator is read-only, so no worktree fallback
+   applies). If `routing.investigator` is null, skip this step.
 4. **Run the implementer.** Spawn the `orchestrate:implementer-<effort>`
    subagent — `<effort>` and the `model` override from `routing.implementer`. Its
    prompt must carry the issue number/title/body, the worktree path (every
@@ -359,17 +496,50 @@ subagent's verbatim returned text and its `role`:
    instruction to verify with the capability tools using the worktree path as
    `repoPath`, and a reminder not to commit, push, or run git. Validate its
    returned text with `validate_envelope` (role `implementer`). On a `valid`
-   envelope, an envelope `status` of `blocked` means the slice has **FAILED**;
-   `completed` proceeds. An `invalid` or `missing` envelope also means the slice
-   has **FAILED**.
+   envelope, classify the envelope `status`:
+   - `completed` — proceed to the worktree scope check in step 4a.
+   - `incomplete` — the implementer's graceful turn-budget self-report: it
+     foresaw it could not finish within its remaining turns and stopped cleanly
+     with partial work recorded. The slice has **FAILED** — record a
+     `failureReason` that names the turn-limit cutoff explicitly (e.g.
+     "implementer reported `incomplete` — exhausted its turn budget; partial
+     work preserved in the worktree for resumption"). See *Failure handling*.
+   - `blocked` — the implementer hit an unrecoverable obstacle: the slice has
+     **FAILED**.
+
+   An `invalid` or `missing` envelope also means the slice has **FAILED** — a
+   hard turn-limit cutoff that truncates the envelope mid-emission lands here as
+   `invalid`, distinct from the graceful `incomplete` self-report above.
+4a. **Verify the changeset against the worktree.** After a `completed`
+   implementer envelope — and before trusting it — call the `verify_changeset`
+   MCP tool with the slice's `worktreePath` and the implementer envelope's
+   `filesChanged` as `declaredFiles`. It inspects the worktree directly with
+   `git status` and compares the declared file set against what actually
+   changed on disk:
+   - `match: "matched"` or `"clean"` — the declared set agrees with the
+     worktree; proceed to step 5.
+   - `match: "empty-but-declared"` — the implementer declared files but the
+     worktree is clean: its edits never landed. The slice has **FAILED**.
+   - `match: "suspiciously-empty"` — the implementer declared nothing but the
+     worktree HAS changes: the work was under-reported. The slice has
+     **FAILED**; record the `presentButUndeclared` paths in the `failureReason`.
+   - `match: "mismatch"` — the declared set and the worktree changeset diverge.
+     Trust the worktree: use the **union** of the implementer's declared
+     `filesChanged` and the tool's `actualFiles` as the changed-file set for the
+     reviewer and the commit (step 6), and note the divergence
+     (`declaredButAbsent` / `presentButUndeclared`) so the reviewer sees it.
+   - `status: "error"` — the worktree could not be inspected; the slice has
+     **FAILED**.
 5. **Run the reviewer.** Spawn the `orchestrate:reviewer-<effort>` subagent —
    `<effort>` and the `model` override from `routing.reviewer` — in the same
-   worktree. Its prompt must carry the issue, the worktree path, the implementer
-   envelope's `filesChanged` and `notes`, and the investigator's brief if one
-   was produced. Validate its returned text with `validate_envelope` (role
-   `reviewer`). On a `valid` envelope, an envelope `status` of `failed` means
-   the slice has **FAILED**; `passed` proceeds. An `invalid` or `missing`
-   envelope also means the slice has **FAILED**.
+   worktree. Its prompt must carry the issue, the worktree path, the
+   changed-file set agreed on by step 4a — the implementer envelope's
+   `filesChanged` when `verify_changeset` matched, the union of declared and
+   `actualFiles` on a `mismatch` — the implementer envelope's `notes`, and the
+   investigator's brief if one was produced. Validate its returned text with
+   `validate_envelope` (role `reviewer`). On a `valid` envelope, an envelope
+   `status` of `failed` means the slice has **FAILED**; `passed` proceeds. An
+   `invalid` or `missing` envelope also means the slice has **FAILED**.
 6. **Commit and push.** Stage only the files the subagents reported changing —
    the union of the `filesChanged` arrays from the validated implementer and
    reviewer envelopes. Never `git add -A`: the capability tools leave untracked
@@ -473,6 +643,16 @@ fresh Claude Code session instead of continuing — the successor resumes from
 the `run-state.json` checkpoint exactly as section 1 describes. See
 `references/context-handoff.md` for the full mechanism.
 
+The watchdog binds to the correct run by matching this session's identity:
+it compares the hook event's `session_id` against each in-progress run's
+`driverSessionId`, and writes the flag only under the matching run's directory.
+When several runs proceed concurrently and the session cannot be disambiguated,
+the watchdog writes no flag — that run stays correct and merely loses automatic
+context-handoff. The same **degraded mode** applies when `driverSessionId` is
+`null` because `$ORCHESTRATE_SESSION_ID` was unavailable at run start (section 1,
+step 6): the run is unaffected except that it will not hand off automatically,
+and the operator was already told to resume it manually if needed.
+
 To hand off:
 
 1. Make sure `run-state.json` is checkpointed and its `status` is still
@@ -495,17 +675,32 @@ To hand off:
 
 A slice **FAILS** when `create_worktree` errors, a subagent's result envelope
 is invalid or missing (`validate_envelope` returns `invalid` or `missing`), a
-validated implementer envelope has `status: "blocked"`, a validated reviewer
-envelope has `status: "failed"`, the staged changeset is empty, or a merge
-conflict the `conflict-resolver` cannot fix. The orchestrator decides FAILURE
-**only** from the validated envelope and tool results — never from a subagent's
-prose. An invalid or missing envelope is always a FAILED slice; it is never
-treated as success.
+validated implementer envelope has `status: "blocked"` or `status: "incomplete"`,
+a validated reviewer envelope has `status: "failed"`, `verify_changeset` reports
+the implementer's declared file set does not match the worktree
+(`empty-but-declared` or `suspiciously-empty`, or a `status: "error"`), the
+staged changeset is empty, or a merge conflict the `conflict-resolver` cannot
+fix. The orchestrator decides FAILURE **only** from the validated envelope and
+tool results — never from a subagent's prose. An invalid or missing envelope is
+always a FAILED slice; it is never treated as success.
+
+The implementer envelope's `incomplete` status is a **distinct** failure flavor:
+it is the implementer's graceful turn-budget self-report — partial, resumable
+work — as opposed to `blocked` (an unrecoverable obstacle) or an `invalid`
+envelope (a hard turn-limit cutoff that truncated the envelope). All three FAIL
+the slice, but the `failureReason` must name the cause precisely so a developer
+can tell a resumable budget exhaustion apart from a genuine blocker. An
+`incomplete` slice's worktree holds usable partial work — preserve it (as every
+FAILED slice's worktree is preserved) so the slice can be resumed.
 
 On a FAILED slice:
 
 - Set its `state` to `failed` with a `failureReason`, checkpoint, and
-  transition the issue's tracker label:
+  transition the issue's tracker label. For a slice that failed because the
+  implementer reported `incomplete` — partial, resumable work — `needs-info`
+  better signals "resume me" than `needs-triage`:
+  `gh issue edit <N> --remove-label ready-for-agent --add-label needs-info`.
+  For every other failure cause, use `needs-triage`:
   `gh issue edit <N> --remove-label ready-for-agent --add-label needs-triage`.
 - Do **not** merge it. **Preserve its worktree** — leave it on disk for a
   developer to inspect. Do not call `remove_worktree`.
@@ -527,7 +722,9 @@ A slice is **SKIPPED** (state `skipped`) when one of its blockers did not reach
 `failureReason` and checkpoint. Its tracker label stays `ready-for-agent` so a
 later run can retry it once the blocker is resolved.
 
-Other stop conditions: an empty backlog is a clean no-op; a `plan_waves`
+Other stop conditions: an empty backlog is a clean no-op, as is a
+`/orchestrate <PRD#>` run whose PRD has no `ready-for-agent` children
+(`filter_to_one_parent_prd` returns an empty set); a `plan_waves`
 `CYCLE_DETECTED` result stops the run before any branch is created.
 
 ## Tracker updates

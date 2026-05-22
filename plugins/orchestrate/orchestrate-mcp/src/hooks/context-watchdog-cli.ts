@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { runWatchdog, discoverActiveRunId } from "./context-watchdog.js";
+import { runWatchdog, findActiveRunForSession } from "./context-watchdog.js";
 
 // Entry point for the `context-watchdog` PostToolUse hook. Claude Code pipes
 // the hook event JSON on stdin; this script estimates the session's context
@@ -7,11 +7,15 @@ import { runWatchdog, discoverActiveRunId } from "./context-watchdog.js";
 // exits 0 — a hook must never fail a tool call — and only emits output on the
 // turn the flag is first raised, so it stays silent in unrelated sessions.
 //
-// The hook event carries only `cwd` and `transcript_path` — never a runId.
-// Run state now lives in per-run directories (.orchestrate/runs/<runId>/), so
-// the hook first discovers the active run by scanning for the single
-// in-progress run-state.json, then runs the watchdog against it. With no
-// active run, it is a silent no-op.
+// The hook event carries `cwd`, `transcript_path`, and `session_id` — never a
+// runId. Run state lives in per-run directories (.orchestrate/runs/<runId>/),
+// so the hook first discovers the active run by matching the event's
+// `session_id` against each in-progress run's recorded driver-session identity
+// (`findActiveRunForSession`), then runs the watchdog against that run. When
+// several runs proceed concurrently and the session cannot be disambiguated,
+// discovery returns null and the hook is a silent no-op — the run stays
+// correct and merely loses automatic context-handoff for this invocation.
+// With no active run at all, it is likewise a silent no-op.
 
 /** Reads all of stdin as a string. Resolves with whatever arrived on error. */
 function readStdin(): Promise<string> {
@@ -37,9 +41,13 @@ async function main(): Promise<void> {
   try {
     const event = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
     const cwd = typeof event.cwd === "string" ? event.cwd : process.cwd();
+    const sessionId =
+      typeof event.session_id === "string" ? event.session_id : undefined;
 
-    // Discover the active run; with none, the watchdog has nothing to do.
-    const runId = discoverActiveRunId(cwd);
+    // Discover the run this session drives. With concurrent runs, the session
+    // identity disambiguates; when it cannot, discovery returns null and the
+    // watchdog has nothing safe to do.
+    const runId = findActiveRunForSession(cwd, sessionId);
     if (runId === null) {
       process.exit(0);
     }
