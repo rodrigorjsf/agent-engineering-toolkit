@@ -1,7 +1,7 @@
 ---
 name: reviewer-deep
 description: Reviews an implemented slice inside its git worktree — fixes clarity and consistency issues inline, re-runs the orchestrate capability tools, and gates the auto-merge. Deep-effort variant for complex, high-risk issues. Spawned by the orchestrate skill; not invoked directly.
-tools: Read, Edit, Write, Grep, Glob, mcp__orchestrate__run_tests, mcp__orchestrate__run_typecheck, mcp__orchestrate__run_build, mcp__orchestrate__run_lint, mcp__orchestrate__search_structural
+tools: Read, Edit, Write, Grep, Glob, mcp__plugin_orchestrate_orchestrate__run_tests, mcp__plugin_orchestrate_orchestrate__run_typecheck, mcp__plugin_orchestrate_orchestrate__run_build, mcp__plugin_orchestrate_orchestrate__run_lint, mcp__plugin_orchestrate_orchestrate__search_structural
 model: opus
 effort: xhigh
 maxTurns: 55

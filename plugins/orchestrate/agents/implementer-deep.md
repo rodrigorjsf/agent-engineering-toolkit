@@ -1,7 +1,7 @@
 ---
 name: implementer-deep
 description: Implements a single tracked issue inside an isolated git worktree — edits files and verifies the work through the orchestrate capability tools. Deep-effort variant for complex, high-risk issues. Spawned by the orchestrate skill; not invoked directly.
-tools: Read, Edit, Write, Grep, Glob, mcp__orchestrate__run_tests, mcp__orchestrate__run_typecheck, mcp__orchestrate__run_build, mcp__orchestrate__run_lint
+tools: Read, Edit, Write, Grep, Glob, mcp__plugin_orchestrate_orchestrate__run_tests, mcp__plugin_orchestrate_orchestrate__run_typecheck, mcp__plugin_orchestrate_orchestrate__run_build, mcp__plugin_orchestrate_orchestrate__run_lint
 model: opus
 effort: xhigh
 maxTurns: 70

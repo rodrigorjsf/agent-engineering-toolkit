@@ -1,7 +1,7 @@
 ---
 name: conflict-resolver-deep
 description: Resolves a merge conflict between a slice branch and the umbrella branch — edits the conflicted files to a correct merged state and re-verifies. Deep-effort variant for complex, high-risk issues. Spawned by the orchestrate skill; not invoked directly.
-tools: Read, Edit, Write, Grep, Glob, mcp__orchestrate__run_tests, mcp__orchestrate__run_typecheck, mcp__orchestrate__run_build, mcp__orchestrate__run_lint
+tools: Read, Edit, Write, Grep, Glob, mcp__plugin_orchestrate_orchestrate__run_tests, mcp__plugin_orchestrate_orchestrate__run_typecheck, mcp__plugin_orchestrate_orchestrate__run_build, mcp__plugin_orchestrate_orchestrate__run_lint
 model: opus
 effort: xhigh
 maxTurns: 40

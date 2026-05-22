@@ -1,7 +1,7 @@
 ---
 name: investigator-deep
 description: Investigates the codebase and issue before implementation — explores relevant files, patterns, and risks, then returns a research brief for the implementer. Deep-effort variant for complex-tier issues requiring wider exploration. Spawned by the orchestrate skill before the implementer; not invoked directly.
-tools: Read, Grep, Glob, mcp__orchestrate__search_structural
+tools: Read, Grep, Glob, mcp__plugin_orchestrate_orchestrate__search_structural
 model: opus
 effort: xhigh
 maxTurns: 30
