@@ -494,8 +494,11 @@ export async function removeWorktree(
  * destination path (carrying the status prefix) immediately followed by a
  * bare source path. Both are real paths and are returned individually — the
  * output never contains an `old -> new` composite.
+ *
+ * Exported so the changed-file recovery tool (`recover_changed_files`) reuses
+ * the identical rename/copy NUL handling rather than re-deriving it.
  */
-function parsePorcelainZ(porcelain: string): string[] {
+export function parsePorcelainZ(porcelain: string): string[] {
   // Records are NUL-terminated; the final record has a trailing NUL.
   const tokens = porcelain.split("\0").filter((t) => t.length > 0);
   const paths: string[] = [];

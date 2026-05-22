@@ -149,6 +149,42 @@ _Avoid_: main, master, trunk (the integration base is `development`, distinct fr
 Removal of a concluded run's run directory, worktrees, and umbrella/slice branches — gated on that run's final integration pull request having been merged into the **Integration base**.
 _Avoid_: purge, garbage collection, prune
 
+**Backlog partitioner**:
+The pure module (`src/tools/backlog-partitioner.ts`) that splits the fetched `ready-for-agent` backlog into the run's `slices` set and the resolved `parentIssue`. It is the single canonical answer to "which issues are slices, and which is the parent PRD". Two detection signals are applied in order: (1) parent-field reference — any issue named as another backlog issue's `Parent`; (2) the `PRD:` title heuristic — any backlog issue whose title starts with `PRD:` (case-insensitive), catching a parent PRD that child issues have not yet linked via their `Parent` field. The detected parent PRD is excluded from `slices` and surfaced as `parentIssue`; it is only a progress-comment target, never an implementation slice.
+_Avoid_: backlog filter, issue splitter
+
+**Parent PRD**:
+The single parent issue detected by the **Backlog partitioner** for a run — either via parent-field reference or the `PRD:` title heuristic. Recorded as `parentIssue` in `run-state.json`. Its only role during a run is as the target for wave-progress comments (`gh issue comment <parentIssue>`); it is never enrolled as a slice. `null` when no parent is detected.
+_Avoid_: umbrella issue, epic (epic is an unrelated concept)
+
+**PRD: title heuristic**:
+Secondary signal used by the **Backlog partitioner** when no explicit parent-field reference exists: any backlog issue whose title starts with `PRD:` (case-insensitive) is treated as the **Parent PRD**. Catches a decomposed PRD that appears in the backlog before child issues have been created or before children have their `Parent` field set.
+_Avoid_: title matching, title filter
+
+**filterToOneParentPrd**:
+The exported function in `backlog-partitioner.ts` that narrows the full backlog to the child issues of a single parent PRD number (matching `parent === prdNumber`). Used to scope a `/orchestrate <PRD#>` run to one **Run partition**. The parent PRD issue itself is excluded from the result.
+_Avoid_: backlog filter, PRD filter (too generic)
+
+**Capability detector** (`detect-project` module):
+A pure module in `orchestrate-mcp/src/tools/detect-project.ts` that inspects a repository root's top-level manifest files and returns the **Capability command map** for the detected project type. Input: a repository root path. Output: a command map or empty object. No side effects. Detection precedence: npm (`package.json`) > Cargo (`Cargo.toml`) > Python (`pyproject.toml`) > Make (`Makefile`) > none. A repository with no recognized manifest yields an empty map — never a fallback npm map.
+_Avoid_: project sniffer, auto-configurator, manifest scanner
+
+**Capability command map**:
+A plain object with the four fixed capability verb keys (`tests`, `typecheck`, `build`, `lint`), each mapping to an argv array consumed directly by the orchestrate run tools. Produced by the **Capability detector**. The `install` verb is never included — that is a setup verb, not a capability verb. For unrecognized project types the map is empty (`{}`).
+_Avoid_: command config, verb table, command dictionary
+
+**Result envelope**:
+The machine-checkable structured result every orchestrate subagent emits as the last of its turn — a fenced ` ```orchestrate-envelope ` JSON block conforming to a per-role schema (a `discriminatedUnion` on `role`). Worker roles (implementer, reviewer, conflict-resolver) carry `status`, `filesChanged`, `verification`, and `notes`; the read-only investigator carries a research brief and no `status`/`filesChanged`. It is the orchestrator's only source of a subagent's status and changed-file set — the orchestrator never parses subagent prose.
+_Avoid_: result blob, subagent summary, return payload
+
+**Envelope validator**:
+The deterministic `validate_envelope` MCP tool that classifies a subagent's returned text into exactly one of `valid` (a schema-conforming envelope for the expected role), `invalid` (an envelope was attempted but is truncated, malformed, or off-schema), or `missing` (no envelope block found). A truncated envelope is always reported `invalid`, never silently accepted.
+_Avoid_: envelope parser, schema checker (validator is the contract name; it classifies, it does not merely parse)
+
+**Worktree fallback**:
+The orchestrator's recovery path, the `recover_changed_files` MCP tool, for when a subagent's **Result envelope** is missing or invalid: it inspects the slice worktree directly with `git status` and returns the full changed-file set (build artifacts included), treating the worktree as the source of truth. Applies to the implementer, reviewer, and conflict-resolver only — the read-only investigator leaves no worktree changes to recover.
+_Avoid_: git-status recovery, changed-file scan (worktree fallback is the precise term — it is the fallback, not the primary path)
+
 **Subagent advisor policy**:
 The deliberate decision that all eight orchestrate subagents (`investigator`, `implementer`, `reviewer`, `conflict-resolver`, both `-standard` and `-deep` variants) do **not** call an advisor tool. The `advisor` tool is intentionally absent from every subagent's `tools:` frontmatter. Advisor passes, when used, run at the **orchestrator boundary** (the driver session running the `orchestrate` skill), not inside any subagent. The policy is expressed as an explicit `## Advisor policy` section — word-for-word identical between the `-standard` and `-deep` variant of each role — so the decision is self-evident from the definition file. See ADR-0009.
 _Avoid_: no-advisor rule, advisor ban (the policy is positive — advisor responsibility lives at the orchestrator boundary, not absent from the system)
@@ -170,6 +206,8 @@ _Avoid_: no-advisor rule, advisor ban (the policy is positive — advisor respon
 - Sibling **Orchestration runs** in the same repository must own disjoint **Run partitions** — one parent PRD's children each.
 - A **Driver session** executes exactly one **Orchestration run**; the context-watchdog binds a run by matching the **Driver session** identity recorded in run-state.
 - **Run cleanup** acts on an **Orchestration run** only after its final pull request has merged into the **Integration base**.
+- Every orchestrate subagent returns exactly one **Result envelope**; the **Envelope validator** classifies it, and the orchestrator acts only on that classification — never on subagent prose.
+- The **Worktree fallback** runs only when the **Envelope validator** reports a worker subagent's **Result envelope** `invalid` or `missing` — it never substitutes for a `valid` envelope.
 
 ## Example dialogue
 

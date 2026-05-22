@@ -59,14 +59,39 @@ at the orchestrator boundary — not inside any subagent.
 
 ## What you return
 
-Return a structured summary with these fields:
+End your turn with a **result envelope** — a single fenced
+` ```orchestrate-envelope ` block holding one JSON object. The orchestrator
+validates this envelope; it never parses your prose. Emit the envelope as the
+**last thing** in your final message, complete and unabbreviated — a truncated
+or missing envelope is treated as a FAILED slice.
 
-- **status** — `completed` (acceptance criteria met and all configured
-  capability tools pass) or `blocked` (you could not finish).
-- **filesChanged** — the files you created or edited, as paths relative to the
-  worktree root.
-- **verification** — each capability tool you ran and its result (`passed`,
-  `failed`, or `not-configured`).
-- **notes** — anything the orchestrator or a later reviewer must know:
-  assumptions you made, partial work, or — if `blocked` — exactly what stopped
+The envelope object has exactly these fields:
+
+- **role** — the string `"implementer"`.
+- **status** — `"completed"` (acceptance criteria met and all configured
+  capability tools pass) or `"blocked"` (you could not finish).
+- **filesChanged** — an array of the files you created or edited, as paths
+  relative to the worktree root (`[]` if you changed nothing).
+- **verification** — an array of objects, one per capability tool you ran, each
+  `{ "capability": "tests" | "typecheck" | "build" | "lint", "result":
+  "passed" | "failed" | "not-configured" }`.
+- **notes** — a string: anything the orchestrator or a later reviewer must know
+  — assumptions you made, partial work, or, if `blocked`, exactly what stopped
   you and what was tried.
+
+Example:
+
+```orchestrate-envelope
+{
+  "role": "implementer",
+  "status": "completed",
+  "filesChanged": ["src/foo.ts", "test/foo.test.ts"],
+  "verification": [
+    { "capability": "typecheck", "result": "passed" },
+    { "capability": "build", "result": "passed" },
+    { "capability": "tests", "result": "passed" },
+    { "capability": "lint", "result": "not-configured" }
+  ],
+  "notes": "Implemented per the acceptance criteria."
+}
+```
