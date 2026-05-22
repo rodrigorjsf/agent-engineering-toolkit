@@ -1,8 +1,14 @@
 # Docs Drift Manifest
 
 Centralized registry of all reference file → source doc mappings for drift detection.
-Updated: 2026-05-03
+Updated: 2026-05-22
 base_path: plugins/agent-customizer/skills/
+
+> **⚠️ 2026-05-22 — line ranges pending re-verification.** The vendor-doc mirrors under
+> `docs/claude/`, `docs/claude-code/`, and `docs/cursor/` were re-synced against upstream
+> (see ADR-0010). The re-sync shifted line numbers in those sources, so any line-range
+> citation below that targets them is stale. Re-run the `docs-drift-checker` agent to
+> regenerate verified ranges before relying on them.
 
 ## How to Use
 
