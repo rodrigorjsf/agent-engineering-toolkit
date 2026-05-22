@@ -223,6 +223,68 @@ describe("create_worktree", () => {
     expect(retry.branch).toBe("orphan-candidate-branch");
     expect(fs.existsSync(goodPath)).toBe(true);
   });
+
+  it("fetches over an ssh:// remote and reports fetchStatus='ok' (F-005 regression)", async () => {
+    // F-005: the git wrapper must not blank `core.sshCommand` in a way that
+    // breaks SSH transport. A bare repo reached over an `ssh://` URL stands in
+    // for a real SSH remote; a stub `ssh` keeps the test offline.
+    //
+    // The temp dirs are created before the try so the finally can always clean
+    // them; everything that can fail runs inside the try.
+    const remoteDir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-remote-"));
+    const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-ssh-"));
+
+    // GIT_SSH_COMMAND would override `-c core.sshCommand` and mask the bug —
+    // strip it for the test, restore it after. PATH is restored the same way:
+    // assigning `undefined` back would coerce to the string "undefined".
+    const savedPath = process.env.PATH;
+    const savedSshCommand = process.env.GIT_SSH_COMMAND;
+
+    try {
+      const remoteBare = path.join(remoteDir, "remote.git");
+      git(["clone", "--bare", repoPath, remoteBare], remoteDir);
+      git(["remote", "add", "origin", `ssh://fake${remoteBare}`], repoPath);
+
+      // Stub `ssh`: ignore the options and host, run the remote command
+      // locally. Git passes the remote command (`git-upload-pack '<path>'`) as
+      // the last argument, so the stub runs the last arg via `sh -c`.
+      // Prepended to PATH so the wrapper's `core.sshCommand=ssh` resolves here.
+      const stubSsh = path.join(stubDir, "ssh");
+      fs.writeFileSync(
+        stubSsh,
+        '#!/bin/sh\nfor arg in "$@"; do cmd="$arg"; done\nexec sh -c "$cmd"\n'
+      );
+      fs.chmodSync(stubSsh, 0o755);
+
+      delete process.env.GIT_SSH_COMMAND;
+      process.env.PATH = `${stubDir}${path.delimiter}${savedPath ?? ""}`;
+
+      const wtPath = path.join(worktreesDir, "ssh-fetch-wt");
+      const result = await createWorktree({
+        baseRef: "HEAD",
+        branch: "ssh-fetch-branch",
+        worktreePath: wtPath,
+        repoPath,
+      });
+
+      expect(result.status).toBe("ok");
+      expect(result.fetchStatus).toBe("ok");
+      expect(result.fetchError).toBeUndefined();
+    } finally {
+      if (savedPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = savedPath;
+      }
+      if (savedSshCommand === undefined) {
+        delete process.env.GIT_SSH_COMMAND;
+      } else {
+        process.env.GIT_SSH_COMMAND = savedSshCommand;
+      }
+      rmrf(remoteDir);
+      rmrf(stubDir);
+    }
+  });
 });
 
 // ─── remove_worktree ──────────────────────────────────────────────────────────

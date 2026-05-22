@@ -31,7 +31,7 @@ Given a repository with open issues labelled `ready-for-agent`, one `/orchestrat
 
 The orchestrate skill is the **orchestrator**. It is the single actor that touches git, GitHub, and the shell — branches, worktrees, commits, pushes, pull requests, merges, label transitions, and the `run-state.json` checkpoint. It also assesses each issue's complexity tier and routes each role accordingly.
 
-Every other role is a **subagent**, spawned with the standard Agent tool:
+Every other role is a **subagent**, spawned with the standard Agent tool by its namespaced type — `orchestrate:<role>-<effort>`, where `<effort>` is `standard` or `deep` (for example `orchestrate:implementer-deep`). The `orchestrate:` prefix is required; a bare name does not resolve.
 
 | Role | Effort variants | Access |
 |------|-----------------|--------|
