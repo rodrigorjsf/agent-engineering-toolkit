@@ -14,10 +14,15 @@ import * as path from "path";
 // run ids can never resolve to a shared path.
 
 /**
- * Allowed `runId` shape. The skill mints run ids as `YYYYMMDD-HHMMSS`
- * timestamps, which this pattern admits. The pattern is also the path-traversal
- * guard: a `runId` flows into `path.join`, so an id like `../../etc` or one
- * carrying a separator must be rejected before it can escape the run directory.
+ * Allowed `runId` shape. The skill mints run ids in two prefixed forms:
+ * `prd<N>-<timestamp>` for a run partitioned to one parent PRD's children
+ * (e.g. `prd195-20260521-015143`), and `backlog-<timestamp>` for a
+ * no-argument whole-backlog run (e.g. `backlog-20260521-015143`). Both reduce
+ * to letters, digits, and hyphens, which this pattern admits — the `prd<N>-`
+ * prefix is also what the startup scan parses to disambiguate which run to
+ * resume. The pattern is also the path-traversal guard: a `runId` flows into
+ * `path.join`, so an id like `../../etc` or one carrying a separator must be
+ * rejected before it can escape the run directory.
  */
 const RUN_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
@@ -44,8 +49,11 @@ export type ResolveRunDirResult =
 
 /**
  * Returns true when `runId` is a safe run-directory name: a non-empty string of
- * letters, digits, underscores, and hyphens only. Anything that could traverse
- * out of the run directory (`..`, a path separator, a dot) is rejected. Pure.
+ * letters, digits, underscores, and hyphens only. This admits both prefixed
+ * forms the skill mints — `prd<N>-<timestamp>` and `backlog-<timestamp>` —
+ * since neither introduces a character outside that class. Anything that could
+ * traverse out of the run directory (`..`, a path separator, a dot) is
+ * rejected, prefix or no prefix. Pure.
  */
 export function isValidRunId(runId: string): boolean {
   return RUN_ID_PATTERN.test(runId);
@@ -53,8 +61,11 @@ export function isValidRunId(runId: string): boolean {
 
 /**
  * Resolves a `runId` to its ephemeral paths under
- * `<repoPath>/.orchestrate/runs/<runId>/`. Pure — performs no filesystem I/O;
- * the caller is responsible for `mkdirSync` before any write.
+ * `<repoPath>/.orchestrate/runs/<runId>/`. The `runId` is one of the skill's
+ * minted forms — `prd<N>-<timestamp>` or `backlog-<timestamp>` — so two
+ * concurrent runs (one partitioned, one whole-backlog) always resolve to
+ * disjoint run directories. Pure — performs no filesystem I/O; the caller is
+ * responsible for `mkdirSync` before any write.
  *
  * A malformed `runId` (one that fails {@link isValidRunId}) is returned as a
  * structured `RUN_ID_INVALID` error rather than throwing — the resolver never

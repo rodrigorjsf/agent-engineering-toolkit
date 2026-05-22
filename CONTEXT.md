@@ -137,6 +137,10 @@ _Avoid_: backlog slice, batch (slice is reserved for a single issue's work)
 The per-run `.orchestrate/runs/<runId>/` directory holding that run's ephemeral state — the run-state checkpoint, the context-flag, and rendered HTML artifacts. Gitignored; the committed config files stay at the `.orchestrate/` top level.
 _Avoid_: run folder, state dir
 
+**runId format**:
+A run's identifier in one of two minted forms — `prd<N>-<timestamp>` for a partitioned run scoped to PRD `<N>`'s children (`/orchestrate <PRD#>`), and `backlog-<timestamp>` for a no-argument whole-backlog run. The `prd<N>-` / `backlog-` prefix is durable, persisted in `run-state.json`, and is the match key the startup scan parses to decide which in-progress run a re-invocation resumes. It also flows into the **Run directory** path and the umbrella branch name, keeping two concurrent runs disjoint.
+_Avoid_: timestamp id, run name (the prefix is load-bearing, not decoration)
+
 **Driver session**:
 The Claude Code session executing a run's orchestrator. Its identity is recorded in the run's run-state so the global context-watchdog binds the correct run when several runs proceed concurrently.
 _Avoid_: orchestrator window, owner session
