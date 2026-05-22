@@ -42,6 +42,8 @@ Every other role is a **subagent**, spawned with the standard Agent tool by its 
 
 This is the **no-Bash safety model**: the subagents have no shell and no git access. They are sandboxed to a single worktree, and the investigator cannot write at all. Only the orchestrator runs commands, touches branches and remotes, and writes to the issue tracker. A subagent cannot push, cannot merge, cannot edit an issue, and cannot reach outside its worktree — so the blast radius of any one subagent is one directory.
 
+Every subagent ends its turn with a machine-checkable **result envelope** — a fenced ` ```orchestrate-envelope ` JSON block conforming to a per-role schema. The orchestrator reads a subagent's status and changed-file set only from this validated envelope (via the `validate_envelope` tool), never from its prose — so a turn that was truncated or cut short is detected, never silently accepted. When an envelope is missing or invalid, the orchestrator recovers the worktree's changed-file set by inspecting it directly with `recover_changed_files`, treating the worktree as the source of truth.
+
 ### The orchestrate MCP server
 
 The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing the deterministic tools the orchestrator and subagents call:
@@ -52,11 +54,46 @@ The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing 
 | `run_tests` / `run_typecheck` / `run_build` / `run_lint` | Run the project's configured capability commands |
 | `plan_waves` | Topologically sort issues into dependency waves; detects cycles |
 | `resolve_routing` | Resolve the model and effort variant for each role from a complexity tier |
+| `validate_envelope` | Validate a subagent's result envelope against its role schema — distinguishes a valid, a truncated/invalid, and a missing envelope |
+| `recover_changed_files` | Recover a worktree's changed-file set by inspecting it directly — the orchestrator's fallback when an envelope is missing or invalid |
 | `render_dashboard` / `render_graph` / `render_report` | Render standalone HTML artifacts from the run state |
 | `spawn_successor` | Launch a fresh Claude Code session that resumes the run |
 | `search_structural` | Syntax-aware (ast-grep) code search, with a text-search fallback |
 
 Every tool returns a discriminated `status` and never throws — failures are structured results, not exceptions.
+
+### Project capability detection
+
+The `detect-project` module (`orchestrate-mcp/src/tools/detect-project.ts`) auto-detects a repository's project type from its top-level manifest files and emits the matching capability command map. It is pure — repository root in, command map out, no side effects.
+
+**Detection precedence** (first match wins):
+
+| Manifest file | Project type | Command set |
+|---------------|-------------|-------------|
+| `package.json` | npm | `npm test`, `npm run typecheck`, `npm run build`, `npm run lint` |
+| `Cargo.toml` | Cargo | `cargo test`, `cargo check`, `cargo build`, `cargo clippy` |
+| `pyproject.toml` | Python | `pytest`, `mypy .`, `python -m build`, `ruff check .` |
+| `Makefile` | Make | `make test`, `make typecheck`, `make build`, `make lint` |
+| _(none found)_ | none | empty map — no capability tool is wired to a failing command |
+
+**Usage example** (TypeScript):
+
+```typescript
+import { detectCommandMap } from "./tools/detect-project.js";
+
+// Detect from a repository root — returns the command map or {} if unrecognized.
+const map = detectCommandMap("/path/to/repo");
+// For a repo with package.json:
+// { tests: ["npm", "test"], typecheck: ["npm", "run", "typecheck"],
+//   build: ["npm", "run", "build"], lint: ["npm", "run", "lint"] }
+
+// Or use the pure functions directly (no I/O):
+import { detectProjectType, buildCommandMap } from "./tools/detect-project.js";
+const type = detectProjectType(["Cargo.toml", "Makefile"]); // "cargo"
+const commands = buildCommandMap(type); // cargo argv arrays
+```
+
+A manifest-less repository yields `{}` — never an npm fallback — so no capability tool is ever wired to a command guaranteed to fail.
 
 ### Context handoff
 

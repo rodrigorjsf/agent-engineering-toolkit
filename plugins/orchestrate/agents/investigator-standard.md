@@ -55,17 +55,47 @@ always acceptable.
 - Do not attempt to implement, fix, or change anything. Investigate only.
 - Do not edit the issue, open pull requests, or change tracker labels.
 
+## Advisor policy
+
+This subagent does not call an advisor tool. The `advisor` tool is intentionally
+absent from this subagent's `tools:` frontmatter. Advisor passes, when used, run
+at the orchestrator boundary — not inside any subagent.
+
 ## What you return
 
-Return a structured brief with these fields:
+End your turn with a **result envelope** — a single fenced
+` ```orchestrate-envelope ` block holding one JSON object. The orchestrator
+validates this envelope; it never parses your prose. Emit the envelope as the
+**last thing** in your final message, complete and unabbreviated — a truncated
+or missing envelope is treated as a failed investigation pass.
 
-- **relevantFiles** — paths (relative to the repository root) the implementer
-  will likely need to read or change.
-- **patterns** — existing conventions in the affected areas that the implementer
-  must follow (naming, structure, error handling, test style, etc.).
-- **risks** — edge cases and failure modes the implementer must handle; callers
-  or consumers whose behavior could break; invariants that must be preserved.
-- **approach** — a suggested implementation approach: what to change, in what
-  order, and why.
-- **notes** — anything else the implementer should know that does not fit the
-  fields above.
+The envelope object has exactly these fields:
+
+- **role** — the string `"investigator"`.
+- **relevantFiles** — an array of paths (relative to the repository root) the
+  implementer will likely need to read or change.
+- **patterns** — a string: existing conventions in the affected areas the
+  implementer must follow (naming, structure, error handling, test style, etc.).
+- **risks** — a string: edge cases and failure modes the implementer must
+  handle; callers or consumers whose behavior could break; invariants that must
+  be preserved.
+- **approach** — a string: a suggested implementation approach — what to change,
+  in what order, and why.
+- **notes** — a string: anything else the implementer should know that does not
+  fit the fields above.
+
+The investigator is read-only, so the envelope carries no `status` and no
+`filesChanged`.
+
+Example:
+
+```orchestrate-envelope
+{
+  "role": "investigator",
+  "relevantFiles": ["src/tools/foo.ts", "test/foo.test.ts"],
+  "patterns": "Zod schemas are the single source of truth; types via z.infer.",
+  "risks": "Callers of parseFoo() assume a non-null return — preserve that.",
+  "approach": "Add the schema, then the validator, then the tests.",
+  "notes": "ast-grep was unavailable; text search was used instead."
+}
+```
