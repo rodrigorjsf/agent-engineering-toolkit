@@ -30,10 +30,15 @@ of restarting.
 
 Every role except the orchestrator exists in two effort variants — `-standard`
 and `-deep`. The `resolve_routing` tool picks the variant and model per role
-from the issue's complexity tier (section 3, step 2). All four subagents have
-**no Bash and no git access** — they are sandboxed to one worktree (the
-investigator is read-only). Only the orchestrator touches branches, remotes,
-and the tracker.
+from the issue's complexity tier (section 3, step 2). Each role is spawned by
+its **namespaced** subagent type — `orchestrate:investigator-<effort>`,
+`orchestrate:implementer-<effort>`, `orchestrate:reviewer-<effort>`, and
+`orchestrate:conflict-resolver-<effort>`, where `<effort>` is `standard` or
+`deep`. The `orchestrate:` prefix is required: the plugin registers its bundled
+subagents under that namespace, so a bare, un-namespaced name fails to resolve.
+All four subagents have **no Bash and no git access** — they are sandboxed to
+one worktree (the investigator is read-only). Only the orchestrator touches
+branches, remotes, and the tracker.
 
 ## Prerequisites
 
@@ -207,19 +212,20 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
    - `errorCode: "CONFIG_INVALID"` — the routing config is broken; the slice
      has **FAILED**.
 3. **Run the investigator (higher tiers only).** If `routing.investigator` is
-   non-null, spawn the `investigator-<effort>` subagent — `<effort>` and the
-   Agent `model` override both come from `routing.investigator`. Its prompt
+   non-null, spawn the `orchestrate:investigator-<effort>` subagent — `<effort>`
+   and the Agent `model` override both come from `routing.investigator`. Its prompt
    carries the issue and the repository root; keep its returned brief for the
    implementer. If `routing.investigator` is null, skip this step.
-4. **Run the implementer.** Spawn the `implementer-<effort>` subagent —
-   `<effort>` and the `model` override from `routing.implementer`. Its prompt
+4. **Run the implementer.** Spawn the `orchestrate:implementer-<effort>`
+   subagent — `<effort>` and the `model` override from `routing.implementer`. Its prompt
    must carry the issue number/title/body, the worktree path (every change goes
    there), the investigator's brief if one was produced, an instruction to
    verify with the capability tools using the worktree path as `repoPath`, and
    a reminder not to commit, push, or run git. If it returns `blocked`, the
    slice has **FAILED**.
-5. **Run the reviewer.** Spawn the `reviewer-<effort>` subagent — `<effort>`
-   and the `model` override from `routing.reviewer` — in the same worktree. Its
+5. **Run the reviewer.** Spawn the `orchestrate:reviewer-<effort>` subagent —
+   `<effort>` and the `model` override from `routing.reviewer` — in the same
+   worktree. Its
    prompt must carry the issue, the worktree path, the implementer's
    `filesChanged` list and `notes`, and the investigator's brief if one was
    produced. If it returns `failed`, the slice has **FAILED**.
@@ -286,9 +292,10 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
       slice has **FAILED**. If all pass, the merge commit already exists —
       push and merge the slice PR: `git -C <worktree-path> push` then
       `gh pr merge <pr-number> --squash`.
-   4. Spawn the `conflict-resolver-<effort>` subagent — `<effort>` and the
-      `model` override from `routing.conflict-resolver`. Its prompt must carry
-      the issue, the worktree path, and the list of conflicted files.
+   4. Spawn the `orchestrate:conflict-resolver-<effort>` subagent — `<effort>`
+      and the `model` override from `routing.conflict-resolver`. Its prompt
+      must carry the issue, the worktree path, and the list of conflicted
+      files.
    5. If it returns `failed`, abort and the slice has **FAILED**:
       `git -C <worktree-path> merge --abort`.
    6. If it returns `resolved`, stage the resolved files and **confirm no
