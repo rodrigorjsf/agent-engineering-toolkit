@@ -149,6 +149,22 @@ _Avoid_: main, master, trunk (the integration base is `development`, distinct fr
 Removal of a concluded run's run directory, worktrees, and umbrella/slice branches — gated on that run's final integration pull request having been merged into the **Integration base**.
 _Avoid_: purge, garbage collection, prune
 
+**Backlog partitioner**:
+The pure module (`src/tools/backlog-partitioner.ts`) that splits the fetched `ready-for-agent` backlog into the run's `slices` set and the resolved `parentIssue`. It is the single canonical answer to "which issues are slices, and which is the parent PRD". Two detection signals are applied in order: (1) parent-field reference — any issue named as another backlog issue's `Parent`; (2) the `PRD:` title heuristic — any backlog issue whose title starts with `PRD:` (case-insensitive), catching a parent PRD that child issues have not yet linked via their `Parent` field. The detected parent PRD is excluded from `slices` and surfaced as `parentIssue`; it is only a progress-comment target, never an implementation slice.
+_Avoid_: backlog filter, issue splitter
+
+**Parent PRD**:
+The single parent issue detected by the **Backlog partitioner** for a run — either via parent-field reference or the `PRD:` title heuristic. Recorded as `parentIssue` in `run-state.json`. Its only role during a run is as the target for wave-progress comments (`gh issue comment <parentIssue>`); it is never enrolled as a slice. `null` when no parent is detected.
+_Avoid_: umbrella issue, epic (epic is an unrelated concept)
+
+**PRD: title heuristic**:
+Secondary signal used by the **Backlog partitioner** when no explicit parent-field reference exists: any backlog issue whose title starts with `PRD:` (case-insensitive) is treated as the **Parent PRD**. Catches a decomposed PRD that appears in the backlog before child issues have been created or before children have their `Parent` field set.
+_Avoid_: title matching, title filter
+
+**filterToOneParentPrd**:
+The exported function in `backlog-partitioner.ts` that narrows the full backlog to the child issues of a single parent PRD number (matching `parent === prdNumber`). Used to scope a `/orchestrate <PRD#>` run to one **Run partition**. The parent PRD issue itself is excluded from the result.
+_Avoid_: backlog filter, PRD filter (too generic)
+
 ## Relationships
 
 - A **Distribution** owns at most one **Initializer** and at most one **Customizer**.

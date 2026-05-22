@@ -59,6 +59,18 @@ import {
   type SearchStructuralInput,
   type SearchStructuralOutput,
 } from "./tools/search-structural.js";
+import {
+  partitionBacklog,
+  filterToOneParentPrd,
+  partitionBacklogInputSchema,
+  partitionBacklogOutputSchema,
+  filterToOneParentPrdInputSchema,
+  filterToOneParentPrdOutputSchema,
+  type PartitionBacklogInput,
+  type PartitionBacklogOutput,
+  type FilterToOneParentPrdInput,
+  type FilterToOneParentPrdOutput,
+} from "./tools/backlog-partitioner.js";
 
 const server = new McpServer({
   name: "orchestrate",
@@ -502,6 +514,78 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleSearchStructural as unknown as AnyToolHandler
+);
+
+// ─── partition_backlog ────────────────────────────────────────────────────────
+
+const handlePartitionBacklog: ToolHandler<
+  PartitionBacklogInput,
+  PartitionBacklogOutput
+> = async (input) => {
+  const result = partitionBacklog(input.issues);
+  const sliceCount = result.slices.length;
+  const parentNote = result.parentIssue
+    ? ` Parent PRD is issue #${result.parentIssue.number}.`
+    : " No parent PRD detected.";
+  const text = `Partitioned backlog into ${sliceCount} slice(s).${parentNote}`;
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "partition_backlog",
+  {
+    title: "Partition Backlog",
+    description:
+      "Splits the ready-for-agent backlog into implementation slices and an " +
+      "optional parent PRD issue. The parent PRD is detected by two signals in " +
+      "order: (1) parent-field reference — if any issue names another backlog " +
+      "issue as its parent, that issue is the parent PRD; (2) PRD: title " +
+      "heuristic — if no explicit parent reference exists, any issue whose " +
+      "title starts with 'PRD:' (case-insensitive) is treated as the parent " +
+      "PRD. The detected parent PRD is excluded from slices and surfaced as " +
+      "parentIssue. If no parent is detected, parentIssue is null and all " +
+      "issues are returned as slices.",
+    inputSchema: partitionBacklogInputSchema.shape,
+    outputSchema: partitionBacklogOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handlePartitionBacklog as unknown as AnyToolHandler
+);
+
+// ─── filter_to_one_parent_prd ─────────────────────────────────────────────────
+
+const handleFilterToOneParentPrd: ToolHandler<
+  FilterToOneParentPrdInput,
+  FilterToOneParentPrdOutput
+> = async (input) => {
+  const filtered = filterToOneParentPrd(input.issues, input.prdNumber);
+  const text = `Filtered to ${filtered.length} issue(s) whose parent is #${input.prdNumber}.`;
+  return {
+    structuredContent: { issues: filtered },
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "filter_to_one_parent_prd",
+  {
+    title: "Filter Backlog to One Parent PRD",
+    description:
+      "Narrows the full backlog to only the issues whose parent field equals " +
+      "prdNumber. The parent PRD issue itself is excluded from the result — " +
+      "only its child slices are returned, in input order. Use this before " +
+      "calling partition_backlog when the run is scoped to a single PRD " +
+      "(e.g. /orchestrate <PRD#>).",
+    inputSchema: filterToOneParentPrdInputSchema.shape,
+    outputSchema: filterToOneParentPrdOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleFilterToOneParentPrd as unknown as AnyToolHandler
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────

@@ -116,15 +116,37 @@ Then check for `.orchestrate/run-state.json` (its schema is in
    If the backlog is empty, report "no ready-for-agent issues" and stop — a
    clean no-op.
 3. For each issue, parse the **Blocked by** section of its body into a list of
-   blocker issue numbers (the `- #NNN` lines), and assess its **complexity
-   tier** — `trivial` (a small, localized change), `standard` (an ordinary
-   feature or fix), or `complex` (broad, cross-cutting, or high-risk work).
-   Base the tier on the issue's scope, the number of files it likely touches,
-   and its risk. The tier drives routing in section 3. Also note the parent
-   PRD from each issue's **Parent** section (the `PRD #NNN` line): use the PRD
-   shared by all backlog issues as `parentIssue`, or `null` if they name
-   differing parents or none.
-4. Call the `plan_waves` MCP tool with one entry per issue
+   blocker issue numbers (the `- #NNN` lines), and the **Parent** section into
+   a single parent issue number (`PRD #NNN` line) or `null`. Then assess its
+   **complexity tier** — `trivial` (a small, localized change), `standard` (an
+   ordinary feature or fix), or `complex` (broad, cross-cutting, or high-risk
+   work). Base the tier on the issue's scope, the number of files it likely
+   touches, and its risk. The tier drives routing in section 3.
+
+   Once every issue is parsed, call the **`partition_backlog` MCP tool** to
+   split the backlog into `slices` and `parentIssue`:
+
+   - Pass the full backlog as the `issues` array to `partition_backlog`. It
+     returns `{ slices, parentIssue }`.
+   - `slices` is the subset of issues to process as implementation work — any
+     issue detected as the parent PRD is automatically excluded.
+   - `parentIssue` is the detected parent PRD, or `null`. The parent PRD is
+     only the progress-comment target (section 2 step 6) — it is **never**
+     enrolled as a slice.
+   - Detection uses two signals in order: (1) a `Parent` field reference — if
+     any issue names another backlog issue as its parent, that issue is the
+     parent PRD; (2) the `PRD:` title heuristic — if no explicit parent
+     reference exists, any issue whose title starts with `PRD:` (case-
+     insensitive) is treated as the parent PRD. This ensures a decomposed PRD
+     is never accidentally implemented as a slice.
+
+   To scope a run to one parent PRD's children (e.g. `/orchestrate <PRD#>`),
+   call the **`filter_to_one_parent_prd` MCP tool** first — pass the full
+   backlog and the `prdNumber`; it returns only the issues whose `parent` field
+   equals `prdNumber`, which you then pass to `partition_backlog`.
+
+4. Call the `plan_waves` MCP tool with one entry per **slice** (not the full
+   backlog — the parent PRD is excluded):
    (`{ id: "<number>", blockedBy: ["<number>", ...] }`). If it returns
    `status: "error"` with `errorCode: "CYCLE_DETECTED"`, report the cycle and
    stop — the backlog cannot be ordered.
