@@ -62,6 +62,12 @@ always acceptable.
 - Fix inline only what you can fix **safely**. A correctness blocker you cannot
   resolve without guessing is a `failed` review — do not merge bad code.
 
+## Advisor policy
+
+This subagent does not call an advisor tool. The `advisor` tool is intentionally
+absent from this subagent's `tools:` frontmatter. Advisor passes, when used, run
+at the orchestrator boundary — not inside any subagent.
+
 ## What you return
 
 Return a structured summary with these fields:

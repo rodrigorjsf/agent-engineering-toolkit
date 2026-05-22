@@ -149,6 +149,10 @@ _Avoid_: main, master, trunk (the integration base is `development`, distinct fr
 Removal of a concluded run's run directory, worktrees, and umbrella/slice branches — gated on that run's final integration pull request having been merged into the **Integration base**.
 _Avoid_: purge, garbage collection, prune
 
+**Subagent advisor policy**:
+The deliberate decision that all eight orchestrate subagents (`investigator`, `implementer`, `reviewer`, `conflict-resolver`, both `-standard` and `-deep` variants) do **not** call an advisor tool. The `advisor` tool is intentionally absent from every subagent's `tools:` frontmatter. Advisor passes, when used, run at the **orchestrator boundary** (the driver session running the `orchestrate` skill), not inside any subagent. The policy is expressed as an explicit `## Advisor policy` section — word-for-word identical between the `-standard` and `-deep` variant of each role — so the decision is self-evident from the definition file. See ADR-0009.
+_Avoid_: no-advisor rule, advisor ban (the policy is positive — advisor responsibility lives at the orchestrator boundary, not absent from the system)
+
 ## Relationships
 
 - A **Distribution** owns at most one **Initializer** and at most one **Customizer**.
