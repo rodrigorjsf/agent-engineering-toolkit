@@ -359,6 +359,29 @@ describe("create_worktree", () => {
     // disk for inspection, consistent with the skill's failed-slice handling.
     expect(fs.existsSync(wtPath)).toBe(true);
   });
+
+  it("returns errorCode=INSTALL_FAILED when the install command cannot be spawned", async () => {
+    // A nonexistent binary makes runInstall return status='error' (EXEC_ERROR),
+    // exercising the create_worktree failure branch distinct from a non-zero exit.
+    commitCommandsJson(repoPath, {
+      install: ["orchestrate-nonexistent-binary-xyz", "--ci"],
+    });
+
+    const wtPath = path.join(worktreesDir, "install-exec-error-wt");
+    const result = await createWorktree({
+      baseRef: "HEAD",
+      branch: "install-exec-error-branch",
+      worktreePath: wtPath,
+      repoPath,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorCode).toBe("INSTALL_FAILED");
+    expect(result.errorMessage).toBeDefined();
+    // The failure detail must carry a real reason, never the literal "undefined".
+    expect(result.errorMessage).not.toContain("undefined");
+    expect(fs.existsSync(wtPath)).toBe(true);
+  });
 });
 
 // ─── remove_worktree ──────────────────────────────────────────────────────────

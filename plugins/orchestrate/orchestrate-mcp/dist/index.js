@@ -21636,11 +21636,14 @@ async function createWorktree(input) {
   }
   const install = await runInstall({ repoPath: absWorktreePath });
   if (install.status === "failed" || install.status === "error") {
-    const detail = install.status === "failed" ? `the install command exited ${install.exitCode}` : install.errorMessage;
+    const detail = install.status === "failed" ? `the install command exited ${install.exitCode ?? "(unknown)"}` : install.errorMessage ?? "unknown error";
+    const stderrTail = install.stderr?.trim() ? `
+Install stderr (tail):
+${install.stderr.trim().slice(-1e3)}` : "";
     return {
       status: "error",
       errorCode: "INSTALL_FAILED",
-      errorMessage: `The worktree was created at ${absWorktreePath} but the dependency install step failed (${detail}). The worktree is left on disk for inspection.`
+      errorMessage: `The worktree was created at ${absWorktreePath} but the dependency install step failed (${detail}). The worktree is left on disk for inspection.${stderrTail}`
     };
   }
   return {

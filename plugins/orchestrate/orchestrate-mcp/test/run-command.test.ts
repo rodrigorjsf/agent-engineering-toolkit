@@ -268,4 +268,37 @@ describe("runInstall", () => {
     expect(r.status).toBe("installed");
     expect(r.stdout).toContain("deps installed");
   });
+
+  it("treats an empty install argv array as not-configured", async () => {
+    const dir = project({ install: [] });
+    const r = await runInstall({ repoPath: dir });
+
+    expect(r.status).toBe("not-configured");
+  });
+
+  it("returns errorCode='EXEC_ERROR' when the install binary does not exist", async () => {
+    const dir = project({
+      install: ["orchestrate-nonexistent-binary-xyz", "--ci"],
+    });
+    const r = await runInstall({ repoPath: dir });
+
+    expect(r.status).toBe("error");
+    expect(r.errorCode).toBe("EXEC_ERROR");
+    expect(r.errorMessage).toBeDefined();
+  });
+
+  it(
+    "returns errorCode='TIMEOUT' when the install command exceeds the limit",
+    async () => {
+      const dir = project({
+        install: ["node", "-e", "setTimeout(() => {}, 30000)"],
+      });
+      const r = await runInstall({ repoPath: dir }, { timeoutMs: 1500 });
+
+      expect(r.status).toBe("error");
+      expect(r.errorCode).toBe("TIMEOUT");
+      expect(typeof r.durationMs).toBe("number");
+    },
+    10_000
+  );
 });

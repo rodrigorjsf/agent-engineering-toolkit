@@ -343,17 +343,25 @@ export async function createWorktree(
   // what they need. A missing install command is a clean no-op.
   const install = await runInstall({ repoPath: absWorktreePath });
   if (install.status === "failed" || install.status === "error") {
+    // The `??` fallbacks are defensive: runInstall always sets exitCode on
+    // "failed" and errorMessage on "error", but the InstallResult type does
+    // not prove it — guard against a future return path that forgets.
     const detail =
       install.status === "failed"
-        ? `the install command exited ${install.exitCode}`
-        : install.errorMessage;
+        ? `the install command exited ${install.exitCode ?? "(unknown)"}`
+        : install.errorMessage ?? "unknown error";
+    // Surface the install's own stderr tail — without it, diagnosing a failed
+    // `npm ci` (or similar) means opening the worktree on disk by hand.
+    const stderrTail = install.stderr?.trim()
+      ? `\nInstall stderr (tail):\n${install.stderr.trim().slice(-1000)}`
+      : "";
     return {
       status: "error",
       errorCode: "INSTALL_FAILED",
       errorMessage:
         `The worktree was created at ${absWorktreePath} but the dependency ` +
         `install step failed (${detail}). The worktree is left on disk for ` +
-        `inspection.`,
+        `inspection.${stderrTail}`,
     };
   }
 
