@@ -117,6 +117,23 @@ describe("validateEnvelope — valid envelopes", () => {
     expect(r.status).toBe("valid");
     expect(r.envelope!.role).toBe("implementer");
   });
+
+  it("accepts an implementer envelope with status='incomplete'", () => {
+    // 'incomplete' is the implementer's graceful turn-budget self-report —
+    // distinct from 'completed' (done) and 'blocked' (unrecoverable obstacle).
+    const env = {
+      ...implementerEnvelope(),
+      status: "incomplete" as const,
+      notes:
+        "Foresaw the remaining acceptance criteria would not fit the turn " +
+        "budget; reporting incomplete with the partial work above.",
+    };
+    const r = validateEnvelope({ text: fenced(env), role: "implementer" });
+
+    expect(r.status).toBe("valid");
+    expect(r.envelope!.role).toBe("implementer");
+    expect((r.envelope as { status: string }).status).toBe("incomplete");
+  });
 });
 
 // ─── truncated envelopes ──────────────────────────────────────────────────────

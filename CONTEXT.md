@@ -173,9 +173,21 @@ _Avoid_: project sniffer, auto-configurator, manifest scanner
 A plain object with the four fixed capability verb keys (`tests`, `typecheck`, `build`, `lint`), each mapping to an argv array consumed directly by the orchestrate run tools. Produced by the **Capability detector**. The `install` verb is never included — that is a setup verb, not a capability verb. For unrecognized project types the map is empty (`{}`).
 _Avoid_: command config, verb table, command dictionary
 
+**Config bootstrapper** (`bootstrap_config` MCP tool):
+The integration module (`orchestrate-mcp/src/tools/bootstrap-config.ts`) that makes a first-ever orchestrate run set up its own `.orchestrate/` configuration. It composes the **Capability detector** to write a project-aware `commands.json`, derives `handoff.json`'s context-window size from the running model (passed as a tool input, since the MCP process cannot see the calling model — unknown or absent falls back to 200000), writes `routing.json` from shipped defaults, creates the **Run directory** parent `.orchestrate/runs/`, and idempotently appends `.orchestrate/runs/` to the target repository's `.gitignore`. Every step is individually idempotent — a committed config file is never overwritten.
+_Avoid_: config generator, init tool, setup wizard
+
 **Result envelope**:
 The machine-checkable structured result every orchestrate subagent emits as the last of its turn — a fenced ` ```orchestrate-envelope ` JSON block conforming to a per-role schema (a `discriminatedUnion` on `role`). Worker roles (implementer, reviewer, conflict-resolver) carry `status`, `filesChanged`, `verification`, and `notes`; the read-only investigator carries a research brief and no `status`/`filesChanged`. It is the orchestrator's only source of a subagent's status and changed-file set — the orchestrator never parses subagent prose.
 _Avoid_: result blob, subagent summary, return payload
+
+**Implementer `incomplete` status**:
+The third value of the implementer **Result envelope**'s `status` enum — alongside `completed` and `blocked`, and unique to the implementer role. It is the implementer's *graceful* turn-budget self-report: when the implementer foresees it cannot finish every acceptance criterion within its remaining turns, it stops cleanly and emits `status: "incomplete"` with the partial work recorded, rather than being cut off mid-sentence. Distinct from `blocked` (an unrecoverable obstacle — more turns would not help) and from a hard turn-limit cutoff (which truncates the envelope into an unclosed fence the **Envelope validator** reports `invalid`). The orchestrator treats an `incomplete` slice as a FAILED slice with a `failureReason` naming the turn-limit cutoff — partial, resumable work — never a new `run-state.json` slice `state` value.
+_Avoid_: partial status, timed-out status (it is a proactive self-report, not a passively-observed timeout)
+
+**Changeset scope check**:
+The orchestrator's post-implementer verification, the `verify_changeset` MCP tool, run after every implementer returns and before a `completed` envelope is trusted. It inspects the slice worktree directly with `git status` and compares the implementer's declared `filesChanged` against what actually changed on disk, returning a `match` verdict — `matched`, `clean`, `mismatch`, `empty-but-declared` (the implementer's edits never landed), or `suspiciously-empty` (the work was under-reported). It is a cheap set comparison, not a semantic scope check: it never parses the issue body and never judges whether the changed files are the *right* files.
+_Avoid_: scope validator, diff checker (it compares declared-vs-actual file sets, it does not validate semantic scope)
 
 **Envelope validator**:
 The deterministic `validate_envelope` MCP tool that classifies a subagent's returned text into exactly one of `valid` (a schema-conforming envelope for the expected role), `invalid` (an envelope was attempted but is truncated, malformed, or off-schema), or `missing` (no envelope block found). A truncated envelope is always reported `invalid`, never silently accepted.
@@ -212,6 +224,8 @@ _Avoid_: scope check, brief filter (the guard is a positive constraint on what t
 - **Run cleanup** acts on an **Orchestration run** only after its final pull request has merged into the **Integration base**.
 - Every orchestrate subagent returns exactly one **Result envelope**; the **Envelope validator** classifies it, and the orchestrator acts only on that classification — never on subagent prose.
 - The **Worktree fallback** runs only when the **Envelope validator** reports a worker subagent's **Result envelope** `invalid` or `missing` — it never substitutes for a `valid` envelope.
+- The **Changeset scope check** runs after every implementer returns a `valid` `completed` envelope — it cross-checks the declared `filesChanged` against the worktree before the orchestrator trusts the result; the **Worktree fallback** instead runs only when the envelope itself was `invalid` or `missing`.
+- The **Implementer `incomplete` status** is the graceful counterpart to a hard turn-limit cutoff: the cutoff truncates the envelope into an `invalid` classification, while `incomplete` is a clean, schema-conforming self-report — both FAIL the slice, distinguished by the `failureReason`.
 
 ## Example dialogue
 
