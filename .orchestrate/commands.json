@@ -1,0 +1,5 @@
+{
+  "tests": ["npm", "--prefix", "plugins/orchestrate/orchestrate-mcp", "run", "test"],
+  "typecheck": ["npm", "--prefix", "plugins/orchestrate/orchestrate-mcp", "run", "typecheck"],
+  "build": ["npm", "--prefix", "plugins/orchestrate/orchestrate-mcp", "run", "build"]
+}
