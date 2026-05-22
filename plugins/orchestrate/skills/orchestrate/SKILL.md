@@ -54,8 +54,12 @@ Check these before starting. If one is missing, report it and stop.
 The target project should also have committed `.orchestrate/commands.json` and
 `.orchestrate/routing.json` (see the plugin's `templates/`). Without
 `commands.json` the capability tools return `not-configured`, which is
-tolerated. Without `routing.json` the `resolve_routing` tool errors and the run
-falls back to the `-standard` variant of every role with no model override.
+tolerated. If the project's capability commands need installed dependencies,
+`commands.json` must also set an `install` command — `create_worktree` runs it
+in every fresh worktree, which checks out only tracked files and so has no
+dependency directory of its own. Without `routing.json` the `resolve_routing`
+tool errors and the run falls back to the `-standard` variant of every role
+with no model override.
 An optional `.orchestrate/handoff.json` tunes the context-watchdog threshold
 and the successor launcher; without it, built-in defaults apply (see
 `references/context-handoff.md`). Installing the `ast-grep` CLI is optional —
@@ -218,8 +222,10 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
    Use the `create_worktree` MCP tool: `baseRef` = `orchestrate/umbrella-<runId>`,
    `branch` = `orchestrate/slice-<N>`, `worktreePath` = an absolute path outside
    the repo (e.g. `<repo-parent>/.orchestrate-worktrees/<runId>/slice-<N>`),
-   `repoPath` = the repository root. On `status: "error"`, the slice has
-   **FAILED** (see *Failure handling*).
+   `repoPath` = the repository root. `create_worktree` also runs the configured
+   `install` command in the new worktree before returning, so the capability
+   tools have the dependencies they need. On `status: "error"` — including an
+   `install` that failed — the slice has **FAILED** (see *Failure handling*).
 2. **Resolve routing.** Call the `resolve_routing` MCP tool with the slice's
    `tier` and the repository root as `repoPath`. It returns, per role, the
    `model` and effort variant to spawn:
