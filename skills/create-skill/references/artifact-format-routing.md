@@ -2,7 +2,6 @@
 
 Evidence-based routing rule for deciding whether a skill's generated output artifact
 should default to HTML or Markdown.
-Source: Skill body convention (canonical tag vocabulary), HTML artifact effectiveness research
 
 ---
 

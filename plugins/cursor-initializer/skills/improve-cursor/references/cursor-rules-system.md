@@ -1,6 +1,6 @@
 # Cursor Rules System
 
-Reference for generating and evaluating `.cursor/rules/` files. Source: [cursor.com/docs/context/rules](https://cursor.com/docs/context/rules).
+Reference for generating and evaluating `.cursor/rules/` files.
 
 ## File Format
 

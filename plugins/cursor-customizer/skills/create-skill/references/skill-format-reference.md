@@ -1,7 +1,6 @@
 # Skill Format Reference
 
 Technical specification for Cursor SKILL.md format, frontmatter, directory structure, and discovery model.
-Source: docs/cursor/skills/agent-skills-guide.md
 
 ---
 
@@ -31,7 +30,6 @@ The Agent Skills standard, as adopted by Cursor, recognises exactly six frontmat
 
 Frontmatter fields outside this set are foreign-platform dialect and must not appear in Cursor SKILL.md files.
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Frontmatter fields"*
 
 ---
 
@@ -43,7 +41,6 @@ Frontmatter fields outside this set are foreign-platform dialect and must not ap
 - Must NOT contain consecutive `--`
 - Must match the parent directory name exactly
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Frontmatter fields"*
 
 ---
 
@@ -65,7 +62,6 @@ Apply the template at assets/templates/config.yaml.
 
 This convention is what the Agent Skills standard guarantees portable across implementations. Do not use string-substitution variables, absolute paths, or project-relative paths for bundled files — relative paths from the skill root are the only portable form.
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Including scripts in skills" and "Optional directories"*
 
 ---
 
@@ -90,7 +86,6 @@ my-skill/
 - `assets/` files load only when the skill body explicitly directs the agent to use them.
 - `scripts/` files are executed by the agent, not loaded into context.
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Skill directories" and "Optional directories"*
 
 ---
 
@@ -104,7 +99,6 @@ my-skill/
 
 Keep SKILL.md under **500 lines**. Move detailed reference material to the `references/` subdirectory. Explicitly reference supporting files from SKILL.md so the agent knows what to load and when.
 
-*Source: docs/cursor/skills/agent-skills-guide.md "How skills work" and "Optional directories"*
 
 ---
 
@@ -120,4 +114,3 @@ Cursor automatically loads skills from these directories:
 
 When the same skill name exists in multiple locations, Cursor's own resolution rules apply. For new skills, choose `.cursor/skills/` when the skill is Cursor-specific and `.agents/skills/` when the skill should also be discoverable by other Agent Skills consumers.
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Skill directories"*

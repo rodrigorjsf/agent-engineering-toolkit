@@ -1,7 +1,6 @@
 # Context Optimization
 
 Evidence-based instructions for managing token budgets and attention in agent configuration files.
-Source: research-context-engineering-comprehensive.md
 
 ---
 
@@ -13,17 +12,16 @@ Source: research-context-engineering-comprehensive.md
 - Quality over quantity checklist (include/exclude decision table)
 - Context poisoning vectors (detection and removal)
 - JIT documentation patterns (on-demand loading strategies)
-- Key citations
 
 ---
 
 ## Hard Limits
 
-| Limit | Value | Source |
-|-------|-------|--------|
-| Lines per configuration file | ≤ 200 | Anthropic Docs: "Target under 200 lines per CLAUDE.md file." |
-| Instructions per file | ≤ 150-200 | HumanLayer: "Frontier LLMs can follow ~150-200 instructions with reasonable consistency." |
-| Contradictions between files | 0 | Anthropic: "Claude may pick one arbitrarily." |
+| Limit | Value |
+|-------|-------|
+| Lines per configuration file | ≤ 200 |
+| Instructions per file | ≤ 150-200 |
+| Contradictions between files | 0 |
 
 > "Bloated CLAUDE.md files cause Claude to ignore your actual instructions!"
 > — Anthropic Best Practices
@@ -79,7 +77,6 @@ For each instruction line, ask: **"Would removing this cause the agent to make m
 - ✅ "Run `npm test` before committing" vs. ❌ "Test your changes"
 - ✅ "API handlers live in `src/api/handlers/`" vs. ❌ "Keep files organized"
 
-*Source: research-context-engineering-comprehensive.md lines 113-134*
 
 ---
 
@@ -97,7 +94,6 @@ Detect and remove these before generating or improving configuration files:
 
 > "Treat CLAUDE.md like code: review it when things go wrong, prune it regularly." — Anthropic Best Practices
 
-*Source: research-context-engineering-comprehensive.md lines 213-253*
 
 ---
 
@@ -116,17 +112,4 @@ Use these patterns to move content from always-consumed to on-demand locations:
 > "Rather than pre-processing all relevant data up front, agents maintain lightweight identifiers and use these references to dynamically load data into context at runtime."
 > — Anthropic Engineering: Effective Context Engineering
 
-*Source: research-context-engineering-comprehensive.md lines 138-208, 451-461*
 
----
-
-## Key Citations
-
-| Claim | Source |
-|-------|--------|
-| ≤200 lines per file | Agent Skills Standard |
-| ~150-200 instruction limit | HumanLayer (Kyle) via a-guide-to-agents.md |
-| n² attention constraint / context rot | Anthropic Engineering Blog |
-| Lost-in-the-middle effect | Liu et al., arXiv:2307.03172 |
-| Quality over quantity heuristic | Anthropic Best Practices |
-| JIT documentation strategy | Anthropic Engineering: Effective Context Engineering |

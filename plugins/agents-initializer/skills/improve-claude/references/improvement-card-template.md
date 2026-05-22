@@ -1,6 +1,6 @@
 # Improvement Card Template
 
-Phase 5 output format. Source: improve-agents/SKILL.md:151-160.
+Phase 5 output format.
 
 ---
 

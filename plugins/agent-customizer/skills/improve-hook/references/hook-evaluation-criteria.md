@@ -1,8 +1,6 @@
 # Hook Evaluation Criteria
 
 Scoring rubric for assessing existing Claude Code hook configurations before improvement.
-Source: hooks/claude-hook-reference-doc.md, hooks/automate-workflow-with-hooks.md
-
 ---
 
 ## Contents
@@ -19,17 +17,16 @@ Source: hooks/claude-hook-reference-doc.md, hooks/automate-workflow-with-hooks.m
 
 ## Hard Limits Table
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| JSON configuration | Valid JSON, no syntax errors | hooks/claude-hook-reference-doc.md |
-| Event name | From recognized 22-event list | hooks/claude-hook-reference-doc.md lines 22-46 |
-| Handler type | `command`, `http`, `prompt`, or `agent` | hooks/claude-hook-reference-doc.md lines 249-257 |
-| Matcher field | Valid regex string or empty | hooks/claude-hook-reference-doc.md lines 162-179 |
-| Command path | Absolute script paths must resolve to an existing executable; relative workspace paths (e.g., `.claude/hooks/*.sh`, `scripts/`) are plausible and must not be flagged INVALID | hooks/automate-workflow-with-hooks.md |
+| Criterion | Threshold |
+|-----------|-----------|
+| JSON configuration | Valid JSON, no syntax errors |
+| Event name | From recognized 22-event list |
+| Handler type | `command`, `http`, `prompt`, or `agent` |
+| Matcher field | Valid regex string or empty |
+| Command path | Absolute script paths must resolve to an existing executable; relative workspace paths (e.g., `.claude/hooks/*.sh`, `scripts/`) are plausible and must not be flagged INVALID |
 
 A hook configuration violating any hard limit is flagged **INVALID** regardless of intent.
 
-*Source: hooks/claude-hook-reference-doc.md lines 132-200*
 
 ---
 
@@ -37,7 +34,6 @@ A hook configuration violating any hard limit is flagged **INVALID** regardless 
 
 For every instruction, line, and reference, ask: **"Would removing this cause the agent to make mistakes?"** If the answer is no, flag it for removal. ETH Zurich (Feb 2026) measured that LLM-generated agent files reduce success rate by ~3% and increase cost by ~20% — the failure mode is content that looks helpful but adds no decision value. The deletion test is the rubric for separating signal from bloat.
 
-*Source: docs/general-llm/Evaluating-AGENTS-paper.pdf*
 
 ---
 
@@ -52,7 +48,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Hook commands that always exit 0 (never block) | Observation-only hooks should use PostToolUse, not PreToolUse |
 | Sensitive data in `command` string of settings.json | Use environment variables instead |
 
-*Source: hooks/automate-workflow-with-hooks.md lines 569-625*
 
 ---
 
@@ -65,7 +60,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Hardcoded absolute paths to scripts that don't exist | Verify each absolute `command` script path exists; relative paths (not starting with `/`) are treated as plausible and are not a staleness indicator *(staleness-evaluation heuristic only; Phase 4 validation uses a stricter existence check — see hook-validation-criteria.md)* |
 | Outdated matcher values (e.g., old session end reasons) | Verify against current matcher value lists |
 
-*Source: hooks/claude-hook-reference-doc.md lines 162-179*
 
 ---
 
@@ -79,7 +73,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Security posture appropriate? | Hook validates before allowing | Hook only logs, never blocks |
 | Hook type appropriate for task? | `command` for deterministic, `prompt` for judgment | `agent` for a simple grep check |
 
-*Source: hooks/automate-workflow-with-hooks.md lines 1-13*
 
 ---
 
@@ -94,7 +87,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Handler Efficiency | Right type for each task | Some oversized handlers | Agent hooks for trivial tasks |
 | **Overall** | | | |
 
-*Source: hooks/claude-hook-reference-doc.md lines 249-257*
 
 > **UNCERTAIN classification**: When the `command` handler references an external script that cannot be read from the repository, classify Error Handling as **UNCERTAIN** (not Bad) — exit-code behavior cannot be verified from the hook configuration alone. Report it as a gap rather than a violation.
 

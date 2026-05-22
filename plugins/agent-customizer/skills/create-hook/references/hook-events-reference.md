@@ -1,7 +1,6 @@
 # Hook Events Reference
 
 Complete reference for all 22 Claude Code hook events: triggers, matcher fields, and input/output schemas.
-Source: hooks/claude-hook-reference-doc.md
 
 ---
 
@@ -42,7 +41,6 @@ Source: hooks/claude-hook-reference-doc.md
 | `Elicitation` | When MCP server requests input | Yes |
 | `ElicitationResult` | After user responds to MCP elicitation | Yes |
 
-*Source: hooks/claude-hook-reference-doc.md lines 22-46*
 
 ---
 
@@ -62,7 +60,6 @@ Source: hooks/claude-hook-reference-doc.md
 | `Elicitation`, `ElicitationResult` | MCP server name | your configured server names |
 | No matcher | always fires | `UserPromptSubmit`, `Stop`, `TeammateIdle`, `TaskCompleted`, `WorktreeCreate`, `WorktreeRemove` |
 
-*Source: hooks/claude-hook-reference-doc.md lines 162-179*
 
 ---
 
@@ -115,7 +112,6 @@ Source: hooks/claude-hook-reference-doc.md
 
 **Agent-specific fields:** `type`, `prompt` (required), `timeout` (optional, default 60s)
 
-*Source: hooks/claude-hook-reference-doc.md lines 258-310*
 
 ---
 
@@ -131,7 +127,6 @@ Source: hooks/claude-hook-reference-doc.md
 The 8 agentic loop events that support all handler types:
 `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `TaskCompleted`
 
-*Source: hooks/claude-hook-reference-doc.md lines 249-257*
 
 ---
 
@@ -165,4 +160,3 @@ Inject dynamic context at session start:
 
 Stdout from the hook is injected as additional context.
 
-*Source: hooks/automate-workflow-with-hooks.md lines 70-200*

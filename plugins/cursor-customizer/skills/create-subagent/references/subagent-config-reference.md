@@ -1,7 +1,6 @@
 # Subagent Config Reference
 
 Cursor-native subagent frontmatter specification, model handling, and orchestration patterns.
-Source: docs/cursor/subagents/subagents-guide.md, docs/adr/0002-product-strict-research-foundation.md
 
 ---
 
@@ -28,7 +27,6 @@ The Cursor-native subagent frontmatter for this distribution uses **exactly four
 | `model` | Yes | `inherit` | Cursor-native: the subagent runs on the same model as the parent agent. The product-strict contract requires this value. |
 | `readonly` | Yes | `true` | Cursor-native: the subagent runs with restricted write permissions (no file edits, no state-changing shell commands). The product-strict contract requires this value for analysis and evaluator subagents. |
 
-*Source: docs/cursor/subagents/subagents-guide.md (configuration fields table); docs/adr/0002-product-strict-research-foundation.md*
 
 ---
 
@@ -43,7 +41,6 @@ For this distribution, **the value MUST be `inherit`**. The `fast` value and any
 
 If a Cursor user explicitly opts into `fast` or a specific model ID for their own hand-edited subagent, the customizer does not block that — but the customizer never generates such a value.
 
-*Source: docs/cursor/subagents/subagents-guide.md (model configuration); docs/adr/0002-product-strict-research-foundation.md*
 
 ---
 
@@ -55,7 +52,6 @@ For this distribution, **the value MUST be `true`** for every generated subagent
 
 If a future workflow requires a subagent that writes files, the customizer prompts the user to confirm and document the rationale before generating such a subagent — but the default and recommended posture is `readonly: true`.
 
-*Source: docs/cursor/subagents/subagents-guide.md (configuration fields table)*
 
 ---
 
@@ -70,7 +66,6 @@ Cursor honors several subagent locations. This customizer generates into the Cur
 
 File naming: kebab-case `.md` filenames matching the subagent's `name` field (e.g., `security-reviewer.md` for `name: security-reviewer`).
 
-*Source: docs/cursor/subagents/subagents-guide.md (file locations)*
 
 ---
 
@@ -88,7 +83,6 @@ File naming: kebab-case `.md` filenames matching the subagent's `name` field (e.
 | Sequential pipeline | Task B depends on Task A's structured output |
 | Parallel decomposition | Independent reads or evaluations that can run concurrently |
 
-*Source: docs/cursor/subagents/subagents-guide.md (using subagents — parallel execution; orchestrator pattern)*
 
 ---
 
@@ -101,7 +95,6 @@ These constraints govern subagents authored by this customizer:
 - **Subagents do not inherit parent skills.** If a subagent needs domain knowledge, encode it in the system prompt.
 - **The frontmatter key set is closed.** Only `name`, `description`, `model`, `readonly` are permitted. Any other key is rejected by validation.
 
-*Source: docs/cursor/subagents/subagents-guide.md (best practices, anti-patterns)*
 
 ---
 
@@ -116,4 +109,3 @@ The following frontmatter fields belong to other agent platforms and MUST NOT ap
 
 These rejections are enforced by `subagent-validation-criteria.md` with explicit examples.
 
-*Source: docs/adr/0002-product-strict-research-foundation.md*

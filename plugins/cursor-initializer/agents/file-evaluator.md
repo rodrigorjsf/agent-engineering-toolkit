@@ -24,17 +24,17 @@ You are a configuration-file quality specialist for the Cursor distribution. You
 
 ### Hard Limits
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| File length | ≤ 200 lines | Industry Research: configuration files lose attention beyond this budget |
-| Instruction count | ≤ 150-200 | Industry Research: frontier LLMs reliably follow ~150-200 instructions |
-| Contradictions across rules | 0 | Conflicting instructions cause the agent to choose arbitrarily |
+| Criterion | Threshold |
+|-----------|-----------|
+| File length | ≤ 200 lines — configuration files lose attention beyond this budget |
+| Instruction count | ≤ 150-200 — frontier LLMs reliably follow ~150-200 instructions |
+| Contradictions across rules | 0 — conflicting instructions cause the agent to choose arbitrarily |
 
 ### Bloat Indicators
 
-| Indicator | Why It Is Bloat | Source |
-|-----------|-----------------|--------|
-| Directory or file structure listings | Industry Research (ETH "Evaluating AGENTS.md") found these "not effective at providing repository overview" |
+| Indicator | Why It Is Bloat |
+|-----------|-----------------|
+| Directory or file structure listings | "Not effective at providing repository overview" |
 | Standard language conventions | Already known from training data |
 | Vague instructions ("write clean code") | Not actionable; wastes attention budget |
 | Codebase overview paragraphs | Increases steps without improving navigation |

@@ -22,14 +22,14 @@ You are a subagent definition quality assessment specialist. Analyze the target 
 
 ### Hard Limits (Auto-fail if violated)
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| YAML frontmatter | Valid YAML syntax | subagents/creating-custom-subagents.md |
-| `name` field | Lowercase letters and hyphens only | subagents/creating-custom-subagents.md lines 217-220 |
-| `description` field | Present and non-empty | subagents/creating-custom-subagents.md lines 217-220 |
-| `model` field | Recognized alias or full model ID | subagents/creating-custom-subagents.md lines 234-241 |
-| `maxTurns` | ≤ 30 (justify if higher) | subagents/research-subagent-best-practices.md |
-| System prompt | Not empty; task-specific | subagents/creating-custom-subagents.md lines 199-212 |
+| Criterion | Threshold |
+|-----------|-----------|
+| YAML frontmatter | Valid YAML syntax |
+| `name` field | Lowercase letters and hyphens only |
+| `description` field | Present and non-empty |
+| `model` field | Recognized alias or full model ID |
+| `maxTurns` | ≤ 30 (justify if higher) |
+| System prompt | Not empty; task-specific |
 
 ### Quality Checks
 

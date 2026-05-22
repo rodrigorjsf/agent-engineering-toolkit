@@ -2,9 +2,6 @@
 
 Evidence-based routing rule for deciding whether a skill's generated output artifact
 should default to HTML or Markdown.
-Source: wiki/knowledge/skill-body-convention.md (Artifact format routing section),
-CONTEXT.md (HTML-structural body convention — "Artifact format routing" entry),
-wiki/knowledge/html-artifact-effectiveness.md
 
 ---
 
@@ -113,5 +110,3 @@ Markdown past ~100 lines stops being read; rich visualisations get faked with AS
 HTML renders natively in any browser without extra tooling. For agent-loaded and
 tooling-locked files the tradeoffs reverse: spec compliance, diffability, and
 renderer compatibility make Markdown mandatory.
-
-Source: wiki/knowledge/html-artifact-effectiveness.md (Core argument, Where HTML wins)

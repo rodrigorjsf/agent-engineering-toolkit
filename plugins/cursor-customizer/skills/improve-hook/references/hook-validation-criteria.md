@@ -1,7 +1,6 @@
 # Hook Validation Criteria
 
 Quality checklist for generated and improved Cursor hook configurations.
-Source: docs/cursor/hooks/hooks-guide.md
 
 ---
 
@@ -28,7 +27,6 @@ Any hook violating these criteria must be fixed before proceeding:
 | Matcher applicability | Matcher set only on events whose matcher field is documented in `hook-events-reference.md` |
 | Exit-code semantics | `0` = success, `2` = block; other non-zero exits fail open by default — security-critical blocking hooks must set `failClosed: true` |
 
-*Source: docs/cursor/hooks/hooks-guide.md "Command-Based Hooks", "Configuration", "Per-Script Configuration Options"*
 
 ---
 

@@ -1,7 +1,6 @@
 # File Evaluation Instructions
 Structured process for evaluating existing AGENTS.md/CLAUDE.md files against evidence-based quality criteria.
 Used by IMPROVE skills for current state analysis.
-Source: agents/file-evaluator.md
 ---
 
 Follow these file evaluation instructions. Analyze existing AGENTS.md or CLAUDE.md files in the project at the current working directory and assess their quality against evidence-based criteria. Identify specific problems with evidence so an improvement skill can act on them.
@@ -29,25 +28,25 @@ Use your environment's file reading and search capabilities to examine the proje
 
 ### Hard Limits
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| File length | ≤ 200 lines | Anthropic Docs: "Target under 200 lines per CLAUDE.md file" |
-| Instruction count | ≤ 150-200 | HumanLayer: "Frontier LLMs can follow ~150-200 instructions" |
-| No contradictions | 0 conflicts | Anthropic: "Claude may pick one arbitrarily" |
+| Criterion | Threshold |
+|-----------|-----------|
+| File length | ≤ 200 lines |
+| Instruction count | ≤ 150-200 |
+| No contradictions | 0 conflicts |
 
 ### Bloat Indicators
 
 Each of these wastes tokens without improving agent performance:
 
-| Indicator | Why It's Bloat | Source |
-|-----------|---------------|--------|
-| Directory/file structure listings | "Not effective at providing repository overview" | Evaluating AGENTS.md (ETH Zurich) |
-| Standard language conventions | Agent already knows these from training | Anthropic Best Practices |
-| Vague instructions ("write clean code") | Not actionable, wastes attention budget | a-guide-to-agents.md |
-| Codebase overview paragraphs | Increases steps without improving navigation | Evaluating AGENTS.md |
-| Obvious tool usage ("use git for version control") | Agent already knows this | Anthropic: "If Claude already does it correctly, delete it" |
-| Duplicated information across files | Wastes tokens on every request | Context engineering research |
-| **Architectural path trap** | Lists of paths WITH behavioral constraints (e.g., `services/ must not import from routes/`) are **not** directory listings — flag only pure path listings with no rules attached | Evaluating AGENTS.md |
+| Indicator | Why It's Bloat |
+|-----------|---------------|
+| Directory/file structure listings | "Not effective at providing repository overview" |
+| Standard language conventions | Agent already knows these from training |
+| Vague instructions ("write clean code") | Not actionable, wastes attention budget |
+| Codebase overview paragraphs | Increases steps without improving navigation |
+| Obvious tool usage ("use git for version control") | Agent already knows this |
+| Duplicated information across files | Wastes tokens on every request |
+| **Architectural path trap** | Lists of paths WITH behavioral constraints (e.g., `services/ must not import from routes/`) are **not** directory listings — flag only pure path listings with no rules attached |
 
 ### Staleness Indicators
 
@@ -68,7 +67,6 @@ Each of these wastes tokens without improving agent performance:
 | Do subdirectory files exist for distinct scopes? | packages/api/CLAUDE.md for API-specific rules | Everything in root |
 | Are pointers provided to detailed docs? | "See docs/TESTING.md" | No cross-references |
 
-*Source: agents/file-evaluator.md lines 20-59*
 
 ### Automation Opportunity Indicators
 
@@ -83,7 +81,6 @@ Flag instructions that are candidates for migration to on-demand mechanisms:
 | Version numbers, team names, high-churn content | Deletion | `DELETE_CANDIDATE` |
 | Standard default commands (e.g., `npm test`, `cargo build`, `go test ./...`) | Agent knows platform defaults from training | `DELETE_CANDIDATE` |
 
-*Source: automation-migration-guide.md lines 58-72*
 
 ---
 
@@ -116,7 +113,6 @@ For each file found:
 - Are there scopes with distinct tooling that lack their own file?
 - Is the root file overloaded with scope-specific information?
 
-*Source: agents/file-evaluator.md lines 75-102*
 
 ---
 
@@ -178,7 +174,6 @@ Return your analysis in exactly this format:
 | **Overall** | **4** | Needs significant refactoring |
 ```
 
-*Source: agents/file-evaluator.md lines 103-162*
 
 ---
 
@@ -193,4 +188,3 @@ Before returning results, verify:
 5. No improvement suggestions crept in — report only identifies problems
 6. Automation opportunity flags match the indicators table — no false classifications
 
-*Source: agents/file-evaluator.md lines 143-152*

@@ -1,7 +1,6 @@
 # Progressive Disclosure Guide
 
 Evidence-based instructions for structuring AGENTS.md and CLAUDE.md hierarchies.
-Sources: a-guide-to-agents.md, research-context-engineering-comprehensive.md, memory/how-claude-remembers-a-project.md.
 
 ---
 
@@ -22,7 +21,6 @@ For anti-patterns to detect and remove (ball-of-mud growth, auto-generated init 
 
 Place content based on what's relevant when. **Root AGENTS.md / CLAUDE.md**: relevant to every task, always loaded. **Separate domain file**: relevant to one domain (TypeScript, testing, API design), on-demand. **Subdirectory AGENTS.md / CLAUDE.md**: specific to one package or area, on-demand when working there. **`.claude/rules/` path-scoped**: specific to certain file patterns, on-demand when files match. **Skill**: a workflow the agent invokes explicitly, on-demand.
 
-*Source: a-guide-to-agents.md lines 228-233; research-context-engineering-comprehensive.md lines 257-305*
 
 ---
 
@@ -39,7 +37,6 @@ Generate root files with only these elements: (1) one-sentence project descripti
 
 Don't overload any level — the agent sees all merged files in its context. In large monorepos, use `claudeMdExcludes` in `.claude/settings.local.json` to skip irrelevant ancestor CLAUDE.md files (glob patterns match absolute paths; arrays merge across settings layers; managed policy files cannot be excluded).
 
-*Source: a-guide-to-agents.md; memory/how-claude-remembers-a-project.md lines 243-260*
 
 ---
 
@@ -47,7 +44,6 @@ Don't overload any level — the agent sees all merged files in its context. In 
 
 Apply when content exceeds root-file scope. **Extraction trigger**: extract a section to a separate domain file when it has 3+ distinct rules AND spans 10+ lines, or when the topic is irrelevant to most work sessions. **Move domain rules to separate files**: prefer "For TypeScript conventions, see docs/TYPESCRIPT.md" over inlining domain rules. **Nest hierarchically**: domain docs reference each other rather than the root inlining everything. **Use skills for workflows** — agents invoke them only when needed, keeping base context minimal.
 
-*Source: a-guide-to-agents.md lines 110-163*
 
 ---
 
@@ -59,7 +55,6 @@ Loading by scope: org-wide managed policy (MDM) and personal `~/.claude/CLAUDE.m
 
 **Load order** — Claude Code walks up the directory tree from CWD, loading every ancestor CLAUDE.md at session start. Subdirectory files load on-demand only when Claude reads files in that directory.
 
-*Source: research-context-engineering-comprehensive.md lines 181-208, 257-305*
 
 ---
 

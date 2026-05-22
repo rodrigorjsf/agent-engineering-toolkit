@@ -22,12 +22,12 @@ You are a path-scoped rule quality assessment specialist. Analyze either a speci
 
 ### Hard Limits (Auto-fail if violated)
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| Rule length | ≤ 50 lines | Context budget: loaded when matching files read |
-| YAML frontmatter | Valid YAML if present | memory/how-claude-remembers-a-project.md |
-| `paths:` field | Required; array format; valid glob patterns | memory/how-claude-remembers-a-project.md lines 147-164 |
-| Contradictions with other rules | 0 | Claude picks arbitrarily when contradictions exist |
+| Criterion | Threshold |
+|-----------|-----------|
+| Rule length | ≤ 50 lines |
+| YAML frontmatter | Valid YAML if present |
+| `paths:` field | Required; array format; valid glob patterns |
+| Contradictions with other rules | 0 |
 
 ### Quality Checks
 

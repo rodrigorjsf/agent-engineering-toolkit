@@ -1,7 +1,6 @@
 # Rule Validation Criteria
 
 Quality checklist for generated and improved `.cursor/rules/*.mdc` rule files.
-Source: docs/cursor/rules/rules.md, Industry Research (research-context-engineering-comprehensive.md)
 
 ---
 
@@ -9,17 +8,16 @@ Source: docs/cursor/rules/rules.md, Industry Research (research-context-engineer
 
 Any rule file violating these criteria must be fixed before proceeding:
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| Rule length | ≤ 200 lines | Industry Research: 200-line target for configuration files in this toolkit |
-| YAML frontmatter | Valid YAML | docs/cursor/rules/rules.md — Rule anatomy |
-| Frontmatter fields | ONLY `description`, `alwaysApply`, `globs` are valid; ALL others are AUTO-FAIL | docs/cursor/rules/rules.md — Rule file format |
-| Banned frontmatter key | A `paths` key MUST NOT appear; it belongs to a different platform's convention | Cross-platform leakage check |
-| Activation-mode well-formedness | `alwaysApply: true` must omit `globs`; `globs:` rules must set `alwaysApply: false`; `description:`-only rules must omit `globs` and set `alwaysApply: false` | docs/cursor/rules/rules.md — Rule anatomy |
-| Contradictions with other rules | 0 | Industry Research: conflicting instructions cause inconsistent agent behavior |
-| Stale file path references | 0 | Industry Research: stale paths poison context |
+| Criterion | Threshold |
+|-----------|-----------|
+| Rule length | ≤ 200 lines |
+| YAML frontmatter | Valid YAML |
+| Frontmatter fields | ONLY `description`, `alwaysApply`, `globs` are valid; ALL others are AUTO-FAIL |
+| Banned frontmatter key | A `paths` key MUST NOT appear; it belongs to a different platform's convention |
+| Activation-mode well-formedness | `alwaysApply: true` must omit `globs`; `globs:` rules must set `alwaysApply: false`; `description:`-only rules must omit `globs` and set `alwaysApply: false` |
+| Contradictions with other rules | 0 |
+| Stale file path references | 0 |
 
-*Source: docs/cursor/rules/rules.md — Rule file format, Best practices*
 
 ---
 
@@ -34,7 +32,7 @@ Any rule file violating these criteria must be fixed before proceeding:
 - [ ] No standard language conventions the agent already knows from training
 - [ ] No long explanations or tutorials — rules are instructions, not documentation
 - [ ] Files referenced via `@path/to/file` rather than copied inline where practical
-- [ ] Evidence citations present: rule instructions justify their existence with reference to project conventions or `docs/cursor/`
+- [ ] Evidence citations present: rule instructions justify their existence with reference to project conventions
 - [ ] Prompt engineering strategy applied: rule uses zero-shot imperative instructions only (no examples, no tutorials, no explanations)
 - [ ] Critical instructions appear at the start or end of the rule body, not buried in the middle
 

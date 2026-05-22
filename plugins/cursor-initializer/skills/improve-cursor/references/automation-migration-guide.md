@@ -1,7 +1,6 @@
 # Automation Migration Guide
 
 Decision criteria for migrating instructions (including legacy AGENTS.md content the migration sub-flow processes) into on-demand `.cursor/rules/*.mdc` mechanisms.
-Source: context-aware-improve-optimization.prd.md, analysis-automate-workflow-with-hooks.md, analysis-skill-authoring-best-practices.md, analysis-how-claude-remembers-a-project.md.
 
 ---
 
@@ -18,7 +17,6 @@ Stop at the first match:
 7. Heavy, rare, or has side effects → skill (`disable-model-invocation: true`)
 8. None of the above → keep in current location; reassess next cycle
 
-*Source: context-aware-improve-optimization.prd.md lines 346-358*
 
 ---
 
@@ -33,7 +31,6 @@ Stop at the first match:
 - Duplicated across 2+ files → consolidate to single source
 - Version numbers / team names / release info → DELETE or replace with memory pointer
 
-*Source: analysis-evaluating-agents-paper.md lines 36-52, Industry Research*
 
 ---
 
@@ -50,7 +47,6 @@ Stop at the first match:
 
 Hook events: `preToolUse`, `postToolUse`, `postToolUseFailure`, `stop`, `sessionStart`, `beforeShellExecution`. Block by returning `{"decision": "block"}` from a `prompt` hook. `globs:` accepts string or array (e.g., `["src/**/*.ts", "!src/**/*.test.ts"]`).
 
-*Source: analysis-automate-workflow-with-hooks.md lines 21-130, 433-445*
 
 ---
 
@@ -73,4 +69,3 @@ Skills, path-scoped rules — plugin and standalone. Hooks, subagents — plugin
 
 Present token-impact estimates alongside migration recommendations.
 
-*Source: research-context-engineering-comprehensive.md, analysis-skill-authoring-best-practices.md lines 19-46*

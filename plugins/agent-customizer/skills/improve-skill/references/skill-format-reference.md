@@ -1,8 +1,6 @@
 # Skill Format Reference
 
 Technical specification for SKILL.md format, directory structure, variables, and discovery.
-Source: skills/research-claude-code-skills-format.md, skills/extend-claude-with-skills.md
-
 ---
 
 ## Contents
@@ -31,7 +29,6 @@ The Agent Skills open-standard fields and Claude Code platform extensions are ta
 - Must NOT contain consecutive `--`
 - Must match the parent directory name
 
-*Source: skills/research-claude-code-skills-format.md lines 103-108*
 
 ---
 
@@ -39,7 +36,6 @@ The Agent Skills open-standard fields and Claude Code platform extensions are ta
 
 Skill body variables: `$ARGUMENTS` (all invocation args), `$ARGUMENTS[N]` / `$N` (specific arg by 0-based index), `${CLAUDE_SESSION_ID}` (for logging), `${CLAUDE_SKILL_DIR}` (skill directory — always use this for bundled file references, never hardcoded paths). Dynamic context with the `!` prefix runs shell commands at load time, e.g. `- Current branch: !` + `` `git branch --show-current` ``.
 
-*Source: skills/extend-claude-with-skills.md lines 201-210; skills/research-claude-code-skills-format.md lines 126-149*
 
 ---
 
@@ -47,7 +43,6 @@ Skill body variables: `$ARGUMENTS` (all invocation args), `$ARGUMENTS[N]` / `$N`
 
 A skill directory contains `SKILL.md` (required entry point), `references/` for on-demand reference docs, `assets/templates/` for output templates, optional `examples.md`, and optional `scripts/` for executables (executed, not loaded into context). `references/` files load only when skill phases explicitly read them.
 
-*Source: skills/research-claude-code-skills-format.md lines 153-186; skills/extend-claude-with-skills.md lines 100-115*
 
 ---
 
@@ -61,7 +56,6 @@ A skill directory contains `SKILL.md` (required entry point), `references/` for 
 
 Keep SKILL.md under **500 lines**. Move detailed reference material to `references/` subdirectory. Explicitly reference supporting files from SKILL.md so Claude knows what to load and when.
 
-*Source: skills/research-claude-code-skills-format.md lines 172-186*
 
 ---
 
@@ -76,4 +70,3 @@ Keep SKILL.md under **500 lines**. Move detailed reference material to `referenc
 
 Priority: enterprise > personal > project. Plugin skills use `plugin-name:skill-name` namespace — no conflicts.
 
-*Source: skills/extend-claude-with-skills.md lines 85-97; skills/research-claude-code-skills-format.md lines 189-200*

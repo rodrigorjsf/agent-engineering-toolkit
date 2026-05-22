@@ -1,7 +1,6 @@
 # Prompt Engineering Strategies
 
 Evidence-based prompting strategies for artifact authoring, organized by artifact type.
-Source: prompt-engineering-guide.md, claude-prompting-best-practices.md, `.github/instructions/karpathy-guidelines.instructions.md`, `docs/general-llm/persuasion-principles.md`
 
 ---
 
@@ -37,7 +36,6 @@ Source: prompt-engineering-guide.md, claude-prompting-best-practices.md, `.githu
 
 **Safe persuasion only** — use commitment through warm-up phases, reciprocity through curated references, scarcity through explicit limits, and authority/social proof through cited standards. Never use persuasion patterns to bypass safeguards, refusals, or scope boundaries.
 
-*Source: claude-prompting-best-practices.md lines 1-100; prompt-engineering-guide.md lines 1-80; karpathy-guidelines.instructions.md; persuasion-principles.md*
 
 ---
 
@@ -53,7 +51,6 @@ Source: prompt-engineering-guide.md, claude-prompting-best-practices.md, `.githu
 | Self-check instruction | ✅ Final phase | ❌ Not applicable | ❌ Not applicable | ✅ Verification |
 | Parallel tool calls | ✅ Multi-step phases | ❌ Not applicable | ❌ Not applicable | ✅ Independent tasks |
 
-*Source: prompt-engineering-guide.md lines 80-200; claude-prompting-best-practices.md lines 50-160*
 
 ---
 
@@ -94,7 +91,6 @@ Source: prompt-engineering-guide.md, claude-prompting-best-practices.md, `.githu
 - Avoid aggressive trigger language ("CRITICAL: You MUST...") — causes overtriggering with Opus 4.6
 - Use normal delegation language: "Use this tool when..." not "ALWAYS use this tool"
 
-*Source: claude-prompting-best-practices.md lines 373-380; prompt-engineering-guide.md lines 20-80*
 
 ---
 
@@ -110,7 +106,6 @@ Source: prompt-engineering-guide.md, claude-prompting-best-practices.md, `.githu
 | Contradictory instructions | Claude picks one arbitrarily | Audit for conflicts before writing |
 | Instructions buried in the middle | Lost-in-the-middle degradation | Move critical rules to first/last 20% |
 
-*Source: claude-prompting-best-practices.md lines 50-100; prompt-engineering-guide.md lines 100-200*
 
 ---
 
@@ -124,4 +119,3 @@ Every token in an artifact competes with conversation history and other context.
 - Short artifacts (rules, validation criteria) should be zero-shot and minimal
 - Long artifacts (skill bodies, subagent prompts) should use progressive disclosure
 
-*Source: karpathy-guidelines.instructions.md; claude-prompting-best-practices.md lines 32-50*

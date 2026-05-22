@@ -1,7 +1,6 @@
 # Evaluation Criteria
 Scoring rubric for assessing existing AGENTS.md and CLAUDE.md files before improvement.
 Used by IMPROVE skills only.
-Source: file-evaluator.md, research-context-engineering-comprehensive.md
 ---
 
 ## Contents
@@ -20,11 +19,11 @@ Source: file-evaluator.md, research-context-engineering-comprehensive.md
 
 ## Hard Limits Table
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| File length | ≤ 200 lines | Anthropic Docs: "Target under 200 lines per CLAUDE.md file" |
-| Instruction count | ≤ 150-200 | HumanLayer: "Frontier LLMs can follow ~150-200 instructions" |
-| Contradictions | 0 | Anthropic: "Claude may pick one arbitrarily" |
+| Criterion | Threshold |
+|-----------|-----------|
+| File length | ≤ 200 lines |
+| Instruction count | ≤ 150-200 |
+| Contradictions | 0 |
 
 A file violating any hard limit is flagged **OVER LIMIT** regardless of content quality.
 
@@ -34,16 +33,15 @@ A file violating any hard limit is flagged **OVER LIMIT** regardless of content 
 
 Check each line of the file against these indicators:
 
-| Indicator | Why It's Bloat | Source |
-|-----------|---------------|--------|
-| Directory/file structure listings | "Not effective at providing repository overview" | ETH Zurich: Evaluating AGENTS.md |
-| Standard language conventions | Agent already knows from training data | Anthropic Best Practices |
-| Vague instructions ("write clean code") | Not actionable; wastes attention budget | a-guide-to-agents.md |
-| Codebase overview paragraphs | Increases steps without improving navigation | ETH Zurich: Evaluating AGENTS.md |
-| Obvious tool usage ("use git for version control") | Agent already knows this | Anthropic: "If Claude already does it, delete it" |
-| Duplicated content across files | Wastes tokens on every request | research-context-engineering-comprehensive.md |
+| Indicator | Why It's Bloat |
+|-----------|---------------|
+| Directory/file structure listings | "Not effective at providing repository overview" |
+| Standard language conventions | Agent already knows from training data |
+| Vague instructions ("write clean code") | Not actionable; wastes attention budget |
+| Codebase overview paragraphs | Increases steps without improving navigation |
+| Obvious tool usage ("use git for version control") | Agent already knows this |
+| Duplicated content across files | Wastes tokens on every request |
 
-*Source: file-evaluator.md lines 30-41*
 
 ---
 
@@ -56,7 +54,6 @@ Check each line of the file against these indicators:
 | Package references to uninstalled deps | Check if mentioned packages are in manifest files |
 | Outdated framework version references | Compare mentioned versions with actual installed versions |
 
-*Source: file-evaluator.md lines 43-50*
 
 ---
 
@@ -69,7 +66,6 @@ Check each line of the file against these indicators:
 | Do subdirectory files exist for distinct scopes? | packages/api/AGENTS.md for API-specific rules | Everything in root |
 | Are pointers provided to detailed docs? | "See docs/TESTING.md" | No cross-references |
 
-*Source: file-evaluator.md lines 52-59*
 
 ---
 
@@ -91,7 +87,6 @@ Every instruction should be in the Goldilocks zone:
 | Enforced by config file | "Strict mode is enabled" (`tsconfig.json` has `"strict": true`) | ❌ DELETE — agent reads the config directly |
 | Project decision not in config | "Use `unknown` over `any`; validate with `zod`" | ✅ Keep — agent cannot infer rationale |
 
-*Source: research-context-engineering-comprehensive.md lines 131-134*
 
 ---
 
@@ -108,7 +103,6 @@ Check each instruction block for migration potential to on-demand mechanisms:
 
 Flag each candidate in the Per-File Issues output under `**Automation Opportunity Issues:**`.
 
-*Source: automation-migration-guide.md lines 58-72*
 
 ---
 
@@ -125,7 +119,6 @@ Score each dimension 1-10 based on observed issues:
 | Consistency | 0 contradictions | 1 contradiction | 2+ contradictions |
 | Automation Opportunity | 0 migration candidates missed | 1-3 potential migrations | 4+ missed migrations |
 
-*Source: file-evaluator.md lines 132-141*
 
 ---
 

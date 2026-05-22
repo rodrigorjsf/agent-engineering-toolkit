@@ -1,7 +1,6 @@
 # Progressive Disclosure Guide
 
 Evidence-based instructions for structuring `.cursor/rules/*.mdc` hierarchies in Cursor.
-Sources: Industry Research (a-guide-to-agents.md, research-context-engineering-comprehensive.md)
 
 ---
 
@@ -31,7 +30,6 @@ When deciding where content belongs, use this table:
 
 **Borderline tiebreaker (10–15 lines):** When content falls between 10–15 lines, prefer extracting it to a separate `description:`-mode rule if it applies to only one topic. Always-loaded rule brevity is more valuable than the small cost of an additional rule.
 
-*Source: Industry Research — a-guide-to-agents.md lines 228-233; research-context-engineering-comprehensive.md lines 257-305*
 
 ---
 
@@ -64,7 +62,6 @@ In monorepos, prefer narrow `globs:`-mode rules scoped to package paths over bro
 
 **Monorepo context scoping in Cursor**: In large monorepos, use `.cursor/rules/*.mdc` with narrow `globs:` patterns to limit rules to relevant packages. Rules with `alwaysApply: true` load for every request — keep them minimal.
 
-*Source: Industry Research — memory/how-claude-remembers-a-project.md lines 243-260*
 
 ---
 
@@ -86,7 +83,6 @@ Always use const instead of let. Never use var...
 
 **Use skills for workflows** — agents invoke skills only when needed, keeping base context minimal.
 
-*Source: Industry Research — a-guide-to-agents.md lines 110-163*
 
 ---
 

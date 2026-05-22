@@ -1,7 +1,6 @@
 # Subagent Validation Criteria
 
 Quality checklist for generated and improved Cursor subagent definitions.
-Source: docs/cursor/subagents/subagents-guide.md, docs/adr/0002-product-strict-research-foundation.md
 
 ---
 
@@ -20,15 +19,15 @@ Source: docs/cursor/subagents/subagents-guide.md, docs/adr/0002-product-strict-r
 
 Any subagent violating these criteria must be fixed before proceeding:
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| YAML frontmatter | Valid YAML syntax | Cursor subagents documentation (file format) |
-| `name` field | Lowercase letters and hyphens; ≤64 characters | Cursor subagents documentation (configuration fields) |
-| `description` field | Present, non-empty, ≤1024 characters | Cursor subagents documentation (configuration fields) |
-| `model` field | Exactly `inherit` | ADR-0002 product-strict frontmatter contract |
-| `readonly` field | Exactly `true` | ADR-0002 product-strict frontmatter contract |
-| Frontmatter key set | Exactly the four allowed keys — `name`, `description`, `model`, `readonly` | ADR-0002 product-strict frontmatter contract |
-| System prompt | Not empty; task-specific | Cursor subagents documentation (best practices) |
+| Criterion | Threshold |
+|-----------|-----------|
+| YAML frontmatter | Valid YAML syntax |
+| `name` field | Lowercase letters and hyphens; ≤64 characters |
+| `description` field | Present, non-empty, ≤1024 characters |
+| `model` field | Exactly `inherit` |
+| `readonly` field | Exactly `true` |
+| Frontmatter key set | Exactly the four allowed keys — `name`, `description`, `model`, `readonly` |
+| System prompt | Not empty; task-specific |
 
 ---
 
@@ -140,7 +139,6 @@ The subagent body (everything after the YAML frontmatter) MUST wrap its logical 
 
 A self-closing tag (`<TRIGGER ... />`) counts as balanced. `<PHASE>` missing its mandatory `id=` is a hard-fail (a mandatory attribute is absent, not malformed).
 
-*Source: wiki/knowledge/skill-body-convention.md; docs/adr/0007-skill-body-semantic-tag-convention.md*
 
 ---
 

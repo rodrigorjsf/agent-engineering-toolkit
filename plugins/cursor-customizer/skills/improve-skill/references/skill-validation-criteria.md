@@ -1,7 +1,6 @@
 # Skill Validation Criteria
 
 Quality checklist for generated and improved Cursor SKILL.md packages.
-Source: docs/cursor/skills/agent-skills-guide.md
 
 ---
 
@@ -20,17 +19,16 @@ Source: docs/cursor/skills/agent-skills-guide.md
 
 Any skill violating these criteria must be fixed before proceeding:
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| SKILL.md body length | ≤ 500 lines | Agent Skills best practice: keep SKILL.md focused |
-| Reference files | ≤ 200 lines each | reference-files convention |
-| Reference files >100 lines | Must include a `## Contents` table of contents | reference-files convention |
-| `description` field | Present, non-empty, ≤ 1024 chars, no XML tags | Agent Skills specification |
-| `name` field | Present, non-empty, lowercase letters/numbers/hyphens only, max 64 chars, matches parent folder | Agent Skills specification |
-| Frontmatter fields | Restricted to `name`, `description`, `license`, `compatibility`, `metadata`, `disable-model-invocation` | Agent Skills specification |
-| Contradictions between phases | 0 | Agents pick arbitrarily when contradictions exist |
+| Criterion | Threshold |
+|-----------|-----------|
+| SKILL.md body length | ≤ 500 lines |
+| Reference files | ≤ 200 lines each |
+| Reference files >100 lines | Must include a `## Contents` table of contents |
+| `description` field | Present, non-empty, ≤ 1024 chars, no XML tags |
+| `name` field | Present, non-empty, lowercase letters/numbers/hyphens only, max 64 chars, matches parent folder |
+| Frontmatter fields | Restricted to `name`, `description`, `license`, `compatibility`, `metadata`, `disable-model-invocation` |
+| Contradictions between phases | 0 |
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Frontmatter fields" and "Optional directories"*
 
 ---
 
@@ -64,7 +62,6 @@ The SKILL.md body (everything after the YAML frontmatter) MUST wrap its logical 
 
 A self-closing tag (`<TRIGGER ... />`) counts as balanced. `<PHASE>` missing its mandatory `id=` is a hard-fail (a mandatory attribute is absent, not malformed).
 
-*Source: wiki/knowledge/skill-body-convention.md; docs/adr/0007-skill-body-semantic-tag-convention.md*
 
 ---
 
