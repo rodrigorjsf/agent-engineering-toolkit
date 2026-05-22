@@ -1,7 +1,6 @@
 # Subagent Authoring Guide
 
 Evidence-based guidance for creating effective Claude Code subagent definitions.
-Source: subagents/research-subagent-best-practices.md, subagents/creating-custom-subagents.md
 
 ---
 
@@ -21,7 +20,6 @@ Source: subagents/research-subagent-best-practices.md, subagents/creating-custom
 
 Subagents are context firewalls. They encapsulate exploration work — glob output, grep noise, evaluator scans — in an isolated window so it never reaches the parent context. Only the condensed, structured result flows back. The orchestrator stays in the smart zone; the subagent absorbs the noise.
 
-*Source: harness-engineering.md*
 
 | Use subagent when | Use inline Claude when | Use hook when |
 |------------------|----------------------|--------------|
@@ -33,7 +31,6 @@ Subagents are context firewalls. They encapsulate exploration work — glob outp
 
 **Subagents cannot spawn other subagents** — prevents infinite nesting.
 
-*Source: subagents/research-subagent-best-practices.md lines 33-55*
 
 ---
 
@@ -66,7 +63,6 @@ maxTurns: 20
 You are a code reviewer specializing in [domain]...
 ```
 
-*Source: subagents/creating-custom-subagents.md lines 151-210*
 
 ---
 
@@ -86,7 +82,6 @@ Effective subagent system prompts follow this 5-part pattern:
 - Include trigger phrases ("use proactively when...", "use when editing...")
 - Avoid generic descriptions ("helps with code")
 
-*Source: subagents/research-subagent-best-practices.md lines 73-76, 374-430*
 
 ---
 
@@ -103,7 +98,6 @@ Effective subagent system prompts follow this 5-part pattern:
 
 **Rule of thumb**: Opus for architecture decisions, Sonnet for everything else, Haiku for read-only exploration only.
 
-*Source: subagents/research-subagent-best-practices.md lines 318-355*
 
 ---
 
@@ -129,7 +123,6 @@ If both defined: denylist applied first, then allowlist resolves against remaini
 - Explorers: `Read, Grep, Glob, Bash(readonly commands)`
 - Full-capability (rare): all tools — justify explicitly
 
-*Source: subagents/creating-custom-subagents.md lines 245-295*
 
 ---
 
@@ -146,7 +139,6 @@ If both defined: denylist applied first, then allowlist resolves against remaini
 | maxTurns > 30 | Runaway agents | Cap at 20-30 for most tasks |
 | Vague system prompt | Inconsistent behavior | Add role, process, output format |
 
-*Source: subagents/research-subagent-best-practices.md lines 791-819*
 
 ---
 
@@ -167,4 +159,3 @@ Consolidate similar issues. Prioritize by: CRITICAL (bugs/security) > HIGH > MED
 
 This pattern significantly reduces noise and keeps output actionable.
 
-*Source: subagents/research-subagent-best-practices.md lines 463-475*

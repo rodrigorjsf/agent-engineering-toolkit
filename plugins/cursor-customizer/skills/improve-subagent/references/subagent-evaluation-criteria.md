@@ -1,7 +1,6 @@
 # Subagent Evaluation Criteria
 
 Scoring rubric for assessing existing Cursor subagent definitions before improvement.
-Source: docs/cursor/subagents/subagents-guide.md, docs/adr/0002-product-strict-research-foundation.md
 
 ---
 
@@ -19,18 +18,17 @@ Source: docs/cursor/subagents/subagents-guide.md, docs/adr/0002-product-strict-r
 
 ## Hard Limits Table
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| `name` field | Present; lowercase letters and hyphens only; ≤64 chars | Cursor subagents documentation (configuration fields) |
-| `description` field | Present, non-empty, ≤1024 chars, specific | Cursor subagents documentation (configuration fields) |
-| `model` field | Exactly `inherit` | ADR-0002 product-strict frontmatter contract |
-| `readonly` field | Exactly `true` | ADR-0002 product-strict frontmatter contract |
-| Frontmatter key set | Exactly `name`, `description`, `model`, `readonly` | ADR-0002 product-strict frontmatter contract |
-| System prompt (markdown body) | Present and task-specific | Cursor subagents documentation (best practices) |
+| Criterion | Threshold |
+|-----------|-----------|
+| `name` field | Present; lowercase letters and hyphens only; ≤64 chars |
+| `description` field | Present, non-empty, ≤1024 chars, specific |
+| `model` field | Exactly `inherit` |
+| `readonly` field | Exactly `true` |
+| Frontmatter key set | Exactly `name`, `description`, `model`, `readonly` |
+| System prompt (markdown body) | Present and task-specific |
 
 A subagent violating any hard limit is flagged **INVALID** regardless of other quality.
 
-*Source: docs/cursor/subagents/subagents-guide.md; docs/adr/0002-product-strict-research-foundation.md*
 
 ---
 
@@ -38,7 +36,6 @@ A subagent violating any hard limit is flagged **INVALID** regardless of other q
 
 For every instruction, line, and reference, ask: **"Would removing this cause the agent to make mistakes?"** If the answer is no, flag it for removal. ETH Zurich (Feb 2026) measured that LLM-generated agent files reduce success rate by ~3% and increase cost by ~20% — the failure mode is content that looks helpful but adds no decision value. The deletion test is the rubric for separating signal from bloat.
 
-*Source: docs/general-llm/Evaluating-AGENTS-paper.pdf*
 
 ---
 
@@ -53,7 +50,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Duplicate subagent with the same purpose as a built-in role | Built-in subagents already cover exploration / shell / browser; do not recreate |
 | Vague "use for general tasks" descriptions | Cursor cannot route to the subagent reliably |
 
-*Source: docs/cursor/subagents/subagents-guide.md (anti-patterns to avoid)*
 
 ---
 
@@ -69,7 +65,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | `readonly` value is missing or `false` for an analysis subagent | Inspect the `readonly` value; analysis subagents must be `true` |
 | Instructions tell the subagent to spawn other subagents | Search the prompt body for nested-launch language; project convention restricts this |
 
-*Source: docs/cursor/subagents/subagents-guide.md (configuration fields, best practices); docs/adr/0002-product-strict-research-foundation.md*
 
 ---
 
@@ -84,7 +79,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Description specific enough for routing? | Triggers specified ("Use when...", "Use after...") | Generic description; poor delegation |
 | Context isolation justified? | Subagent prevents context pollution | Subagent used when a slash command works |
 
-*Source: docs/cursor/subagents/subagents-guide.md (best practices)*
 
 ---
 
@@ -99,7 +93,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Context Isolation | Subagent use justified; prevents pollution | Questionable necessity | Duplicates inline capability |
 | **Overall** | | | |
 
-*Source: docs/cursor/subagents/subagents-guide.md (best practices, anti-patterns)*
 
 ---
 

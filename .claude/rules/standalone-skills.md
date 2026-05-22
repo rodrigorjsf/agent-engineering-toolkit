@@ -24,3 +24,49 @@ paths:
 - SKILL.md `name` field: ≤64 chars, lowercase letters/numbers/hyphens only, no XML tags
 - SKILL.md `description` field: non-empty, ≤1024 chars, third person, no XML tags
 - SKILL.md body: under 500 lines
+
+## Canonical Tag Vocabulary (skills/**/SKILL.md)
+
+Every `SKILL.md` body (post-frontmatter) under `skills/**` MUST wrap its logical blocks in the canonical semantic-tag vocabulary:
+
+**Mandatory tags** — hard-fail if any are missing:
+- `<TRIGGER when="...">` or `<TRIGGER when="..." />` — plain-language activation cue; required for skills
+- `<BEHAVIOUR avoid="..." always="...">` — behavioural guidelines, mindset, posture
+- `<HARD_RULES priority="hard">` — inviolable constraints (NEVER / EVERY / ALWAYS); legacy `<RULES>` is an accepted alias (no migration required until next touch)
+- `<PROCESS>` containing at least one `<PHASE id="N" name="X">` — ordered execution phases; `id=` is mandatory on every `<PHASE>`
+
+**Optional tags** — absence is never a finding:
+`<PREFLIGHT>`, `<REFERENCES>`, `<EXAMPLE>`, `<ANTI_PATTERN>`, `<OUTPUT>`, `<VALIDATION>`
+
+**Closed attribute set**: `avoid=`, `always=`, `when=`, `name=`, `id=`, `priority=`. Non-canonical attribute names produce a *warn* finding (typo guard); they do not hard-fail.
+
+**Validation strictness tiers** (deterministic — apply verbatim):
+
+| Tier | Trigger | Action |
+|------|---------|--------|
+| Hard-fail | Any mandatory tag missing | Fix before proceeding |
+| Hard-fail | Unbalanced tags (open without close, or close without open) | Fix before proceeding |
+| Hard-fail | Malformed attribute syntax (missing quotes, stray `=`, unterminated quote) | Fix before proceeding |
+| Warn | Non-canonical attribute name outside the closed set | Surface warning; do not block |
+| Silent | Absence of any optional tag | No finding |
+
+A self-closing tag (`<TRIGGER ... />`) counts as balanced. `<PHASE>` missing `id=` is a hard-fail.
+
+## Artifact Format Routing (skills/**/SKILL.md)
+
+When a standalone skill generates an output artifact, the default format is:
+
+- **HTML** for human-rich agent-executable artifacts: plans, PRDs, design specs, reports, prototypes, code-review writeups, custom editors
+- **Markdown** (mandatory) for: `SKILL.md`, `AGENTS.md`, `README.md`, `CONTEXT.md`, ADR files, commit messages, PR bodies, GitHub issues, code comments
+
+Explicit user override (`generate as markdown`) always wins over the default.
+
+Standalone skills that generate HTML artifacts MUST ship a baseline HTML skeleton under `assets/templates/` and carry the canonical semantic-tag scaffold (`<TRIGGER>`, `<BEHAVIOUR>`, `<HARD_RULES>`, `<PROCESS>` with `<PHASE>`) inside the HTML `<body>`.
+
+## Validation Strictness
+
+Meta-skill self-validation loops MUST:
+1. Check all mandatory canonical tags are present and balanced
+2. Hard-fail on missing mandatory tags, unbalanced tags, or malformed attribute syntax
+3. Warn (do not block) on non-canonical attribute names
+4. Run at most 3 iterations before surfacing remaining failures to the user

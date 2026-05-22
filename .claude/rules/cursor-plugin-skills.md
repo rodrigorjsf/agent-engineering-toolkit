@@ -22,6 +22,12 @@ paths:
 - SKILL.md `name` field: ≤64 chars, lowercase letters/numbers/hyphens only, no XML tags
 - SKILL.md `description` field: non-empty, ≤1024 chars, third person, no XML tags
 - SKILL.md body: under 500 lines
+- SKILL.md body MUST carry the canonical semantic-tag vocabulary: mandatory `<TRIGGER>`, `<BEHAVIOUR>`, `<HARD_RULES>`, and `<PROCESS>` containing one or more `<PHASE id="N" name="X">`; optional `<PREFLIGHT>`, `<REFERENCES>`, `<EXAMPLE>`, `<ANTI_PATTERN>`, `<OUTPUT>`, `<VALIDATION>` (see `wiki/knowledge/skill-body-convention.md`)
+- Semantic tags use the closed attribute set only — `avoid=`, `always=`, `when=`, `name=`, `id=`, `priority=`; `id=` is mandatory on every `<PHASE>`; non-canonical attribute names are a warn-tier finding, not a hard fail
+- The legacy `<RULES>` tag is an alias of `<HARD_RULES>` — it satisfies the mandatory `<HARD_RULES>` check; migrate each occurrence to `<HARD_RULES>` on next touch, no scheduled mass rename
+- Meta-skills that generate human-rich AND agent-executable artifacts (plans, PRDs, design specs, reports, prototypes) default to HTML output carrying the same canonical tags; Markdown stays mandatory for agent-loaded and tooling-locked files (`SKILL.md`, subagent `.md`, `AGENTS.md`, rules files, `README.md`, commit/PR/issue bodies); explicit user override always wins (see `wiki/knowledge/skill-body-convention.md`)
+- Self-validation loops apply three strictness tiers: hard-fail on a missing mandatory tag, unbalanced open/close tags, or malformed attribute syntax; warn on non-canonical attribute names; stay silent on absent optional tags (see `wiki/knowledge/skill-body-convention.md`)
+- YAML frontmatter stays untouched by the semantic-tag convention — Cursor's official spec governs it; the `<TRIGGER>` cue lives in the body, never duplicated into frontmatter
 - In `cursor-initializer`: `rule-domain-detector` agent walks a four-tier heuristic (tooling-non-obvious → file-pattern → monorepo-scope → on-demand cross-cutting / domain); empty list is the canonical passing output for trivial single-package projects
 - In `cursor-initializer`: `file-evaluator` agent has dual responsibility — per-rule `.mdc` quality assessment, and (when AGENTS.md is present) block-by-block classification of AGENTS.md content by destination activation mode
 - `validation-criteria.md` intentionally diverges between `init-cursor` and `improve-cursor` — `improve-cursor` adds preservation, calibration, and migration-sub-flow-schema rules; these files are NOT a parity family

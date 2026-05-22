@@ -2,7 +2,6 @@
 
 Instructions for generating and improving `.claude/rules/` and CLAUDE.md hierarchy.
 Claude Code-specific — not applicable to AGENTS.md skills.
-Sources: research-claude-code-skills-format.md, research-context-engineering-comprehensive.md, init-claude/SKILL.md, memory/how-claude-remembers-a-project.md
 
 ---
 
@@ -24,7 +23,6 @@ Sources: research-claude-code-skills-format.md, research-context-engineering-com
 
 `claudeMdExcludes` (in `.claude/settings.local.json`) skips irrelevant ancestor CLAUDE.md files in large monorepos.
 
-*Source: memory/how-claude-remembers-a-project.md lines 243-260; research-context-engineering-comprehensive.md:181-208*
 
 ---
 
@@ -45,7 +43,6 @@ paths:
 
 Rules **without** `paths:` frontmatter load unconditionally at session start (always consumed).
 
-*Source: research-context-engineering-comprehensive.md lines 181-196*
 
 ---
 
@@ -53,7 +50,6 @@ Rules **without** `paths:` frontmatter load unconditionally at session start (al
 
 Two categories warrant a `.claude/rules/` file: (1) **convention rules** — file-pattern-specific coding conventions (style rules for `**/*.ts`, `**/*.test.ts`; framework-specific patterns like route handlers or migration scripts), only when non-obvious enough to cause mistakes; (2) **domain-critical rules** — security, privacy, or compliance triggered by sensitive file patterns.
 
-*Source: init-claude/SKILL.md:118-136*
 
 ---
 
@@ -67,7 +63,6 @@ Project-wide general conventions belong in root `CLAUDE.md`; scope-wide conventi
 
 `.claude/rules/` holds one file per topic with descriptive filenames (e.g., `code-style.md`, `testing.md` with `paths: ["**/*.test.*"]`, `security.md` with `paths: ["src/api/**"]`); subdirectories like `frontend/react.md` group rules by domain. Files are discovered recursively. Symlinks are supported for cross-project sharing (circular symlinks handled gracefully). User-level rules (`~/.claude/rules/`) apply to all projects but project rules take precedence.
 
-*Source: research-context-engineering-comprehensive.md lines 284-305*
 
 ---
 
@@ -81,4 +76,3 @@ Relevant to every task → root `./CLAUDE.md`. Relevant to one area/package → 
 
 When placing new content, prefer this priority order: (1) path-scoped `.claude/rules/` file → (2) subdirectory `CLAUDE.md` → (3) domain doc (`docs/TESTING.md`) → (4) skill → (5) only if truly needed every task, root `CLAUDE.md`. The 5-scope CLAUDE.md hierarchy table (Managed/CLI/Local/Project/User) lives in `progressive-disclosure-guide.md`.
 
-*Source: research-context-engineering-comprehensive.md lines 259-282*

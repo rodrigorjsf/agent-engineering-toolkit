@@ -1,7 +1,6 @@
 # Automation Migration Guide
 
 Decision criteria for migrating instructions from CLAUDE.md/AGENTS.md to on-demand mechanisms.
-Source: context-aware-improve-optimization.prd.md, analysis-skill-authoring-best-practices.md, analysis-how-claude-remembers-a-project.md, research-context-engineering-comprehensive.md
 
 ---
 
@@ -13,7 +12,6 @@ Source: context-aware-improve-optimization.prd.md, analysis-skill-authoring-best
 - Mechanism comparison (context cost, enforcement, best for)
 - Distribution-aware recommendations (plugin vs. standalone)
 - Token impact estimation (savings per mechanism type)
-- Evidence citations
 
 ---
 
@@ -30,7 +28,6 @@ When evaluating an instruction block for migration, follow this decision path:
 7. **Is it domain content for a monorepo package?** → Subdirectory AGENTS.md in that package root
 8. **None of the above?** → Keep in current location; reassess in next improvement cycle
 
-*Source: context-aware-improve-optimization.prd.md lines 346-358*
 
 ---
 
@@ -38,17 +35,16 @@ When evaluating an instruction block for migration, follow this decision path:
 
 Classify each instruction block by content type, then recommend the corresponding mechanism:
 
-| Content Type | Best Mechanism | Evidence Source |
-|---|---|---|
-| Always-applicable universal rules (<5 lines) | AGENTS.md root | research-context-engineering-comprehensive.md |
-| Package or scope-specific conventions (5-50 lines) | Subdirectory AGENTS.md in the relevant package | analysis-how-claude-remembers-a-project.md |
-| Domain knowledge or workflows (50-500 lines) | Skill (`user-invocable: false`) | extend-claude-with-skills.md |
-| Heavy workflows with side effects | Skill (`disable-model-invocation: true`) | extend-claude-with-skills.md |
-| Isolated, context-heavy analysis | Skill (`context: fork`) | extend-claude-with-skills.md |
-| Infrequently-needed deep reference | On-demand reference linked from SKILL.md | analysis-skill-authoring-best-practices.md |
-| Information agents can infer from code | DELETE — do not document | analysis-evaluating-agents-paper.md |
+| Content Type | Best Mechanism |
+|---|---|
+| Always-applicable universal rules (<5 lines) | AGENTS.md root |
+| Package or scope-specific conventions (5-50 lines) | Subdirectory AGENTS.md in the relevant package |
+| Domain knowledge or workflows (50-500 lines) | Skill (`user-invocable: false`) |
+| Heavy workflows with side effects | Skill (`disable-model-invocation: true`) |
+| Isolated, context-heavy analysis | Skill (`context: fork`) |
+| Infrequently-needed deep reference | On-demand reference linked from SKILL.md |
+| Information agents can infer from code | DELETE — do not document |
 
-*Source: context-aware-improve-optimization.prd.md lines 348-358*
 
 ---
 
@@ -65,7 +61,6 @@ Use these signals to identify instructions that should migrate from always-loade
 | Instructions duplicated across files | Consolidation candidate | Same content in 2+ files → single source of truth |
 | Version numbers, team names, release info | DELETE or pointer | High-churn content → remove |
 
-*Source: analysis-evaluating-agents-paper.md lines 36-52, Anthropic Best Practices*
 
 ---
 
@@ -81,7 +76,6 @@ Compare all available on-demand mechanisms when recommending a migration:
 | Subdirectory AGENTS.md | Loaded when agent enters that directory | Scoped to package or subdirectory | Monorepo package-specific conventions |
 | Domain doc (`docs/TOPIC.md`) | Zero (loaded on demand via pointer) | Advisory — referenced from root AGENTS.md | Deep domain content too large for root |
 
-*Source: analysis-skill-authoring-best-practices.md lines 19-46, research-context-engineering-comprehensive.md*
 
 ---
 
@@ -97,7 +91,6 @@ This guide targets the cross-platform AGENTS.md ecosystem. Recommend only mechan
 
 Suggest only the mechanisms listed above. Tool-specific or platform-specific mechanisms are out of scope for AGENTS.md improvement suggestions.
 
-*Source: DESIGN-GUIDELINES.md Guideline 11, project architecture*
 
 ---
 
@@ -116,17 +109,4 @@ Estimate savings when recommending each migration type:
 
 Present token impact estimates alongside migration recommendations to help users prioritize high-impact changes first.
 
-*Source: research-context-engineering-comprehensive.md, analysis-skill-authoring-best-practices.md lines 19-46*
 
----
-
-## Evidence Citations
-
-| Claim | Source |
-|---|---|
-| Codebase overviews do not help agents navigate | analysis-evaluating-agents-paper.md lines 36-41 |
-| Agent obedience turns unnecessary instructions into active cost | analysis-evaluating-agents-paper.md lines 42-52 |
-| Skill startup cost: ~100 tokens for name + description only | analysis-skill-authoring-best-practices.md lines 19-23 |
-| Reference depth: max 1 level from SKILL.md | analysis-skill-authoring-best-practices.md lines 131-143 |
-| ≤200 lines per config file; ~150-200 instruction limit | research-context-engineering-comprehensive.md |
-| Subdirectory AGENTS.md for monorepo scoping | research-context-engineering-comprehensive.md |

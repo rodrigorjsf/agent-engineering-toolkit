@@ -1,7 +1,6 @@
 # Progressive Disclosure Guide
 
 Evidence-based instructions for structuring AGENTS.md and CLAUDE.md hierarchies.
-Sources: a-guide-to-agents.md, research-context-engineering-comprehensive.md, memory/how-claude-remembers-a-project.md
 
 ---
 
@@ -30,7 +29,6 @@ When deciding where to place content, use this table:
 | `.claude/rules/` (path-scoped) | Specific to certain file patterns | On-demand when files match |
 | Skill | A workflow the agent should invoke explicitly | On-demand when invoked |
 
-*Source: a-guide-to-agents.md lines 228-233; research-context-engineering-comprehensive.md lines 257-305*
 
 ---
 
@@ -74,7 +72,6 @@ See each package's AGENTS.md for specific guidelines.
 
 Patterns match absolute paths with glob syntax. Arrays merge across settings layers. Managed policy CLAUDE.md files cannot be excluded.
 
-*Source: memory/how-claude-remembers-a-project.md lines 243-260*
 
 ---
 
@@ -105,7 +102,6 @@ docs/
 
 **Use skills for workflows** — agents invoke skills only when needed, keeping base context minimal.
 
-*Source: a-guide-to-agents.md lines 110-163*
 
 ---
 
@@ -125,7 +121,6 @@ docs/
 
 **Load order**: Claude Code walks up the directory tree from CWD, loading every ancestor CLAUDE.md at session start. Subdirectory CLAUDE.md files load on-demand only when Claude reads files in that directory — not at launch.
 
-*Source: research-context-engineering-comprehensive.md lines 181-208, 257-305*
 
 ---
 

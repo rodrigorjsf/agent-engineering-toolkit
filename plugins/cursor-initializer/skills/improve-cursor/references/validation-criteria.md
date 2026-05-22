@@ -1,7 +1,6 @@
 # Validation Criteria
 
 Quality checklist for improved and newly created `.cursor/rules/*.mdc` files, plus the AGENTS.md migration sub-flow output.
-Source: Industry Research (research-context-engineering-comprehensive.md), file-evaluator.md.
 
 ---
 

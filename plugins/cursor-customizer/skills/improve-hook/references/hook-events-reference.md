@@ -1,7 +1,6 @@
 # Hook Events Reference
 
 Complete reference for Cursor's native hook events: triggers, matcher fields, and handler-type support.
-Source: docs/cursor/hooks/hooks-guide.md
 
 ---
 
@@ -49,7 +48,6 @@ Cursor exposes two families of hook events: Agent (Cmd+K / Agent Chat) and Tab (
 | `beforeTabFileRead` | Before Tab reads a file for inline completions | Yes (`permission: "deny"`) |
 | `afterTabFileEdit` | After Tab edits a file | No |
 
-*Source: docs/cursor/hooks/hooks-guide.md "Agent and Tab Support"*
 
 ---
 
@@ -72,7 +70,6 @@ The `matcher` is a regex string. The field it matches against depends on the eve
 
 For MCP tool filtering on `preToolUse`/`postToolUse`/`postToolUseFailure`, use the `MCP:<tool_name>` format.
 
-*Source: docs/cursor/hooks/hooks-guide.md "Matcher Configuration"*
 
 ---
 
@@ -109,7 +106,6 @@ Cursor hooks live in a `hooks.json` file at the project or user scope. The top l
 
 **Prompt-hook fields:** add `"type": "prompt"` and a `"prompt": "<natural-language criterion>"` field; an optional `"model"` field overrides the default fast model. The prompt receives the hook input via the auto-replaced `$ARGUMENTS` placeholder.
 
-*Source: docs/cursor/hooks/hooks-guide.md "Configuration"*
 
 ---
 
@@ -122,7 +118,6 @@ Cursor hooks live in a `hooks.json` file at the project or user scope. The top l
 
 Unlike some agent platforms, Cursor exposes only these two handler types — there is no separate `http` or `agent` handler. Use `command` for deterministic checks; reserve `prompt` for cases where natural-language judgment is genuinely required.
 
-*Source: docs/cursor/hooks/hooks-guide.md "Hook Types"*
 
 ---
 
@@ -158,4 +153,3 @@ Inject dynamic context at session start:
 
 The script's stdout JSON may include `additional_context` to add to the conversation's initial system context.
 
-*Source: docs/cursor/hooks/hooks-guide.md "Examples" and "Hook events"*

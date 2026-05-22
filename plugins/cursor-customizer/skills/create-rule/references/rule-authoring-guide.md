@@ -1,7 +1,6 @@
 # Rule Authoring Guide
 
 Evidence-based guidance for creating effective Cursor rule files (`.cursor/rules/*.mdc`).
-Source: docs/cursor/rules/rules.md (Cursor official documentation)
 
 ---
 
@@ -31,7 +30,6 @@ Rules are markdown files placed in `.cursor/rules/`. Their contents are included
 | Conventions apply to a file pattern or topic | Side effects must always happen | Multi-phase workflows are required |
 | Domain expertise scoped to a path or topic | No agent judgment is required | Rich, progressive-disclosure references are needed |
 
-*Source: docs/cursor/rules/rules.md — How rules work, Project rules*
 
 ---
 
@@ -47,7 +45,6 @@ Rules are markdown files placed in `.cursor/rules/`. Their contents are included
 
 Each file should cover **one topic** with a kebab-case filename. Both `.md` and `.mdc` extensions are recognised; this distribution generates `.mdc` so that frontmatter can specify activation mode.
 
-*Source: docs/cursor/rules/rules.md — Rule file structure*
 
 ---
 
@@ -63,7 +60,6 @@ Cursor rule frontmatter is restricted to **three fields**. No other key is valid
 
 The token used by other agent platforms to scope rules by file pattern is NOT supported here — Cursor uses `globs` for the same role. Any other frontmatter key is invalid and must be removed.
 
-*Source: docs/cursor/rules/rules.md — Rule file format*
 
 ---
 
@@ -85,7 +81,6 @@ Pick the mode that matches the **content's nature**:
 - Agent-requested → cross-cutting / domain content the agent should pull in by name (authentication, observability, accessibility, API design)
 - Manual → templates and reference snippets the user explicitly opts into
 
-*Source: docs/cursor/rules/rules.md — Rule anatomy*
 
 ---
 
@@ -104,7 +99,6 @@ Auto-attached rules trigger when files matching the pattern enter the agent's co
 
 In monorepos, scope globs to the relevant package subtree (e.g., `services/api/**/*.go` rather than `**/*.go`). Language-only globs match across every package and defeat scoping.
 
-*Source: docs/cursor/rules/rules.md — Project rules; Industry Research on monorepo scoping*
 
 ---
 
@@ -129,7 +123,6 @@ In monorepos, scope globs to the relevant package subtree (e.g., `services/api/*
 
 **No contradictions** — if two rules conflict, the agent may pick one inconsistently. Review `.cursor/rules/` periodically to remove outdated or conflicting instructions.
 
-*Source: docs/cursor/rules/rules.md — Best practices*
 
 ---
 
@@ -148,4 +141,3 @@ In monorepos, scope globs to the relevant package subtree (e.g., `services/api/*
 | Rule files exceeding 200 lines | Poor adherence; attention fragmentation | Split into multiple focused files |
 | Mixing activation modes in one file | Activation-mode contract is per file | One activation mode per file |
 
-*Source: docs/cursor/rules/rules.md — What to avoid in rules; Best practices*

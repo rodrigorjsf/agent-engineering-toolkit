@@ -1,7 +1,6 @@
 # Codebase Analysis Instructions
 Structured process for detecting project tech stack, tooling, and non-standard patterns.
 Used by INIT and IMPROVE skills for codebase analysis.
-Source: agents/codebase-analyzer.md
 ---
 
 Follow these codebase analysis instructions. Analyze the project at the current working directory and return a structured summary of its technical characteristics. Focus on facts that would cause mistakes if an AI coding agent didn't know them.
@@ -89,7 +88,6 @@ Look for anything unusual that would trip up an agent:
 - Migration workflows that live in app-specific directories rather than a root config file
 - Repository-specific tools mentioned in existing documentation
 
-*Source: agents/codebase-analyzer.md lines 22-82*
 
 ---
 
@@ -127,7 +125,6 @@ Return your analysis in exactly this format:
 
 If a section has nothing non-standard to report, omit it entirely. Shorter is better.
 
-*Source: agents/codebase-analyzer.md lines 83-113*
 
 ---
 
@@ -140,4 +137,3 @@ Before returning results, verify:
 3. Output follows the exact format specified above
 4. Sections with no findings are omitted, not left empty
 
-*Source: agents/codebase-analyzer.md lines 115-122*

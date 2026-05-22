@@ -1,7 +1,6 @@
 # Subagent Config Reference
 
 Complete YAML frontmatter specification, model IDs, and orchestration patterns for subagents.
-Source: subagents/creating-custom-subagents.md, subagents/claude-orchestrate-of-claude-code-sessions.md
 
 ---
 
@@ -37,7 +36,6 @@ Only `name` and `description` are required. All others have sensible defaults.
 | `effort` | No | Inherit | `low`, `medium`, `high`, `max` (Opus 4.6 only) |
 | `isolation` | No | None | `worktree` = isolated git worktree; auto-cleanup if no changes |
 
-*Source: subagents/creating-custom-subagents.md lines 213-232*
 
 ---
 
@@ -54,7 +52,6 @@ Only `name` and `description` are required. All others have sensible defaults.
 
 Full model IDs (e.g., `claude-opus-4-6`, `claude-sonnet-4-6`) also accepted.
 
-*Source: subagents/creating-custom-subagents.md lines 234-241*
 
 ---
 
@@ -91,7 +88,6 @@ Standard patterns from community (read-only reviewers dominate):
 - Explorer: `tools: Read, Grep, Glob, Bash`
 - Full-access (rare): omit `tools` and `disallowedTools`
 
-*Source: subagents/creating-custom-subagents.md lines 243-275*
 
 ---
 
@@ -116,7 +112,6 @@ Main → (delegate) → Researcher agent → (report) → Main → (delegate) �
 **Parallel decomposition:**
 Spawn multiple independent subagents simultaneously. Main aggregates results.
 
-*Source: subagents/creating-custom-subagents.md lines 619-637*
 
 ---
 
@@ -129,7 +124,6 @@ These limitations are enforced by the runtime:
 - **Subagents do not inherit parent skills** — must be explicitly listed in `skills` field (full content injected)
 - **`maxTurns` applies per invocation** — project convention: 15 for analysis agents, 20 for evaluator agents; values outside 15–20 require explicit justification
 
-*Source: subagents/creating-custom-subagents.md lines 210-212; subagents/research-subagent-best-practices.md lines 36-42*
 
 ---
 
@@ -143,4 +137,3 @@ Plugin subagents (from installed plugins) have additional restrictions for secur
 
 To use these fields with a plugin agent: copy the agent file to `.claude/agents/` or `~/.claude/agents/`.
 
-*Source: subagents/creating-custom-subagents.md lines 187-189*

@@ -1,7 +1,6 @@
 # Progressive Disclosure Guide
 
 Where AGENTS.md and `.cursor/rules/*.mdc` content lives by load timing.
-Sources: a-guide-to-agents.md, research-context-engineering-comprehensive.md, memory/how-claude-remembers-a-project.md.
 
 For anti-patterns (ball-of-mud growth, auto-generated init files, everything-in-one-file), see `what-not-to-include.md` § Common Traps. For validation thresholds, see `validation-criteria.md`.
 
@@ -13,7 +12,6 @@ Place content based on what's relevant when. **Root AGENTS.md** — relevant to 
 
 **Borderline tiebreaker (10–15 lines)**: when domain content falls between 10–15 lines, prefer extracting to a separate domain file if it applies to only one domain. Root brevity is more valuable than an additional file.
 
-*Source: a-guide-to-agents.md lines 228-233; research-context-engineering-comprehensive.md lines 257-305*
 
 ---
 
@@ -27,7 +25,6 @@ Generate root files with only: (1) one-sentence project description; (2) package
 
 **Root**: monorepo purpose, package navigation, shared tooling — never package-specific tech stacks. **Package**: package purpose, specific tech stack, package-specific conventions — never cross-repo decisions. The agent sees all merged files. In Cursor monorepos, use `.cursor/rules/*.mdc` with narrow `globs:` patterns; keep `alwaysApply: true` rules minimal.
 
-*Source: a-guide-to-agents.md; memory/how-claude-remembers-a-project.md lines 243-260; docs/cursor/rules-and-memory.md*
 
 ---
 
@@ -35,7 +32,6 @@ Generate root files with only: (1) one-sentence project description; (2) package
 
 Extract a section to a separate domain file when it has 3+ distinct rules AND spans 10+ lines, or when irrelevant to most work sessions. Prefer "For TypeScript conventions, see docs/TYPESCRIPT.md" over inlining. Workflows go to skills (agent invokes only when needed).
 
-*Source: a-guide-to-agents.md lines 110-163*
 
 ---
 

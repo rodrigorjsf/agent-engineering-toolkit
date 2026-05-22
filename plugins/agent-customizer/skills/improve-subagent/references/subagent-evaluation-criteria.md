@@ -1,8 +1,6 @@
 # Subagent Evaluation Criteria
 
 Scoring rubric for assessing existing Claude Code subagent definitions before improvement.
-Source: subagents/research-subagent-best-practices.md, subagents/creating-custom-subagents.md
-
 ---
 
 ## Contents
@@ -19,17 +17,16 @@ Source: subagents/research-subagent-best-practices.md, subagents/creating-custom
 
 ## Hard Limits Table
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| `name` field | Present; lowercase letters and hyphens only | subagents/creating-custom-subagents.md lines 217-220 |
-| `description` field | Present, non-empty, specific | subagents/creating-custom-subagents.md lines 217-220 |
-| `model` field | Recognized alias or full model ID | subagents/creating-custom-subagents.md lines 234-241 |
-| `maxTurns` | 15–20 for most tasks; values outside 15–20 require justification | Project convention — `.claude/rules/agent-files.md` |
-| System prompt (markdown body) | Present and task-specific | subagents/creating-custom-subagents.md lines 199-212 |
+| Criterion | Threshold |
+|-----------|-----------|
+| `name` field | Present; lowercase letters and hyphens only |
+| `description` field | Present, non-empty, specific |
+| `model` field | Recognized alias or full model ID |
+| `maxTurns` | 15–20 for most tasks; values outside 15–20 require justification |
+| System prompt (markdown body) | Present and task-specific |
 
 A subagent violating any hard limit is flagged **INVALID** regardless of other quality.
 
-*Source: subagents/creating-custom-subagents.md lines 213-232*
 
 ---
 
@@ -37,7 +34,6 @@ A subagent violating any hard limit is flagged **INVALID** regardless of other q
 
 For every instruction, line, and reference, ask: **"Would removing this cause the agent to make mistakes?"** If the answer is no, flag it for removal. ETH Zurich (Feb 2026) measured that LLM-generated agent files reduce success rate by ~3% and increase cost by ~20% — the failure mode is content that looks helpful but adds no decision value. The deletion test is the rubric for separating signal from bloat.
 
-*Source: docs/general-llm/Evaluating-AGENTS-paper.pdf*
 
 ---
 
@@ -52,7 +48,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Duplicate subagent with same purpose as built-in | Explore/Plan built-ins cover exploration; don't recreate |
 | Aggressive delegation language ("CRITICAL: MUST use") | Overtriggering; normal language preferred |
 
-*Source: subagents/research-subagent-best-practices.md lines 152-180*
 
 ---
 
@@ -65,7 +60,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | `allowedTools` field (old format) | Current field name is `tools` (allowlist) |
 | Tasks spawning other subagents | Runtime blocks this; remove nested spawn instructions |
 
-*Source: subagents/creating-custom-subagents.md lines 213-232*
 
 ---
 
@@ -79,7 +73,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Description specific enough for routing? | Triggers specified; "use proactively when..." | Generic description; poor delegation |
 | Context isolation justified? | Subagent prevents context pollution | Subagent used when inline works |
 
-*Source: subagents/research-subagent-best-practices.md lines 33-55*
 
 ---
 
@@ -94,7 +87,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Context Isolation | Subagent use justified; prevents pollution | Questionable necessity | Duplicates inline capability |
 | **Overall** | | | |
 
-*Source: subagents/research-subagent-best-practices.md lines 92-146*
 
 ---
 

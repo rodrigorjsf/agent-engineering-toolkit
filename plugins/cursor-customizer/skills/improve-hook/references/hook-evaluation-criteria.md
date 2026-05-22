@@ -1,7 +1,6 @@
 # Hook Evaluation Criteria
 
 Scoring rubric for assessing existing Cursor hook configurations before improvement.
-Source: docs/cursor/hooks/hooks-guide.md
 
 ---
 
@@ -29,7 +28,6 @@ Source: docs/cursor/hooks/hooks-guide.md
 
 A hook configuration violating any hard limit is flagged **INVALID** regardless of intent.
 
-*Source: docs/cursor/hooks/hooks-guide.md "Configuration", "Per-Script Configuration Options"*
 
 ---
 
@@ -37,7 +35,6 @@ A hook configuration violating any hard limit is flagged **INVALID** regardless 
 
 For every instruction, line, and reference, ask: **"Would removing this cause the agent to make mistakes?"** If the answer is no, flag it for removal. ETH Zurich (Feb 2026) measured that LLM-generated agent files reduce success rate by ~3% and increase cost by ~20% — the failure mode is content that looks helpful but adds no decision value. The deletion test is the rubric for separating signal from bloat.
 
-*Source: docs/general-llm/Evaluating-AGENTS-paper.pdf*
 
 ---
 
@@ -52,7 +49,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Sensitive data in `command` strings | Use environment variables instead |
 | `failClosed: true` set on non-security-critical hooks | Increases false-deny rate without security benefit |
 
-*Source: docs/cursor/hooks/hooks-guide.md "Examples", "Per-Script Configuration Options"*
 
 ---
 
@@ -66,7 +62,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Outdated subagent-type matcher values | Verify against documented subagent types (`generalPurpose`, `explore`, `shell`) |
 | Matcher set on an event that does not support matchers | Cross-check against `hook-events-reference.md` "Matcher Field by Event Type" |
 
-*Source: docs/cursor/hooks/hooks-guide.md "Matcher Configuration"*
 
 ---
 
@@ -80,7 +75,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Security posture appropriate? | Hook validates before allowing; secrets in env vars; stdin variables quoted | Hook only logs, never blocks; secrets hardcoded; unquoted variable expansion |
 | Hook type appropriate for task? | `command` for deterministic, `prompt` for natural-language judgment | `prompt` for a simple regex check |
 
-*Source: docs/cursor/hooks/hooks-guide.md "Hook Types", "Command-Based Hooks"*
 
 ---
 
@@ -95,7 +89,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Handler Efficiency | Right type for each task | Some oversized handlers | Prompt hooks for trivial regex tasks |
 | **Overall** | | | |
 
-*Source: docs/cursor/hooks/hooks-guide.md "Configuration", "Hook Types"*
 
 > **UNCERTAIN classification**: When the `command` handler references an external script that cannot be read from the repository, classify Error Handling as **UNCERTAIN** (not Bad) — exit-code behavior cannot be verified from the hook configuration alone. Report it as a gap rather than a violation.
 

@@ -1,22 +1,19 @@
 # Rule Validation Criteria
 
 Quality checklist for generated and improved `.claude/rules/*.md` rule files.
-Source: memory/how-claude-remembers-a-project.md
-
 ---
 
 ## Hard Limits (Auto-fail if violated)
 
 Any rule file violating these criteria must be fixed before proceeding:
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| Rule length | ≤ 50 lines | Context budget: loaded when matching files read — project convention |
-| YAML frontmatter | Valid YAML if present | memory/how-claude-remembers-a-project.md |
-| `paths:` field | Required; array format; valid glob patterns | memory/how-claude-remembers-a-project.md lines 147-164 |
-| Contradictions with other rules | 0 | Claude picks arbitrarily when contradictions exist |
+| Criterion | Threshold |
+|-----------|-----------|
+| Rule length | ≤ 50 lines |
+| YAML frontmatter | Valid YAML if present |
+| `paths:` field | Required; array format; valid glob patterns |
+| Contradictions with other rules | 0 |
 
-*Source: memory/how-claude-remembers-a-project.md lines 61-75; 147-164; Project convention — `.github/instructions/rules.instructions.md`*
 
 ---
 

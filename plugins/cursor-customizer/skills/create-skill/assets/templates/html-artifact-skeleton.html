@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{artifact-title}}</title>
+  <style>
+    :root {
+      --color-text:          #1f2937;
+      --color-text-muted:    #4b5563;
+      --color-text-strong:   #111827;
+      --color-bg:            #ffffff;
+      --color-border:        #e5e7eb;
+      --color-code-bg:       #f3f4f6;
+
+      --color-trigger-text:  #374151;
+
+      --color-behaviour-bg:  #f0f4ff;
+      --color-behaviour-bar: #2563eb;
+
+      --color-hardrules-bg:  #fef2f2;
+      --color-hardrules-bar: #dc2626;
+
+      --color-phase-bg:      #fafafa;
+      --color-phase-label:   #111827;
+
+      --color-antipattern-bg:  #fffbeb;
+      --color-antipattern-bar: #d97706;
+
+      --color-output-bg:  #f0fdf4;
+      --color-output-bar: #16a34a;
+
+      --color-validation-bg:  #f5f3ff;
+      --color-validation-bar: #7c3aed;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --color-text:          #e5e7eb;
+        --color-text-muted:    #9ca3af;
+        --color-text-strong:   #f9fafb;
+        --color-bg:            #111827;
+        --color-border:        #374151;
+        --color-code-bg:       #1f2937;
+
+        --color-trigger-text:  #d1d5db;
+
+        --color-behaviour-bg:  #1e2a4a;
+        --color-behaviour-bar: #3b82f6;
+
+        --color-hardrules-bg:  #2d1515;
+        --color-hardrules-bar: #ef4444;
+
+        --color-phase-bg:      #1f2937;
+        --color-phase-label:   #f9fafb;
+
+        --color-antipattern-bg:  #2d2209;
+        --color-antipattern-bar: #f59e0b;
+
+        --color-output-bg:  #052e16;
+        --color-output-bar: #22c55e;
+
+        --color-validation-bg:  #1e1533;
+        --color-validation-bar: #a78bfa;
+      }
+    }
+
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 900px;
+      margin: 2rem auto;
+      padding: 1rem;
+      line-height: 1.6;
+      color: var(--color-text);
+      background: var(--color-bg);
+    }
+
+    BEHAVIOUR, HARD_RULES, PROCESS, PHASE, PREFLIGHT, REFERENCES,
+    EXAMPLE, ANTI_PATTERN, OUTPUT, VALIDATION, TRIGGER {
+      display: block;
+      margin: 1rem 0;
+    }
+
+    TRIGGER {
+      font-style: italic;
+      color: var(--color-trigger-text);
+    }
+
+    BEHAVIOUR {
+      background: var(--color-behaviour-bg);
+      border-left: 4px solid var(--color-behaviour-bar);
+      padding: 1rem;
+      border-radius: 4px;
+    }
+
+    HARD_RULES[priority="hard"] {
+      background: var(--color-hardrules-bg);
+      border-left: 4px solid var(--color-hardrules-bar);
+      padding: 1rem;
+      border-radius: 4px;
+    }
+
+    PROCESS {
+      border-top: 1px solid var(--color-border);
+      padding-top: 1rem;
+    }
+
+    PHASE {
+      background: var(--color-phase-bg);
+      border: 1px solid var(--color-border);
+      padding: 1rem;
+      margin: 0.5rem 0;
+      border-radius: 4px;
+    }
+
+    PHASE::before {
+      content: "Phase " attr(id) " — " attr(name);
+      display: block;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--color-phase-label);
+    }
+
+    ANTI_PATTERN {
+      background: var(--color-antipattern-bg);
+      border-left: 4px solid var(--color-antipattern-bar);
+      padding: 1rem;
+      border-radius: 4px;
+    }
+
+    OUTPUT {
+      background: var(--color-output-bg);
+      border-left: 4px solid var(--color-output-bar);
+      padding: 1rem;
+      border-radius: 4px;
+    }
+
+    VALIDATION {
+      background: var(--color-validation-bg);
+      border-left: 4px solid var(--color-validation-bar);
+      padding: 1rem;
+      border-radius: 4px;
+    }
+
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      background: var(--color-code-bg);
+      padding: 0.125rem 0.25rem;
+      border-radius: 3px;
+    }
+
+    pre {
+      padding: 0.75rem;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>{{artifact-title}}</h1>
+    <TRIGGER when="...">...</TRIGGER>
+    <BEHAVIOUR avoid="..." always="...">...</BEHAVIOUR>
+    <HARD_RULES priority="hard">...</HARD_RULES>
+    <PROCESS>
+      <PHASE id="1" name="...">...</PHASE>
+    </PROCESS>
+    <OUTPUT format="...">...</OUTPUT>
+    <VALIDATION>...</VALIDATION>
+  </main>
+</body>
+</html>

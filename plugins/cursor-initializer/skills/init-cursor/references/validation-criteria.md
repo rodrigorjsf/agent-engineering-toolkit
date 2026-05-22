@@ -1,7 +1,6 @@
 # Validation Criteria
 
 Quality checklist for generated `.cursor/rules/*.mdc` files.
-Source: Industry Research (research-context-engineering-comprehensive.md), file-evaluator.md
 
 ---
 
@@ -9,13 +8,13 @@ Source: Industry Research (research-context-engineering-comprehensive.md), file-
 
 Any rule file violating these criteria must be fixed before proceeding:
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| Rule file length | ≤ 200 lines | Industry Research: 200-line target for configuration files in this toolkit |
-| Instruction count | ≤ 150-200 | Industry Research: "~150-200 instructions with reasonable consistency" |
-| Contradictions between rules | 0 | Industry Research: conflicting instructions make the model choose inconsistently |
-| Stale file path references | 0 | Industry Research: "File paths change constantly... actively poisons context" |
-| Invalid `.mdc` frontmatter fields | 0 | Only `description`, `alwaysApply`, `globs` are valid |
+| Criterion | Threshold |
+|-----------|-----------|
+| Rule file length | ≤ 200 lines — 200-line target for configuration files in this toolkit |
+| Instruction count | ≤ 150-200 — "~150-200 instructions with reasonable consistency" |
+| Contradictions between rules | 0 — conflicting instructions make the model choose inconsistently |
+| Stale file path references | 0 — "File paths change constantly... actively poisons context" |
+| Invalid `.mdc` frontmatter fields | 0 — only `description`, `alwaysApply`, `globs` are valid |
 
 ---
 

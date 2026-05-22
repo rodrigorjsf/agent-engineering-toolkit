@@ -2,7 +2,6 @@
 
 Migration-candidate signals and token-impact estimation.
 Load only when Phase 1 flags an instruction block as a migration candidate.
-Source: context-aware-improve-optimization.prd.md, analysis-evaluating-agents-paper.md, research-context-engineering-comprehensive.md.
 
 For mechanism comparison and decision flowchart, see `automation-mechanism-comparison.md`.
 
@@ -19,7 +18,6 @@ For mechanism comparison and decision flowchart, see `automation-mechanism-compa
 - Duplicated across 2+ files → consolidate to single source
 - Version numbers / team names / release info (high-churn) → DELETE or replace with memory pointer
 
-*Source: analysis-evaluating-agents-paper.md lines 36-52; Anthropic Best Practices*
 
 ---
 
@@ -37,4 +35,3 @@ For mechanism comparison and decision flowchart, see `automation-mechanism-compa
 
 Present token-impact estimates alongside migration recommendations.
 
-*Source: research-context-engineering-comprehensive.md; analysis-skill-authoring-best-practices.md lines 19-46; DESIGN-GUIDELINES.md Guideline 10.*

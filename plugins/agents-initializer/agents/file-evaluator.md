@@ -21,25 +21,25 @@ You are a configuration file quality specialist. Analyze existing AGENTS.md or C
 
 ### Hard Limits
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| File length | ≤ 200 lines | Anthropic Docs: "Target under 200 lines per CLAUDE.md file" |
-| Instruction count | ≤ 150-200 | HumanLayer: "Frontier LLMs can follow ~150-200 instructions" |
-| No contradictions | 0 conflicts | Anthropic: "Claude may pick one arbitrarily" |
+| Criterion | Threshold |
+|-----------|-----------|
+| File length | ≤ 200 lines |
+| Instruction count | ≤ 150-200 |
+| No contradictions | 0 conflicts |
 
 ### Bloat Indicators
 
 Each of these wastes tokens without improving agent performance:
 
-| Indicator | Why It's Bloat | Source |
-|-----------|---------------|--------|
-| Directory/file structure listings | "Not effective at providing repository overview" | Evaluating AGENTS.md (ETH Zurich) |
-| Standard language conventions | Agent already knows these from training | Anthropic Best Practices |
-| Vague instructions ("write clean code") | Not actionable, wastes attention budget | a-guide-to-agents.md |
-| Codebase overview paragraphs | Increases steps without improving navigation | Evaluating AGENTS.md |
-| Obvious tool usage ("use git for version control") | Agent already knows this | Anthropic: "If Claude already does it correctly, delete it" |
-| Duplicated information across files | Wastes tokens on every request | Context engineering research |
-| **Architectural path trap** | Lists of paths WITH behavioral constraints (e.g., `services/ must not import from routes/`) are **not** directory listings — flag only pure path listings with no rules attached | Evaluating AGENTS.md |
+| Indicator | Why It's Bloat |
+|-----------|---------------|
+| Directory/file structure listings | "Not effective at providing repository overview" |
+| Standard language conventions | Agent already knows these from training |
+| Vague instructions ("write clean code") | Not actionable, wastes attention budget |
+| Codebase overview paragraphs | Increases steps without improving navigation |
+| Obvious tool usage ("use git for version control") | Agent already knows this |
+| Duplicated information across files | Wastes tokens on every request |
+| **Architectural path trap** | Lists of paths WITH behavioral constraints (e.g., `services/ must not import from routes/`) are **not** directory listings — flag only pure path listings with no rules attached |
 
 ### Staleness Indicators
 

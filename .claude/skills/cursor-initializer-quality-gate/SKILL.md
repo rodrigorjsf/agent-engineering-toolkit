@@ -62,25 +62,63 @@ Read `.claude/skills/cursor-initializer-quality-gate/agents/scenario-evaluator.m
 
 ---
 
-## Phase 4: Findings Synthesis
+## Phase 4: Canonical Semantic-Tag Convention Checks
 
-Aggregate all outputs from Phases 1, 2, and 3.
+Read `.claude/skills/cursor-initializer-quality-gate/references/quality-gate-criteria.md`
+Section `## Canonical Semantic-Tag Convention Checks`.
 
-Read `.claude/skills/cursor-initializer-quality-gate/references/quality-gate-criteria.md` Section `## Expected Results Checklist`. Cross-reference the category headings in the checklist against the Phase 1–3 results to confirm every category was covered.
+**Skill targets** — for each file matching `plugins/cursor-initializer/skills/**/SKILL.md`:
+
+1. Parse the body (everything after the closing `---` of the YAML frontmatter).
+2. Apply checks V1–V9 from the criteria reference using the strictness tiers below.
+3. For any `<RULES>` occurrence, record it as an **informational alias candidate** (not a fail,
+   not a warn — surface it as: "File X uses `<RULES>`; consider renaming to `<HARD_RULES>` on
+   next touch (legacy alias — satisfies the V3 check)").
+
+Note: `cursor-initializer` has no subagent flows; skip the subagent-body checks.
+
+**Strictness tiers (apply verbatim):**
+
+| Tier | Trigger | Action |
+|------|---------|--------|
+| Hard-fail | Any mandatory tag missing; unbalanced open/close tag; malformed attribute syntax (`id=` absent on `<PHASE>`, unquoted attribute value, stray `=`, unterminated quote) | Record as CRITICAL finding; counts toward FAIL |
+| Warn | Non-canonical attribute name (outside `avoid`, `always`, `when`, `name`, `id`, `priority`) | Record as MAJOR warning; does not block PASS |
+| Silent | Absence of optional tag | No finding |
+| Informational | `<RULES>` present (legacy alias) | Surface as alias candidate note; no verdict impact |
+
+**Fixture corpus validation** — after checking the live plugin files, validate the golden corpus at
+`.claude/skills/agent-customizer-quality-gate/assets/fixtures/skill/`:
+
+- Run each fixture through V1–V9 checks and confirm the verdict matches `MANIFEST.md` there.
+- Any mismatch between observed verdict and MANIFEST verdict is itself a CRITICAL finding.
+
+Collect structured output as `tag_convention_report`, which contains:
+- Per-file check results for each skill body
+- Informational `<RULES>` alias candidate list
+- Fixture corpus validation results (pass/mismatch per fixture)
+
+---
+
+## Phase 5: Findings Synthesis
+
+Aggregate all outputs from Phases 1, 2, 3, and 4.
+
+Read `.claude/skills/cursor-initializer-quality-gate/references/quality-gate-criteria.md` Section `## Expected Results Checklist`. Cross-reference the category headings in the checklist against the Phase 1–4 results to confirm every category was covered.
 
 Compute and display the **Quality Gate Dashboard**:
 
 ```
 Quality Gate Dashboard — cursor-initializer [DATE]
-═══════════════════════════════════════════════════
-Category                    Checks  Passed  Failed  Status
-─────────────────────────────────────────────────────────
-Static Artifact Compliance    [N]     [N]     [N]   [PASS/FAIL]
-Cross-Copy Parity             [N]     [N]     [N]   [PASS/FAIL]
-Red-Green Test Coverage         4     [N]     [N]   [PASS/FAIL]
-─────────────────────────────────────────────────────────
-OVERALL                       [N]     [N]     [N]   [PASS/FAIL]
-═══════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════
+Category                        Checks  Passed  Failed  Status
+──────────────────────────────────────────────────────────
+Static Artifact Compliance        [N]     [N]     [N]   [PASS/FAIL]
+Cross-Copy Parity                 [N]     [N]     [N]   [PASS/FAIL]
+Red-Green Test Coverage             4     [N]     [N]   [PASS/FAIL]
+Canonical Semantic-Tag Convention [N]     [N]     [N]   [PASS/FAIL]
+──────────────────────────────────────────────────────────
+OVERALL                           [N]     [N]     [N]   [PASS/FAIL]
+═══════════════════════════════════════════════════════════
 ```
 
 **If all checks pass:**
@@ -88,11 +126,11 @@ OVERALL                       [N]     [N]     [N]   [PASS/FAIL]
 
 **Stop here. Do NOT write any report file to `.specs/reports/`.**
 
-**If any checks fail:** Proceed to Phase 5.
+**If any checks fail:** Proceed to Phase 6.
 
 ---
 
-## Phase 5: Findings Report
+## Phase 6: Findings Report
 
 Generate `.specs/reports/cursor-quality-gate-[YYYY-MM-DD]-findings.md`.
 

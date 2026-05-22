@@ -1,7 +1,6 @@
 # Progressive Disclosure Guide
 
 Evidence-based instructions for structuring AGENTS.md and CLAUDE.md hierarchies.
-Sources: a-guide-to-agents.md, research-context-engineering-comprehensive.md
 
 ---
 
@@ -28,7 +27,6 @@ When deciding where to place content, use this table:
 | Subdirectory AGENTS.md | Specific to one package or area | On-demand when working there |
 | Skill | A workflow the agent should invoke explicitly | On-demand when invoked |
 
-*Source: a-guide-to-agents.md lines 228-233; research-context-engineering-comprehensive.md lines 257-305*
 
 ---
 
@@ -64,7 +62,6 @@ See each package's AGENTS.md for specific guidelines.
 > "Don't overload any level. The agent sees all merged files in its context."
 > — a-guide-to-agents.md lines 164-193
 
-*Source: a-guide-to-agents.md lines 164-193*
 
 ---
 
@@ -95,7 +92,6 @@ docs/
 
 **Use skills for workflows** — agents invoke skills only when needed, keeping base context minimal.
 
-*Source: a-guide-to-agents.md lines 110-163*
 
 ---
 
@@ -112,7 +108,6 @@ docs/
 
 **Merge behavior**: Subdirectory AGENTS.md files merge with root (not replace) — content from both applies when the agent works in that directory.
 
-*Source: research-context-engineering-comprehensive.md lines 181-208, 257-305*
 
 ---
 

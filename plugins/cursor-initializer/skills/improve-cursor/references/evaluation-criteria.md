@@ -1,7 +1,6 @@
 # Evaluation Criteria
 
 Scoring rubric for assessing existing AGENTS.md files and `.cursor/rules/*` files before improvement. Used by IMPROVE skills only.
-Source: file-evaluator.md, research-context-engineering-comprehensive.md.
 
 The canonical Hard Limits Table, Bloat Indicators, Staleness Indicators, Progressive Disclosure Assessment, Quality Score Rubric, and Evaluation Output Template all live in `agents/file-evaluator.md` (the subagent that produces the structured evaluation report). The Migration Candidate Indicators table lives in `automation-migration-guide.md`. This file holds only the criteria specific to the IMPROVE workflow that aren't already covered by those references.
 
@@ -18,7 +17,6 @@ The canonical Hard Limits Table, Bloat Indicators, Staleness Indicators, Progres
 
 Goldilocks zone — ✅ specific and actionable: "Use 2-space indentation"; ❌ too vague: "Format code properly" (not verifiable); ❌ too specific: "File `src/auth/handlers.ts` handles JWT" (will go stale on a path reference). Standard-command-form examples like "Run `npm test`" are valid form but should still be excluded per `what-not-to-include.md` because the command is the language default.
 
-*Source: research-context-engineering-comprehensive.md lines 131-134*
 
 ---
 
