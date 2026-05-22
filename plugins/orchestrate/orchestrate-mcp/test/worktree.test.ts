@@ -223,6 +223,57 @@ describe("create_worktree", () => {
     expect(retry.branch).toBe("orphan-candidate-branch");
     expect(fs.existsSync(goodPath)).toBe(true);
   });
+
+  it("fetches over an ssh:// remote and reports fetchStatus='ok' (F-005 regression)", async () => {
+    // F-005: the git wrapper must not blank `core.sshCommand` in a way that
+    // breaks SSH transport. A bare repo reached over an `ssh://` URL stands in
+    // for a real SSH remote; a stub `ssh` keeps the test offline.
+    const remoteDir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-remote-"));
+    const remoteBare = path.join(remoteDir, "remote.git");
+    git(["clone", "--bare", repoPath, remoteBare], remoteDir);
+    git(["remote", "add", "origin", `ssh://fake${remoteBare}`], repoPath);
+
+    // Stub `ssh`: ignore the options and host, run the remote command (git
+    // passes it as the last argument) locally. Prepended to PATH so the
+    // wrapper's `core.sshCommand=ssh` override resolves to this stub.
+    const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-ssh-"));
+    const stubSsh = path.join(stubDir, "ssh");
+    fs.writeFileSync(
+      stubSsh,
+      '#!/bin/sh\nfor arg in "$@"; do cmd="$arg"; done\nexec sh -c "$cmd"\n'
+    );
+    fs.chmodSync(stubSsh, 0o755);
+
+    // GIT_SSH_COMMAND would override `-c core.sshCommand` and mask the bug —
+    // strip it for the test, restore it after.
+    const savedPath = process.env.PATH;
+    const savedSshCommand = process.env.GIT_SSH_COMMAND;
+    delete process.env.GIT_SSH_COMMAND;
+    process.env.PATH = `${stubDir}${path.delimiter}${savedPath ?? ""}`;
+
+    try {
+      const wtPath = path.join(worktreesDir, "ssh-fetch-wt");
+      const result = await createWorktree({
+        baseRef: "HEAD",
+        branch: "ssh-fetch-branch",
+        worktreePath: wtPath,
+        repoPath,
+      });
+
+      expect(result.status).toBe("ok");
+      expect(result.fetchStatus).toBe("ok");
+      expect(result.fetchError).toBeUndefined();
+    } finally {
+      process.env.PATH = savedPath;
+      if (savedSshCommand === undefined) {
+        delete process.env.GIT_SSH_COMMAND;
+      } else {
+        process.env.GIT_SSH_COMMAND = savedSshCommand;
+      }
+      rmrf(remoteDir);
+      rmrf(stubDir);
+    }
+  });
 });
 
 // ─── remove_worktree ──────────────────────────────────────────────────────────

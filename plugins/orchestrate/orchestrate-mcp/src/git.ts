@@ -19,8 +19,14 @@ const GIT_CONFIG_OVERRIDES: string[] = [
   "core.hooksPath=/dev/null",
   "-c",
   "core.fsmonitor=",
+  // `core.sshCommand=ssh`, not a blank value. A command-line `-c` overrides
+  // whatever an untrusted repo's `.git/config` sets, so a malicious
+  // `core.sshCommand` still cannot run — the code-execution surface stays
+  // closed. A blank value would also close it, but it makes an SSH `fetch`
+  // spawn an empty command and fail (F-005); `ssh` is the real, working
+  // invocation, resolved from PATH.
   "-c",
-  "core.sshCommand=",
+  "core.sshCommand=ssh",
   "-c",
   "core.pager=cat",
 ];
