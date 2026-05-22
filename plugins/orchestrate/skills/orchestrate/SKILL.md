@@ -124,7 +124,13 @@ prefixes are the only match keys. Then act on the count of matches:
   session hand off immediately (section 2, step 4). Then load the whole
   `run-state.json`, preserving every top-level field — `runId`,
   `umbrellaBranch`, `parentIssue`, `waves`, `completedWaves`,
-  `finalPullRequest`, and `slices`. **Resume reloads only the matched run's
+  `finalPullRequest`, and `slices`. **Refresh the `driverSessionId` field** —
+  this resuming session is a new Claude Code session with a *new* `session_id`,
+  so overwrite `driverSessionId` with the current `$ORCHESTRATE_SESSION_ID`
+  (or `null` if it is empty or unset — applying the same operator notice as the
+  fresh-run step 6). Without this refresh the `context-watchdog` would keep
+  matching the predecessor's stale identity and automatic context-handoff would
+  be lost for the rest of the run. **Resume reloads only the matched run's
   partition and run directory** — the `slices` and `waves` already persisted in
   its `run-state.json` are the run's scope, fixed at fresh-run time. Do **not**
   re-fetch the backlog, do **not** re-call `filter_to_one_parent_prd` or
@@ -137,7 +143,8 @@ prefixes are the only match keys. Then act on the count of matches:
   remote if it was pushed) — deleting the remote branch also auto-closes any
   orphaned slice pull request GitHub opened for it, so re-processing produces a
   clean branch and PR with no manual PR cleanup needed — then coerce that slice
-  back to `pending`. Skip to section 2.
+  back to `pending`. Checkpoint the refreshed `run-state.json`, then skip to
+  section 2.
 - **Two or more matches** — a **loud error**. Two in-progress runs for the same
   PRD (or two in-progress whole-backlog runs) must never be silently resolved
   by picking one. Report every matching `runId` and stop. The operator resolves
@@ -250,14 +257,26 @@ prefixes are the only match keys. Then act on the count of matches:
 6. Create the run directory `.orchestrate/runs/<runId>/`, then write the initial
    `run-state.json` into it as `.orchestrate/runs/<runId>/run-state.json` with
    **every field the schema declares** (see `references/run-state.md`):
-   - Top level: `runId`, `status: "in-progress"`, `umbrellaBranch`,
-     `integrationBase: "development"`, `parentIssue`, `startedAt` and
-     `updatedAt` (current UTC time), the `waves` from `plan_waves`,
-     `completedWaves: 0`, `finalPullRequest: null`. For a partitioned run,
-     `parentIssue` is the invoked `<PRD#>` (the hard-set value from step 3 —
-     never the value `partition_backlog` returned on the already-filtered set).
-     For a whole-backlog run, `parentIssue` is the parent PRD `partition_backlog`
-     detected, or `null`.
+   - Top level: `runId`, `status: "in-progress"`, `driverSessionId` (see the
+     paragraph below), `umbrellaBranch`, `integrationBase: "development"`,
+     `parentIssue`, `startedAt` and `updatedAt` (current UTC time), the `waves`
+     from `plan_waves`, `completedWaves: 0`, `finalPullRequest: null`. For a
+     partitioned run, `parentIssue` is the invoked `<PRD#>` (the hard-set value
+     from step 3 — never the value `partition_backlog` returned on the
+     already-filtered set). For a whole-backlog run, `parentIssue` is the parent
+     PRD `partition_backlog` detected, or `null`.
+
+   **Record the driver-session identity.** Read the environment variable
+   `$ORCHESTRATE_SESSION_ID` — the orchestrate `SessionStart` hook captures the
+   session's own `session_id` and persists it there. Write its value as
+   `driverSessionId` in `run-state.json`. This binds the global
+   `context-watchdog` to this run when several runs proceed concurrently in one
+   repository (see section 4). If `$ORCHESTRATE_SESSION_ID` is **empty or
+   unset** — the hook did not run, or the environment did not surface it — set
+   `driverSessionId` to `null` and **tell the operator**: the run proceeds
+   normally but **without automatic context-handoff**; should this session's
+   context fill, the operator must resume the run manually by invoking
+   `/orchestrate` in a new session.
    - One `slices` entry per issue: `issue`, `title`, `wave` (its index in
      `waves`), `tier`, `blockedBy`, `state: "pending"`, `sliceBranch:
      "orchestrate/slice-<N>"`, `worktreePath: null`, `pullRequest: null`,
@@ -561,6 +580,16 @@ When the wave loop (section 2, step 4) sees that flag, hand the run off to a
 fresh Claude Code session instead of continuing — the successor resumes from
 the `run-state.json` checkpoint exactly as section 1 describes. See
 `references/context-handoff.md` for the full mechanism.
+
+The watchdog binds to the correct run by matching this session's identity:
+it compares the hook event's `session_id` against each in-progress run's
+`driverSessionId`, and writes the flag only under the matching run's directory.
+When several runs proceed concurrently and the session cannot be disambiguated,
+the watchdog writes no flag — that run stays correct and merely loses automatic
+context-handoff. The same **degraded mode** applies when `driverSessionId` is
+`null` because `$ORCHESTRATE_SESSION_ID` was unavailable at run start (section 1,
+step 6): the run is unaffected except that it will not hand off automatically,
+and the operator was already told to resume it manually if needed.
 
 To hand off:
 

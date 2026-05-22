@@ -47,6 +47,7 @@ the target project should gitignore the `.orchestrate/runs/` directory.
 {
   "runId": "prd153-20260521-015143",
   "status": "in-progress",
+  "driverSessionId": "abc123-session-uuid",
   "umbrellaBranch": "orchestrate/umbrella-prd153-20260521-015143",
   "integrationBase": "development",
   "parentIssue": 153,
@@ -81,6 +82,14 @@ the target project should gitignore the `.orchestrate/runs/` directory.
   argument). The `prd<N>-` / `backlog-` prefix is the match key the startup
   scan parses to decide whether a new invocation resumes this run.
 - `status` — `in-progress` while waves remain, `completed` when the run finishes.
+- `driverSessionId` — the Claude Code `session_id` of the session executing
+  this run's orchestrator. Written on run start from `$ORCHESTRATE_SESSION_ID`
+  (set by the `SessionStart` hook) and **refreshed on resume** — a successor
+  session resumes under a new `session_id`, so the field is overwritten when
+  the run is picked up. It binds the global `context-watchdog` to the correct
+  run when several runs proceed concurrently. May be **absent** on a legacy
+  checkpoint or when the orchestrator could not read its own session identity;
+  the watchdog degrades to a safe no-op rather than crashing when it is missing.
 - `umbrellaBranch` — the branch all slice pull requests merge into. It carries
   the `runId` (`orchestrate/umbrella-<runId>`), so two concurrent runs never
   collide on a branch name.
