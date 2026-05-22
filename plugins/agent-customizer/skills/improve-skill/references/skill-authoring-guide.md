@@ -1,8 +1,6 @@
 # Skill Authoring Guide
 
 Evidence-based guidance for creating effective Claude Code skills (SKILL.md files).
-Source: skills/skill-authoring-best-practices.md, skills/extend-claude-with-skills.md, `.github/instructions/karpathy-guidelines.instructions.md`, `docs/general-llm/persuasion-principles.md`
-
 ---
 
 ## Contents
@@ -25,7 +23,6 @@ Source: skills/skill-authoring-best-practices.md, skills/extend-claude-with-skil
 
 **Test with all models you plan to use** — Haiku may need more detail, Sonnet should run cleanly, Opus may need less to avoid over-explanation.
 
-*Source: skills/skill-authoring-best-practices.md lines 11-145*
 
 ---
 
@@ -47,7 +44,6 @@ Source: skills/skill-authoring-best-practices.md, skills/extend-claude-with-skil
 
 Directory layout (`SKILL.md` + `references/`, `assets/templates/`, `scripts/`) and platform extensions detail live in `skill-format-reference.md`.
 
-*Source: skills/extend-claude-with-skills.md lines 169-199*
 
 ---
 
@@ -57,7 +53,6 @@ Directory layout (`SKILL.md` + `references/`, `assets/templates/`, `scripts/`) a
 
 **Descriptions** — write in third person ("Processes Excel files...", not "I can help you..." or "You can use this..."). Include (1) what it does, (2) when to use it, (3) specific trigger terms for matching.
 
-*Source: skills/skill-authoring-best-practices.md lines 168-250*
 
 ---
 
@@ -65,7 +60,6 @@ Directory layout (`SKILL.md` + `references/`, `assets/templates/`, `scripts/`) a
 
 SKILL.md is the index; detailed content lives in supporting files loaded on demand. Apply two patterns: (1) reference the bundled guide material from each phase rather than inlining its content, and (2) load only the references needed for the current phase, not all at once. Loading-model levels are tabulated in `skill-format-reference.md` § Progressive Disclosure Loading Model.
 
-*Source: skills/skill-authoring-best-practices.md lines 251-300; skills/extend-claude-with-skills.md lines 223-246*
 
 ---
 
@@ -73,7 +67,6 @@ SKILL.md is the index; detailed content lives in supporting files loaded on dema
 
 Default: both user and Claude can invoke; description always loaded. `disable-model-invocation: true` makes the skill user-only and removes the description from context — use it for side-effect workflows (commit, deploy, send-message). `user-invocable: false` hides the skill from `/` while keeping it available to Claude — use it for background knowledge.
 
-*Source: skills/extend-claude-with-skills.md lines 248-283*
 
 ---
 
@@ -81,4 +74,3 @@ Default: both user and Claude can invoke; description always loaded. `disable-mo
 
 Avoid generic descriptions ("helps with data" — be specific about what + when), inlining all reference content in SKILL.md (move to `references/`), and hardcoded file paths (use `${CLAUDE_SKILL_DIR}` for bundled files). General prompting anti-patterns (vague instructions, contradictions, lost-in-the-middle) live in `prompt-engineering-strategies.md`.
 
-*Source: skills/skill-authoring-best-practices.md lines 800-1100*

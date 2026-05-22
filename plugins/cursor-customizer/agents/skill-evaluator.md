@@ -21,13 +21,13 @@ You are a Cursor skill quality assessment specialist. Analyze the target SKILL.m
 
 ### Hard Limits (Auto-fail if violated)
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| SKILL.md body length | ≤ 500 lines | Agent Skills best practice: keep SKILL.md focused |
-| Reference files | ≤ 200 lines each | reference-files convention |
-| `description` field | Present, non-empty, ≤ 1024 chars, no XML tags | Agent Skills specification |
-| `name` field format | Present, lowercase letters/numbers/hyphens only, max 64 chars, matches parent folder | Agent Skills specification |
-| Contradictions between phases | 0 | Agents pick arbitrarily when contradictions exist |
+| Criterion | Threshold |
+|-----------|-----------|
+| SKILL.md body length | ≤ 500 lines |
+| Reference files | ≤ 200 lines each |
+| `description` field | Present, non-empty, ≤ 1024 chars, no XML tags |
+| `name` field format | Present, lowercase letters/numbers/hyphens only, max 64 chars, matches parent folder |
+| Contradictions between phases | 0 |
 
 ### Structural Checks
 

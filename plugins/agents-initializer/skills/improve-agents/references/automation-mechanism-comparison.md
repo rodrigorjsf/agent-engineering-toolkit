@@ -1,7 +1,6 @@
 # Automation Mechanism Comparison
 
 Routing instructions to on-demand automation mechanisms.
-Source: context-aware-improve-optimization.prd.md, analysis-automate-workflow-with-hooks.md, analysis-skill-authoring-best-practices.md, analysis-how-claude-remembers-a-project.md.
 
 Load `automation-token-impact.md` only when Phase 1 flags an instruction block as a migration candidate.
 
@@ -21,7 +20,6 @@ Stop at the first match:
 8. Context-heavy isolated analysis → skill (`context: fork`)
 9. None of the above → keep in current location; reassess next cycle
 
-*Source: context-aware-improve-optimization.prd.md lines 346-358*
 
 ---
 
@@ -42,7 +40,6 @@ Stop at the first match:
 
 Hook events: `PreToolUse` (block via `hookSpecificOutput.permissionDecision`), `PostToolUse`, `Stop`, `SessionStart`, `UserPromptSubmit`, plus 17 others. Path-scoped rules accept negation: `paths: ["src/**/*.ts", "!src/**/*.test.ts"]`.
 
-*Source: analysis-automate-workflow-with-hooks.md lines 21-130, 433-445*
 
 ---
 
@@ -50,4 +47,3 @@ Hook events: `PreToolUse` (block via `hookSpecificOutput.permissionDecision`), `
 
 Skills, path-scoped rules — plugin and standalone. Hooks, subagents — plugin only (require Claude Code). Auto memory — mention only. Filter to supported mechanisms before generating suggestions.
 
-*Source: DESIGN-GUIDELINES.md Guideline 11*

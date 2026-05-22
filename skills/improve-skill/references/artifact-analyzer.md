@@ -1,7 +1,6 @@
 # Artifact Analysis Instructions
 Structured process for inventorying existing Agent Skills artifacts and conventions.
 Used by CREATE and IMPROVE skills for codebase context analysis.
-Source: agents/artifact-analyzer.md
 ---
 
 ## Contents

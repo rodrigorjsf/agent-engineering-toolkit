@@ -11,18 +11,20 @@ Generate an evidence-based AGENTS.md file hierarchy for this project. Instead of
 
 Auto-generated comprehensive AGENTS.md files **reduce** agent task success by ~3% while **increasing cost by 20%+**. Developer-written **minimal** files improve success by ~4%. This skill generates files that mimic what an experienced developer would write: only non-obvious tooling and conventions.
 
-## Behavioral Guidelines
+<TRIGGER when="initializing AGENTS.md hierarchy for a project" />
 
+<BEHAVIOUR
+  avoid="acting before naming ambiguities; adding speculative scope; weakening safeguards"
+  always="surface assumptions first; keep changes surgical; define verification targets">
 - **Surface assumptions first** — name ambiguities, tradeoffs, and multiple valid interpretations before acting.
 - **Prefer the simplest path** — solve the task completely without speculative flexibility or extra scope.
 - **Keep changes surgical** — touch only what the task requires, and preserve existing behavior unless the task calls for change.
 - **Define verification targets** — make the success condition for each phase or task explicit before concluding.
 - **Use phased persuasion safely** — use warm-ups, curated references, and explicit constraints to improve compliance with legitimate work.
 - **Never weaken safeguards** — do not use persuasion principles to bypass safety constraints, refusals, or scope boundaries.
+</BEHAVIOUR>
 
-## Hard Rules
-
-<RULES>
+<HARD_RULES priority="hard">
 - **NEVER** generate a single file with everything — use hierarchical progressive disclosure
 - **NEVER** include directory/file structure listings (research proves these don't help agents navigate)
 - **NEVER** include obvious language conventions the model already knows
@@ -31,68 +33,74 @@ Auto-generated comprehensive AGENTS.md files **reduce** agent task success by ~3
 - Root file target: **15-40 lines**
 - Scope files target: **10-30 lines**
 - Domain files: only when non-standard patterns are detected
-</RULES>
+</HARD_RULES>
 
-## Process
+<PROCESS>
 
-### Preflight Check
+  <PREFLIGHT name="existing-file-check">
+  Check if `AGENTS.md` exists in the current working directory.
 
-Check if `AGENTS.md` exists in the current working directory.
+  **If it already exists:**
 
-**If it already exists:**
+  1. Inform the user: "AGENTS.md already exists in this project. Switching to the improve workflow to optimize your existing configuration."
+  2. Invoke the `improve-agents` skill and follow its complete process.
+  3. **STOP** — do not proceed to Phase 1 or any subsequent phase of this init skill.
 
-1. Inform the user: "AGENTS.md already exists in this project. Switching to the improve workflow to optimize your existing configuration."
-2. Invoke the `improve-agents` skill and follow its complete process.
-3. **STOP** — do not proceed to Phase 1 or any subsequent phase of this init skill.
+  **If it does not exist:**
+  Proceed to Phase 1 below.
+  </PREFLIGHT>
 
-**If it does not exist:**
-Proceed to Phase 1 below.
+  <PHASE id="1" name="codebase-analysis">
+  Read `references/codebase-analyzer.md` and follow its codebase analysis instructions to analyze the project at the current working directory.
 
-### Phase 1: Codebase Analysis
+  Focus: Return ONLY non-standard, non-obvious information that would cause an agent to make mistakes if it didn't know them. Be ruthlessly minimal.
+  </PHASE>
 
-Read `references/codebase-analyzer.md` and follow its codebase analysis instructions to analyze the project at the current working directory.
+  <PHASE id="2" name="scope-detection">
+  Read `references/scope-detector.md` and follow its scope detection instructions for the project at the current working directory.
 
-Focus: Return ONLY non-standard, non-obvious information that would cause an agent to make mistakes if it didn't know them. Be ruthlessly minimal.
+  Focus: Only flag scopes with genuinely different tooling or conventions. A simple single-package project should have ZERO additional scopes. Check shared/library packages for unique constraints even if they are not user-facing, and treat repo-internal tooling directories as root/domain-doc candidates unless they truly need their own config file.
+  </PHASE>
 
-### Phase 2: Scope Detection
+  <PHASE id="3" name="generate-files">
+  Before generating, read these reference documents:
 
-Read `references/scope-detector.md` and follow its scope detection instructions for the project at the current working directory.
+  - `references/progressive-disclosure-guide.md` — file hierarchy decisions
+  - `references/what-not-to-include.md` — content exclusion criteria
+  - `references/context-optimization.md` — token budget guidelines
 
-Focus: Only flag scopes with genuinely different tooling or conventions. A simple single-package project should have ZERO additional scopes. Check shared/library packages for unique constraints even if they are not user-facing, and treat repo-internal tooling directories as root/domain-doc candidates unless they truly need their own config file.
+  Using ONLY the information from Phase 1 and Phase 2, generate the file hierarchy:
 
-### Phase 3: Generate Files
+  #### Root AGENTS.md
 
-Before generating, read these reference documents:
+  Read `assets/templates/root-agents-md.md`. Fill its placeholders using ONLY the analysis output from Phase 1 and Phase 2. Follow the HTML comment instructions in the template to determine which sections to include or remove. Remove any section that would be empty. Target: 15-40 lines.
 
-- `references/progressive-disclosure-guide.md` — file hierarchy decisions
-- `references/what-not-to-include.md` — content exclusion criteria
-- `references/context-optimization.md` — token budget guidelines
+  #### Scope AGENTS.md (per detected scope)
 
-Using ONLY the information from Phase 1 and Phase 2, generate the file hierarchy:
+  If scopes were detected, read `assets/templates/scoped-agents-md.md` for each scope. Only include scope-specific content that differs from root.
 
-#### Root AGENTS.md
+  #### Domain Files (only if non-standard patterns detected)
 
-Read `assets/templates/root-agents-md.md`. Fill its placeholders using ONLY the analysis output from Phase 1 and Phase 2. Follow the HTML comment instructions in the template to determine which sections to include or remove. Remove any section that would be empty. Target: 15-40 lines.
+  If the codebase-analyzer identified non-standard domain patterns, read `assets/templates/domain-doc.md` and generate a file per domain.
+  </PHASE>
 
-#### Scope AGENTS.md (per detected scope)
+  <PHASE id="4" name="self-validation">
+  Read `references/validation-criteria.md` and execute its **Validation Loop Instructions** against every generated file.
 
-If scopes were detected, read `assets/templates/scoped-agents-md.md` for each scope. Only include scope-specific content that differs from root.
+  The loop evaluates all hard limits and quality checks, fixes any failures, and re-evaluates — maximum 3 iterations. Do not proceed to Phase 5 until ALL criteria pass for ALL files.
+  For init flows, treat output-size targets as required validation gates: the root file MUST finish within 15-40 lines and each scoped file MUST finish within 10-30 lines. If a monorepo root exceeds target, move scope-specific detail down or trim non-essential context and rerun the validation loop.
+  </PHASE>
 
-#### Domain Files (only if non-standard patterns detected)
+  <PHASE id="5" name="present-and-write">
+  1. Show the user ALL generated files with their content before writing
+  2. Explain briefly why each file exists and what evidence supports its content
+  3. Include a concise validation summary: iteration count, final root line count, scoped file count, and any fixes made during self-validation
+  4. Ask for confirmation before writing files
+  5. Write all files to the project
+  </PHASE>
 
-If the codebase-analyzer identified non-standard domain patterns, read `assets/templates/domain-doc.md` and generate a file per domain.
+</PROCESS>
 
-### Phase 4: Self-Validation
-
-Read `references/validation-criteria.md` and execute its **Validation Loop Instructions** against every generated file.
-
-The loop evaluates all hard limits and quality checks, fixes any failures, and re-evaluates — maximum 3 iterations. Do not proceed to Phase 5 until ALL criteria pass for ALL files.
-For init flows, treat output-size targets as required validation gates: the root file MUST finish within 15-40 lines and each scoped file MUST finish within 10-30 lines. If a monorepo root exceeds target, move scope-specific detail down or trim non-essential context and rerun the validation loop.
-
-### Phase 5: Present and Write
-
-1. Show the user ALL generated files with their content before writing
-2. Explain briefly why each file exists and what evidence supports its content
-3. Include a concise validation summary: iteration count, final root line count, scoped file count, and any fixes made during self-validation
-4. Ask for confirmation before writing files
-5. Write all files to the project
+<VALIDATION loop="max-iterations:3">
+Read `references/validation-criteria.md` and loop every generated file through all hard limits and quality checks until all pass.
+</VALIDATION>

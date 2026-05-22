@@ -1,7 +1,6 @@
 # Validation Criteria
 
 Quality checklist for generated and improved AGENTS.md / CLAUDE.md files.
-Source: improve-claude/SKILL.md:143-160, improve-agents/SKILL.md:108-122, file-evaluator.md:23-59
 
 ---
 

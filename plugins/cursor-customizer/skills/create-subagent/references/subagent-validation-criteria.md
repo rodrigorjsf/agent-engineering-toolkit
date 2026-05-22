@@ -1,7 +1,6 @@
 # Subagent Validation Criteria
 
 Quality checklist for generated and improved Cursor subagent definitions.
-Source: docs/cursor/subagents/subagents-guide.md, docs/adr/0002-product-strict-research-foundation.md
 
 ---
 
@@ -9,6 +8,7 @@ Source: docs/cursor/subagents/subagents-guide.md, docs/adr/0002-product-strict-r
 
 - Hard limits (auto-fail)
 - Allowed frontmatter contract (rejection rules with examples)
+- Canonical Semantic-Tag Convention
 - Quality checks
 - If this is an IMPROVE operation
 - Validation loop instructions
@@ -19,15 +19,15 @@ Source: docs/cursor/subagents/subagents-guide.md, docs/adr/0002-product-strict-r
 
 Any subagent violating these criteria must be fixed before proceeding:
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| YAML frontmatter | Valid YAML syntax | Cursor subagents documentation (file format) |
-| `name` field | Lowercase letters and hyphens; ≤64 characters | Cursor subagents documentation (configuration fields) |
-| `description` field | Present, non-empty, ≤1024 characters | Cursor subagents documentation (configuration fields) |
-| `model` field | Exactly `inherit` | ADR-0002 product-strict frontmatter contract |
-| `readonly` field | Exactly `true` | ADR-0002 product-strict frontmatter contract |
-| Frontmatter key set | Exactly the four allowed keys — `name`, `description`, `model`, `readonly` | ADR-0002 product-strict frontmatter contract |
-| System prompt | Not empty; task-specific | Cursor subagents documentation (best practices) |
+| Criterion | Threshold |
+|-----------|-----------|
+| YAML frontmatter | Valid YAML syntax |
+| `name` field | Lowercase letters and hyphens; ≤64 characters |
+| `description` field | Present, non-empty, ≤1024 characters |
+| `model` field | Exactly `inherit` |
+| `readonly` field | Exactly `true` |
+| Frontmatter key set | Exactly the four allowed keys — `name`, `description`, `model`, `readonly` |
+| System prompt | Not empty; task-specific |
 
 ---
 
@@ -79,31 +79,13 @@ Required fix: remove the turn-cap key entirely.
 
 A subagent whose `model` value is a literal model name or ID is REJECTED. The `model` value MUST be `inherit`.
 
-Example REJECTED frontmatter (literal alias):
+Example REJECTED `model` values — every one of these is rejected; only `inherit` passes:
 
 ```yaml
----
-name: example-evaluator
-description: "Evaluates things. Use when reviewing artifacts."
-model: sonnet
-readonly: true
----
-```
-
-Example REJECTED frontmatter (other literal aliases):
-
-```yaml
-model: opus
-```
-
-```yaml
-model: haiku
-```
-
-Example REJECTED frontmatter (full model ID prefix):
-
-```yaml
-model: claude-opus-4-6
+model: sonnet          # literal alias
+model: opus            # literal alias
+model: haiku           # literal alias
+model: claude-opus-4-6 # full model ID prefix
 ```
 
 Required fix: set the model value to `inherit`.
@@ -135,6 +117,31 @@ Required fix: remove the extra key.
 
 ---
 
+## Canonical Semantic-Tag Convention
+
+The subagent body (everything after the YAML frontmatter) MUST wrap its logical blocks in the canonical semantic-tag vocabulary. The validator applies three strictness tiers — hard-fail, warn, silent — deterministically.
+
+**Mandatory tags** (the subagent body MUST contain all of these): `<BEHAVIOUR>` (guidelines, posture), `<HARD_RULES>` (inviolable constraints), `<PROCESS>` (container for the ordered phases; MUST contain at least one `<PHASE>`), and `<PHASE id="N" name="X">` (one execution step inside `<PROCESS>`; `id=` mandatory on every `<PHASE>`).
+
+**Optional tags** (absence is silent — never a finding): `<TRIGGER>`, `<PREFLIGHT>`, `<REFERENCES>`, `<EXAMPLE>`, `<ANTI_PATTERN>`, `<OUTPUT>`, `<VALIDATION>`. `<TRIGGER>` is OPTIONAL for subagents because they are spawned by skills, not user-invoked.
+
+**Closed attribute set**: `avoid=`, `always=`, `when=`, `name=`, `id=`, `priority=`. Any other attribute name is non-canonical.
+
+**Legacy `<RULES>` alias**: a `<RULES>` block satisfies the mandatory `<HARD_RULES>` check exactly as `<HARD_RULES>` does — neither a warn nor a hard-fail. No mass rename; migrate each `<RULES>` occurrence to `<HARD_RULES>` only when the file is next touched for other reasons.
+
+### Strictness tiers (apply verbatim — the verdict must be deterministic)
+
+| Tier | Trigger | Action |
+|------|---------|--------|
+| **Hard-fail** | A mandatory tag missing (`<BEHAVIOUR>`, `<HARD_RULES>` or `<RULES>` alias, `<PROCESS>`, or `<PROCESS>` with zero `<PHASE>`); unbalanced tags; malformed attribute syntax (value missing quotes, stray `=`, unterminated quote) | Stop; fix before proceeding |
+| **Warn** | A non-canonical attribute name (outside `avoid` / `always` / `when` / `name` / `id` / `priority`) — typo guard | Surface a warning; do not block |
+| **Silent** | Absence of `<TRIGGER>` or any other optional tag | No finding; proceed |
+
+A self-closing tag (`<TRIGGER ... />`) counts as balanced. `<PHASE>` missing its mandatory `id=` is a hard-fail (a mandatory attribute is absent, not malformed).
+
+
+---
+
 ## Quality Checks (All must pass)
 
 - [ ] `description` is action-oriented and includes a specific "Use when..." trigger phrase for delegation routing.
@@ -148,6 +155,9 @@ Required fix: remove the extra key.
 - [ ] No instructions tell the subagent to spawn other subagents (project convention restricts nested launches).
 - [ ] System prompt is task-specific, not generic ("you are a helpful AI").
 - [ ] Prompt engineering strategy applied: role prompting, structured output, and confidence filtering per `prompt-engineering-strategies.md`. For evaluator-type subagents that mandate explicit evidence per finding, the evidence requirement satisfies the confidence-filtering criterion.
+- [ ] Canonical semantic tags present: `<BEHAVIOUR>`, `<HARD_RULES>`, and `<PROCESS>` containing one or more `<PHASE id="N" name="X">`.
+- [ ] All semantic tags balanced and use only the closed attribute set (`avoid`, `always`, `when`, `name`, `id`, `priority`); every `<PHASE>` carries an `id=`.
+- [ ] YAML frontmatter untouched by the convention — the four-key contract (`name`, `description`, `model`, `readonly`) is unchanged.
 
 ---
 
@@ -170,10 +180,11 @@ Required fix: remove the extra key.
 
 Execute this loop for each generated or improved subagent:
 
-1. Evaluate the subagent against ALL criteria above.
+1. Evaluate the subagent against ALL criteria above, including the **Canonical Semantic-Tag Convention** strictness tiers.
 2. For improve operations, verify each suggestion in the improvement plan has a WHY field citing a source document — no suggestion may lack a source reference.
-3. If ANY criterion fails: identify the specific failure, fix the subagent, restart evaluation.
-4. Maximum 3 iterations — if still failing after 3 attempts, surface the remaining issues to the user.
-5. Only proceed to writing the subagent when ALL criteria pass.
+3. If ANY hard-fail criterion fails: identify the specific failure, fix the subagent, restart evaluation.
+4. Surface every warn-tier finding (non-canonical attribute names) without blocking — the user decides whether to fix.
+5. Maximum 3 iterations — if still failing after 3 attempts, surface the remaining issues to the user.
+6. Only proceed to writing the subagent when ALL hard-fail and quality criteria pass.
 
 **Do not skip criteria for "minor" violations.** Hard limits are hard limits. The frontmatter contract is non-negotiable.

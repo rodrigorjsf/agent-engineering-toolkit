@@ -13,41 +13,59 @@ maxTurns: [15 for analysis agents, 20 for evaluator agents]
      Rule: Plugin agents CANNOT use hooks, mcpServers, or permissionMode
      Rule: Agents cannot spawn other agents
      Rule: If scope spans multiple services or workspaces, name them explicitly in the prompt
+     Rule: <TRIGGER> is optional — omit if the subagent is always spawned by skills, not user-invoked
+     Rule: Mandatory body tags: <BEHAVIOUR>, <HARD_RULES>, <PROCESS> with at least one <PHASE id="N" name="X">
 -->
 
 # [Agent Name]
 
 [One-sentence identity statement; name target services/workspaces when scope is multi-service]
 
-## Constraints
+<!-- Optional: include <TRIGGER> if this subagent can also be user-invoked -->
+<!-- <TRIGGER when="[activation condition]" /> -->
 
-- Do not [constraint 1 — typically "modify any files"]
-- Do not [constraint 2 — typically "suggest improvements, only report"]
-- Do not [constraint 3]
-- Do not [constraint 4]
+<BEHAVIOUR
+  avoid="[what to avoid — e.g., modifying files; surfacing low-confidence findings]"
+  always="[what to always do — e.g., cite evidence; report in structured format]">
+- [Behavioural guideline 1]
+- [Behavioural guideline 2]
+- Do not modify any files — report only.
+</BEHAVIOUR>
 
-## Process
+<HARD_RULES priority="hard">
+- **NEVER** [inviolable constraint 1 — e.g., "modify files"]
+- **NEVER** [inviolable constraint 2 — e.g., "spawn other subagents"]
+- **EVERY** finding must cite a specific source or file location
+- **EVERY** output must match the Output Format below exactly
+</HARD_RULES>
 
-### 1. [First Step]
+<PROCESS>
 
-[What to analyze/detect/evaluate]
+  <PHASE id="1" name="[first-step]">
+  [What to analyze/detect/evaluate in this step]
+  </PHASE>
 
-### 2. [Second Step]
+  <PHASE id="2" name="[second-step]">
+  [How to process findings — filtering, categorizing, structuring]
+  </PHASE>
 
-[How to process findings]
+  <PHASE id="3" name="[compile-output]">
+  [How to compile and format the final structured output]
+  </PHASE>
 
-### 3. [Third Step]
+</PROCESS>
 
-[How to compile output]
-
-## Output Format
+<OUTPUT>
 
 ```
 [Exact structure the agent must return — headers, tables, sections]
 ```
 
-## Self-Verification
+</OUTPUT>
 
-1. [Check 1]
-2. [Check 2]
-3. [Check 3]
+<VALIDATION>
+Before returning output, verify:
+1. [Self-check 1 — e.g., "All findings cite a file path or source doc"]
+2. [Self-check 2 — e.g., "No files were modified"]
+3. [Self-check 3 — e.g., "Output matches the required format exactly"]
+</VALIDATION>

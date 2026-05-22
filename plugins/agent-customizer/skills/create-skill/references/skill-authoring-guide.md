@@ -1,7 +1,6 @@
 # Skill Authoring Guide
 
 Evidence-based guidance for creating effective Claude Code skills (SKILL.md files).
-Source: skills/skill-authoring-best-practices.md, skills/extend-claude-with-skills.md, `.github/instructions/karpathy-guidelines.instructions.md`, `docs/general-llm/persuasion-principles.md`
 
 ---
 
@@ -50,7 +49,6 @@ Analogy: Claude as a robot on a path — narrow bridge (low freedom) vs. open fi
 | Sonnet | Clear and efficient? (balanced) |
 | Opus | Avoid over-explaining? (may need less) |
 
-*Source: skills/skill-authoring-best-practices.md lines 11-145*
 
 ---
 
@@ -82,7 +80,6 @@ my-skill/
 | `hooks` | No | Hooks scoped to this skill's lifecycle |
 | `argument-hint` | No | Autocomplete hint, e.g. `[issue-number]` |
 
-*Source: skills/extend-claude-with-skills.md lines 169-199*
 
 ---
 
@@ -98,7 +95,6 @@ my-skill/
 
 Include: (1) what it does, (2) when to use it, (3) specific trigger terms for matching.
 
-*Source: skills/skill-authoring-best-practices.md lines 168-250*
 
 ---
 
@@ -118,7 +114,6 @@ Load only the references needed for each phase, not all at once.
 
 Keep SKILL.md under 500 lines. Move detailed reference material to separate files. Reference supporting files explicitly so Claude knows what they contain.
 
-*Source: skills/skill-authoring-best-practices.md lines 251-300; skills/extend-claude-with-skills.md lines 223-246*
 
 ---
 
@@ -132,7 +127,6 @@ Keep SKILL.md under 500 lines. Move detailed reference material to separate file
 
 Use `disable-model-invocation: true` for workflows with side effects (commit, deploy, send-message). Use `user-invocable: false` for background knowledge Claude should apply but users shouldn't invoke directly.
 
-*Source: skills/extend-claude-with-skills.md lines 248-283*
 
 ---
 
@@ -147,4 +141,3 @@ Use `disable-model-invocation: true` for workflows with side effects (commit, de
 | Over-explaining for Opus | Patronizing + token waste | Trust the model; provide minimal scaffolding |
 | Contradictions between phases | Claude picks one arbitrarily | Review all phases for consistency |
 
-*Source: skills/skill-authoring-best-practices.md lines 800-1100*

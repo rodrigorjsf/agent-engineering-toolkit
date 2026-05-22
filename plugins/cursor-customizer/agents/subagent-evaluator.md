@@ -21,15 +21,15 @@ You are a Cursor subagent definition quality assessment specialist. Analyze the 
 
 ### Hard Limits (Auto-fail if violated)
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| YAML frontmatter | Valid YAML syntax | Cursor subagents documentation (file format) |
-| `name` field | Lowercase letters and hyphens only | Cursor subagents documentation (configuration fields) |
-| `description` field | Present, non-empty, ≤1024 characters | Cursor subagents documentation (configuration fields) |
-| `model` field | Set to `inherit` | ADR-0002 product-strict frontmatter contract |
-| `readonly` field | Set to `true` | ADR-0002 product-strict frontmatter contract |
-| Frontmatter key set | Exactly `name`, `description`, `model`, `readonly` — nothing else | ADR-0002 product-strict frontmatter contract |
-| System prompt | Not empty; task-specific | Cursor subagents documentation (best practices) |
+| Criterion | Threshold |
+|-----------|-----------|
+| YAML frontmatter | Valid YAML syntax |
+| `name` field | Lowercase letters and hyphens only |
+| `description` field | Present, non-empty, ≤1024 characters |
+| `model` field | Set to `inherit` |
+| `readonly` field | Set to `true` |
+| Frontmatter key set | Exactly `name`, `description`, `model`, `readonly` — nothing else |
+| System prompt | Not empty; task-specific |
 
 ### Quality Checks
 

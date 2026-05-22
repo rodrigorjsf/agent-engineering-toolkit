@@ -1,7 +1,6 @@
 # Skill Evaluation Instructions
 Structured process for evaluating SKILL.md files against evidence-based quality criteria.
 Used by IMPROVE-SKILL skill for current state analysis.
-Source: agents/skill-evaluator.md
 ---
 
 ## Contents
@@ -30,13 +29,13 @@ Follow these evaluation instructions. Analyze the target SKILL.md file and evalu
 
 ### Hard Limits (Auto-fail if violated)
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| SKILL.md body length | ≤ 500 lines | Anthropic: "Keep SKILL.md under 500 lines" |
-| Reference files | ≤ 200 lines each | reference-files.md rule constraint |
-| `description` field | Present and non-empty | Required for skill discovery |
-| `name` field format | Lowercase letters, numbers, hyphens only; max 64 chars | Agent Skills specification |
-| Contradictions between phases | 0 | Claude picks arbitrarily when contradictions exist |
+| Criterion | Threshold |
+|-----------|-----------|
+| SKILL.md body length | ≤ 500 lines |
+| Reference files | ≤ 200 lines each |
+| `description` field | Present and non-empty |
+| `name` field format | Lowercase letters, numbers, hyphens only; max 64 chars |
+| Contradictions between phases | 0 |
 
 ### Structural Checks
 

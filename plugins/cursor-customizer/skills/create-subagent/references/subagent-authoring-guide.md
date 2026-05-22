@@ -1,7 +1,6 @@
 # Subagent Authoring Guide
 
 Evidence-based guidance for creating effective Cursor subagent definitions.
-Source: docs/cursor/subagents/subagents-guide.md (Cursor subagents documentation; primary attribution); docs/adr/0002-product-strict-research-foundation.md
 
 ---
 
@@ -30,7 +29,6 @@ Subagents are for **isolated, specialized work** that should not pollute the par
 
 If the task is single-purpose (generate a changelog, format imports), prefer a skill or slash command — a subagent is overkill.
 
-*Source: docs/cursor/subagents/subagents-guide.md (when to use subagents)*
 
 ---
 
@@ -48,7 +46,6 @@ Project subagents take precedence over user subagents when names conflict.
 
 The customizer generates into the project or plugin paths only.
 
-*Source: docs/cursor/subagents/subagents-guide.md (file locations)*
 
 ---
 
@@ -64,7 +61,6 @@ Effective subagent system prompts follow this 5-part pattern:
 
 Keep prompts focused. Each subagent should have a single clear responsibility — avoid generic "helper" agents.
 
-*Source: docs/cursor/subagents/subagents-guide.md (best practices)*
 
 ---
 
@@ -86,7 +82,6 @@ readonly: true
 
 For full schema details and rejection rules, see `subagent-config-reference.md` and `subagent-validation-criteria.md`.
 
-*Source: docs/cursor/subagents/subagents-guide.md (file format, configuration fields); docs/adr/0002-product-strict-research-foundation.md*
 
 ---
 
@@ -102,7 +97,6 @@ The `description` field is the only signal Cursor's agent uses to decide whether
 Bad: "Helps with code." (too generic — Cursor cannot decide when to delegate)
 Good: "Validates completed work. Use after tasks are marked done to confirm implementations are functional."
 
-*Source: docs/cursor/subagents/subagents-guide.md (description field, best practices)*
 
 ---
 
@@ -118,7 +112,6 @@ Good: "Validates completed work. Use after tasks are marked done to confirm impl
 | Generic "you are a helpful AI" prompt | Defeats the purpose of a subagent | Define a specific role and process |
 | Duplicating a slash-command capability | Adds complexity without benefit | Use the slash command directly |
 
-*Source: docs/cursor/subagents/subagents-guide.md (best practices — anti-patterns to avoid)*
 
 ---
 
@@ -152,4 +145,3 @@ Do not accept claims at face value. Test everything you can without modifying st
 
 Useful for: validating end-to-end behavior before marking tickets complete; catching partially implemented functionality; ensuring tests actually pass (not just that test files exist).
 
-*Source: docs/cursor/subagents/subagents-guide.md (common patterns — verification agent)*

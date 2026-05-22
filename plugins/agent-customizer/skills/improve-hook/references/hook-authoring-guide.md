@@ -1,7 +1,6 @@
 # Hook Authoring Guide
 
 Evidence-based guidance for creating Claude Code hooks that enforce deterministic behavior.
-Source: hooks/automate-workflow-with-hooks.md, hooks/claude-hook-reference-doc.md
 
 ---
 
@@ -30,7 +29,6 @@ Hooks provide **deterministic control** — they always fire, regardless of LLM 
 
 Examples: auto-formatting after edits, blocking destructive commands, sending notifications, auditing config changes.
 
-*Source: hooks/automate-workflow-with-hooks.md lines 1-13*
 
 ---
 
@@ -62,7 +60,6 @@ Level 3: **Handler** — what to run when matched
 
 Omit `matcher` or use `""` / `"*"` to match all occurrences.
 
-*Source: hooks/claude-hook-reference-doc.md lines 132-141*
 
 ---
 
@@ -83,7 +80,6 @@ Omit `matcher` or use `""` / `"*"` to match all occurrences.
 
 **Use `http`** for centralizing audit trails across projects or sending to external services.
 
-*Source: hooks/automate-workflow-with-hooks.md lines 569-625; hooks/claude-hook-reference-doc.md lines 249-257*
 
 ---
 
@@ -107,7 +103,6 @@ The `matcher` field is a **regex string** filtering on different fields per even
 
 MCP tools follow pattern `mcp__<server>__<tool>` — use `mcp__server__.*` to match all tools from a server.
 
-*Source: hooks/claude-hook-reference-doc.md lines 162-203*
 
 ---
 
@@ -122,7 +117,6 @@ MCP tools follow pattern `mcp__<server>__<tool>` — use `mcp__server__.*` to ma
 | Skill/agent frontmatter | While component active | Yes |
 | Managed policy settings | Organization-wide | Yes, admin-controlled |
 
-*Source: hooks/automate-workflow-with-hooks.md lines 552-565*
 
 ---
 
@@ -142,13 +136,11 @@ For **command** hooks:
 
 For **prompt/agent** hooks — return JSON `{"ok": true/false, "reason": "..."}`. When `ok: false`, Claude receives `reason` as its next instruction.
 
-*Source: hooks/automate-workflow-with-hooks.md lines ~393-420; hooks/claude-hook-reference-doc.md lines 80-88*
 
 ### Hook Output Discipline
 
 **Golden rule of hook output: success silent, failure verbose.** Stdout/stderr from hooks is injected into Claude's context. A passing typecheck or 4,000-line test log on every PostToolUse pushes the smart zone into the dumb zone. Emit nothing on success; emit specific error traces only on failure.
 
-*Source: harness-engineering.md*
 
 ---
 
@@ -162,4 +154,3 @@ For **prompt/agent** hooks — return JSON `{"ok": true/false, "reason": "..."}`
 
 Test with `--debug` to see hook execution details, including which hooks matched, exit codes, and output.
 
-*Source: hooks/claude-hook-reference-doc.md lines 2050-2065*
