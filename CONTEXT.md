@@ -123,6 +123,32 @@ _Avoid_: all-warn, all-hard (the tiered model balances safety and false-positive
 The four quality-gate skills in `.claude/skills/` (`agent-customizer-quality-gate`, `cursor-customizer-quality-gate`, `cursor-initializer-quality-gate`, `quality-gate`) are out of scope for **Skill body convention** body-format retrofit but in scope for **content** updates that teach them to assert the new convention against plugin/standalone targets. Their own bodies remain markdown without semantic tags until a follow-up PRD.
 _Avoid_: quality-gate refactor, gate-body retrofit (only the *checked-for* clauses change in v1, not the gate's own body)
 
+### Orchestrate run vocabulary
+
+**Orchestration run**:
+One end-to-end execution of the `orchestrate` plugin over a single backlog partition — dependency-ordered waves, slice worktrees, an umbrella branch, and a final integration pull request.
+_Avoid_: job, batch, orchestration session
+
+**Run partition**:
+The subset of the `ready-for-agent` backlog one run owns — the child issues of a single parent PRD, selected by `/orchestrate <PRD#>`. A no-argument run owns the whole backlog as one partition.
+_Avoid_: backlog slice, batch (slice is reserved for a single issue's work)
+
+**Run directory**:
+The per-run `.orchestrate/runs/<runId>/` directory holding that run's ephemeral state — the run-state checkpoint, the context-flag, and rendered HTML artifacts. Gitignored; the committed config files stay at the `.orchestrate/` top level.
+_Avoid_: run folder, state dir
+
+**Driver session**:
+The Claude Code session executing a run's orchestrator. Its identity is recorded in the run's run-state so the global context-watchdog binds the correct run when several runs proceed concurrently.
+_Avoid_: orchestrator window, owner session
+
+**Integration base**:
+The branch every umbrella branch is cut from and every run's final pull request merges back into — `development` in this repository.
+_Avoid_: main, master, trunk (the integration base is `development`, distinct from any release branch)
+
+**Run cleanup**:
+Removal of a concluded run's run directory, worktrees, and umbrella/slice branches — gated on that run's final integration pull request having been merged into the **Integration base**.
+_Avoid_: purge, garbage collection, prune
+
 ## Relationships
 
 - A **Distribution** owns at most one **Initializer** and at most one **Customizer**.
@@ -136,6 +162,10 @@ _Avoid_: quality-gate refactor, gate-body retrofit (only the *checked-for* claus
 - An **HTML artifact** carries one or more **Semantic tags** plus presentation chrome (CSS, layout, navigation) — the tags make it agent-parseable; the chrome makes it human-readable.
 - **Artifact format routing** decides between an **HTML artifact** and a markdown artifact based on whether the consumer is *agent-loaded* / *tooling-locked* (markdown) or *human-rich + agent-executable* (HTML).
 - **Tier-1**, **Tier-2**, and **Tier-3 retrofit** carve up the set of files subject to **Convention scope (v1)** by urgency, not by location.
+- An **Orchestration run** owns exactly one **Run partition** and writes its ephemeral state to exactly one **Run directory**.
+- Sibling **Orchestration runs** in the same repository must own disjoint **Run partitions** — one parent PRD's children each.
+- A **Driver session** executes exactly one **Orchestration run**; the context-watchdog binds a run by matching the **Driver session** identity recorded in run-state.
+- **Run cleanup** acts on an **Orchestration run** only after its final pull request has merged into the **Integration base**.
 
 ## Example dialogue
 
@@ -148,9 +178,14 @@ _Avoid_: quality-gate refactor, gate-body retrofit (only the *checked-for* claus
 > **Dev:** "When `create-skill` generates a new skill whose job is to produce an implementation plan, does the *plan* end up as `.md` or `.html`?"
 > **Domain expert:** "HTML — that's the default per **Artifact format routing** for a human-rich AND agent-executable artifact. The generated HTML carries the same **Canonical tag vocabulary** inside, so the next session parses it the same way it parses a SKILL.md body. The skill itself stays `SKILL.md`."
 
+> **Dev:** "Can I run `/orchestrate` in two windows against the same repository?"
+> **Domain expert:** "Yes — as long as each is an **Orchestration run** over a distinct **Run partition**. Pass `/orchestrate <PRD#>` per window so each owns one parent PRD's children. With no argument a run takes the whole backlog as a single partition, and a second concurrent run would collide on it."
+
 ## Flagged ambiguities
 
 - "Cursor CLI" was used by the user to mean the full Cursor distribution surface (IDE + CLI share the `.cursor/rules/` system). Resolved: in this repo, **Cursor distribution** covers both surfaces — they consume the same artifact files.
 - "knowledge base" was historically used to mean the RAG vector store registered as the `rag-knowledge-base` MCP server. Resolved as of ADR-0004: **Wiki** is the canonical knowledge base; the RAG layer is deleted.
 - "HTML in skill body" was used by the user to mean *both* (a) the semantic-tag-inside-markdown pattern and (b) replacing `SKILL.md` with `.html` files. Resolved during grilling (ADR-0007): only (a) is adopted; **Skill body convention** keeps `SKILL.md` as a `.md` file (Agent Skills spec compliance) and embeds tags inside the markdown body.
 - Legacy `<RULES>` tag (currently used in `plugins/agent-customizer/skills/create-skill/SKILL.md` and elsewhere) is treated as an alias of canonical `<HARD_RULES>`. Tier-3 organic retrofit migrates each occurrence on next touch; no scheduled mass rename.
+- "two orchestrations" was used to mean two concurrent **Orchestration runs** in the *same* repository — resolved: each run must own a disjoint **Run partition** (one parent PRD's children); same-repo runs over an unpartitioned backlog collide on the identical issue set.
+- "merged into main/master" was used for the **Run cleanup** gate — resolved: the gate is the run's final pull request merged into the **Integration base** (`development`), not a release branch. The plugin name and its directory are spelled `orchestrate` / `.orchestrate` (not `orquestrate`).
