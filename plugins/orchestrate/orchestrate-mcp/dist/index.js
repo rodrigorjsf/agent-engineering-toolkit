@@ -21120,8 +21120,8 @@ var GIT_CONFIG_OVERRIDES = [
   // `core.sshCommand` from the repo config cannot run. A blank value would
   // also close that vector, but it makes an SSH `fetch` spawn an empty
   // command and fail (F-005); `ssh` is the real, working invocation,
-  // resolved from PATH. Note: an inherited `GIT_SSH_COMMAND` env var takes
-  // precedence over `core.sshCommand` and is not neutralized here — see #200.
+  // resolved from PATH. The corresponding `GIT_SSH_COMMAND` env-var override
+  // is neutralized in gitEnv() — see the GIT_SSH_COMMAND key there.
   "-c",
   "core.sshCommand=ssh",
   "-c",
@@ -21132,7 +21132,9 @@ function gitEnv() {
     ...process.env,
     GIT_TERMINAL_PROMPT: "0",
     GIT_CONFIG_NOSYSTEM: "1",
-    GIT_CONFIG_GLOBAL: "/dev/null"
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_SSH_COMMAND: "ssh",
+    GIT_SSH: "ssh"
   };
 }
 var GitExecError = class extends Error {
