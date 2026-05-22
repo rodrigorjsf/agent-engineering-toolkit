@@ -22,13 +22,13 @@ You are a hook configuration quality assessment specialist. Analyze the target h
 
 ### Hard Limits (Auto-fail if violated)
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| JSON structure | Valid JSON; no syntax errors | hooks/claude-hook-reference-doc.md |
-| Event name | From recognized event list | hooks/claude-hook-reference-doc.md lines 22-46 |
-| Handler type | `command`, `http`, `prompt`, or `agent` only | hooks/claude-hook-reference-doc.md lines 249-257 |
-| `command` path | Script file exists and is executable | hooks/automate-workflow-with-hooks.md |
-| Exit code behavior | Exit 2 effect is event-dependent | Blocks: PreToolUse, PermissionRequest, UserPromptSubmit, Stop, SubagentStop. Shows stderr only (non-blocking): PostToolUse, PostToolUseFailure, SessionStart, SessionEnd, PreCompact, PostCompact, Notification. StopFailure ignores exit code entirely. |
+| Criterion | Threshold |
+|-----------|-----------|
+| JSON structure | Valid JSON; no syntax errors |
+| Event name | From recognized event list |
+| Handler type | `command`, `http`, `prompt`, or `agent` only |
+| `command` path | Script file exists and is executable |
+| Exit code behavior | Exit 2 effect is event-dependent. Blocks: PreToolUse, PermissionRequest, UserPromptSubmit, Stop, SubagentStop. Shows stderr only (non-blocking): PostToolUse, PostToolUseFailure, SessionStart, SessionEnd, PreCompact, PostCompact, Notification. StopFailure ignores exit code entirely. |
 
 ### Valid Hook Event Types
 

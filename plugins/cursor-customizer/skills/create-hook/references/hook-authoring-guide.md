@@ -1,7 +1,6 @@
 # Hook Authoring Guide
 
 Evidence-based guidance for creating Cursor hooks that enforce deterministic behavior.
-Source: docs/cursor/hooks/hooks-guide.md
 
 ---
 
@@ -30,7 +29,6 @@ Hooks provide **deterministic control** — they always fire, regardless of mode
 
 Examples: auto-formatting after edits, blocking destructive shell commands, sending notifications, auditing config changes, redacting secrets before file reads.
 
-*Source: docs/cursor/hooks/hooks-guide.md "Hooks" introduction*
 
 ---
 
@@ -58,7 +56,6 @@ Level 2: **Hook definition** — at minimum a `command`; optionally `type`, `mat
 
 Omit `matcher` to fire on every occurrence of the event.
 
-*Source: docs/cursor/hooks/hooks-guide.md "Configuration file"*
 
 ---
 
@@ -83,7 +80,6 @@ Omit `matcher` to fire on every occurrence of the event.
 
 Prompt hooks return a structured `{ ok: boolean, reason?: string }` response. The `$ARGUMENTS` placeholder in the prompt is auto-replaced with the hook input JSON.
 
-*Source: docs/cursor/hooks/hooks-guide.md "Hook Types"*
 
 ---
 
@@ -102,7 +98,6 @@ The `matcher` field is a **regex string**. Which field it filters depends on the
 
 Matchers on `beforeSubmitPrompt`, `stop`, `afterAgentResponse`, and `afterAgentThought` are matched against fixed literal values documented in the Cursor hooks guide; in practice these matchers add no filtering value and may be omitted.
 
-*Source: docs/cursor/hooks/hooks-guide.md "Matcher Configuration"*
 
 ---
 
@@ -119,7 +114,6 @@ Priority order (highest to lowest): Enterprise → Team → Project → User. Al
 
 For project hooks, write paths relative to the project root (e.g., `.cursor/hooks/script.sh`). For user hooks, write paths relative to `~/.cursor/` (e.g., `./hooks/script.sh`).
 
-*Source: docs/cursor/hooks/hooks-guide.md "Configuration"*
 
 ---
 
@@ -141,7 +135,6 @@ To make a security-critical hook **fail closed** instead, set `"failClosed": tru
 
 For **prompt** hooks: the LLM returns `{ ok: boolean, reason?: string }`. When `ok: false`, the action is denied and `reason` is surfaced to the user.
 
-*Source: docs/cursor/hooks/hooks-guide.md "Command-Based Hooks", "Per-Script Configuration Options"*
 
 ---
 
@@ -157,4 +150,3 @@ For **prompt** hooks: the LLM returns `{ ok: boolean, reason?: string }`. When `
 
 Use the Hooks tab in Cursor Settings to confirm hooks are loaded and to inspect execution traces.
 
-*Source: docs/cursor/hooks/hooks-guide.md "Troubleshooting", "Environment Variables"*

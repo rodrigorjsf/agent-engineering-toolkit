@@ -1,8 +1,6 @@
 # Skill Validation Criteria
 
 Quality checklist for generated and improved SKILL.md files.
-Source: skills/skill-authoring-best-practices.md, skills/extend-claude-with-skills.md,
-karpathy-guidelines, persuasion-principles.md, skill-body-convention (canonical tag vocabulary)
 
 ---
 
@@ -21,16 +19,15 @@ karpathy-guidelines, persuasion-principles.md, skill-body-convention (canonical 
 
 Any skill violating these criteria must be fixed before proceeding:
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| SKILL.md body length | ≤ 500 lines | Anthropic: "Keep SKILL.md under 500 lines" |
-| Reference files | ≤ 200 lines each | Reference files hard limit |
-| Reference files >100 lines | Must include a `## Contents` TOC | skill-authoring-best-practices.md line 403 |
-| `description` field | Present; non-empty; ≤ 1024 chars; no XML tags | Agent Skills specification |
-| `name` field format | Present; non-empty; lowercase letters, numbers, hyphens only; max 64 chars | Agent Skills specification |
-| Contradictions between phases | 0 | Agent picks arbitrarily when contradictions exist |
+| Criterion | Threshold |
+|-----------|-----------|
+| SKILL.md body length | ≤ 500 lines |
+| Reference files | ≤ 200 lines each |
+| Reference files >100 lines | Must include a `## Contents` TOC |
+| `description` field | Present; non-empty; ≤ 1024 chars; no XML tags |
+| `name` field format | Present; non-empty; lowercase letters, numbers, hyphens only; max 64 chars |
+| Contradictions between phases | 0 |
 
-*Source: skills/skill-authoring-best-practices.md lines 259; skills/extend-claude-with-skills.md lines 183-199*
 
 ---
 

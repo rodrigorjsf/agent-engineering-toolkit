@@ -1,7 +1,6 @@
 # Skill Format Reference
 
 Technical specification for SKILL.md format, directory structure, variables, and discovery.
-Source: skills/research-claude-code-skills-format.md, skills/extend-claude-with-skills.md
 
 ---
 
@@ -43,7 +42,6 @@ Source: skills/research-claude-code-skills-format.md, skills/extend-claude-with-
 - Must NOT contain reserved words: `anthropic`, `claude`
 - Must match the parent directory name
 
-*Source: skills/research-claude-code-skills-format.md lines 103-108*
 
 ---
 
@@ -69,7 +67,6 @@ Dynamic context injection with `!` prefix runs shell commands before skill loads
 - Current branch: !`git branch --show-current`
 ```
 
-*Source: skills/extend-claude-with-skills.md lines 201-210; skills/research-claude-code-skills-format.md lines 126-149*
 
 ---
 
@@ -94,7 +91,6 @@ my-skill/
 - `references/` files load only when skill phases explicitly read them
 - `scripts/` files are executed, not loaded into context
 
-*Source: skills/research-claude-code-skills-format.md lines 153-186; skills/extend-claude-with-skills.md lines 100-115*
 
 ---
 
@@ -108,7 +104,6 @@ my-skill/
 
 Keep SKILL.md under **500 lines**. Move detailed reference material to `references/` subdirectory. Explicitly reference supporting files from SKILL.md so Claude knows what to load and when.
 
-*Source: skills/research-claude-code-skills-format.md lines 172-186*
 
 ---
 
@@ -123,4 +118,3 @@ Keep SKILL.md under **500 lines**. Move detailed reference material to `referenc
 
 Priority: enterprise > personal > project. Plugin skills use `plugin-name:skill-name` namespace — no conflicts.
 
-*Source: skills/extend-claude-with-skills.md lines 85-97; skills/research-claude-code-skills-format.md lines 189-200*

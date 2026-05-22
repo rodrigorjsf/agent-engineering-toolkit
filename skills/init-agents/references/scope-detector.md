@@ -1,7 +1,6 @@
 # Scope Detection Instructions
 Structured process for identifying distinct project contexts that need separate configuration files.
 Used by INIT skills for scope detection.
-Source: agents/scope-detector.md
 ---
 
 Follow these scope detection instructions. Identify distinct contexts within the project at the current working directory that would benefit from their own configuration file (AGENTS.md or CLAUDE.md). Each scope represents an area where an agent needs different guidance than the root-level instructions.
@@ -91,7 +90,6 @@ For each identified scope, determine what makes it different:
 - What conventions apply here but not elsewhere?
 - What tech-specific knowledge would an agent need?
 
-*Source: agents/scope-detector.md lines 41-76*
 
 ---
 
@@ -131,7 +129,6 @@ Return your analysis in exactly this format:
 
 If the project is a simple single-package project, report zero additional scopes — the root file is sufficient.
 
-*Source: agents/scope-detector.md lines 77-112*
 
 ---
 
@@ -144,4 +141,3 @@ Before returning results, verify:
 3. The recommended file count is the minimum necessary
 4. Simple projects correctly return zero additional scopes
 
-*Source: agents/scope-detector.md lines 113-121*

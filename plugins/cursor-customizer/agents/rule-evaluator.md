@@ -21,14 +21,14 @@ You are a Cursor rule quality assessment specialist. Analyze either a specific `
 
 ### Hard Limits (Auto-fail if violated)
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| Rule length | ≤ 200 lines | Industry Research: 200-line target for configuration files in this toolkit |
-| YAML frontmatter | Valid YAML | docs/cursor/rules/rules.md — Rule anatomy |
-| Frontmatter fields | ONLY `description`, `alwaysApply`, `globs` | docs/cursor/rules/rules.md — Rule file format |
-| Banned frontmatter key | A `paths` key MUST NOT appear in frontmatter | Cross-platform leakage: a `paths` frontmatter key belongs to a different platform's convention and is invalid here |
-| Contradictions with other rules | 0 | Industry Research: conflicting instructions cause inconsistent model behavior |
-| Stale file path references | 0 | Industry Research: stale paths poison context |
+| Criterion | Threshold |
+|-----------|-----------|
+| Rule length | ≤ 200 lines |
+| YAML frontmatter | Valid YAML |
+| Frontmatter fields | ONLY `description`, `alwaysApply`, `globs` |
+| Banned frontmatter key | A `paths` key MUST NOT appear in frontmatter |
+| Contradictions with other rules | 0 |
+| Stale file path references | 0 |
 
 ### Quality Checks
 

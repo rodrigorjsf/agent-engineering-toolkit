@@ -1,7 +1,6 @@
 # Context Optimization
 
 Evidence-based instructions for managing token budgets and attention in agent configuration files.
-Source: research-context-engineering-comprehensive.md
 
 ---
 
@@ -38,7 +37,6 @@ Place the most important instructions in the first 20% and last 20% of each conf
 
 Apply the deletion test: "Would removing this cause the agent to make mistakes? If not, cut it." Full include/exclude categories are tabulated in `what-not-to-include.md`. **Specificity goldilocks**: ✅ concrete project-specific rules ("Use 2-space indentation", "Run `npm test` before committing", "API handlers live in `src/api/handlers/`") — ❌ vague directives ("Format code properly", "Test your changes", "Keep files organized").
 
-*Source: research-context-engineering-comprehensive.md lines 113-134*
 
 ---
 
@@ -46,7 +44,6 @@ Apply the deletion test: "Would removing this cause the agent to make mistakes? 
 
 Detect and remove: stale file paths (check existence; remove or update), contradictions (compare across files; drop the weaker rule), over-specification (rules the agent already follows; delete or convert to a hook), failed-approach accumulation (defensive rules added after incidents that should not be needed), high-churn information (version numbers, file counts, team names — remove or replace with a pointer). Treat CLAUDE.md like code: review when things go wrong, prune regularly. (Anthropic Best Practices)
 
-*Source: research-context-engineering-comprehensive.md lines 213-253*
 
 ---
 
@@ -54,6 +51,5 @@ Detect and remove: stale file paths (check existence; remove or update), contrad
 
 Move content from always-consumed to on-demand locations: skills (description at start, full body on invocation), path-scoped rules (load when matching files are read), subdirectory config files (load when working in that directory), `@path/to/import` (expands when parent loads, controlled), domain docs in `docs/` (agent navigates when relevant). Rather than pre-processing all data up front, agents maintain lightweight identifiers and load data into context at runtime. (Anthropic Engineering: Effective Context Engineering)
 
-*Source: research-context-engineering-comprehensive.md lines 138-208, 451-461*
 
 ---

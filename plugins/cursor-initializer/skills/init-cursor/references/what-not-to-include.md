@@ -1,29 +1,27 @@
 # What NOT to Include
 
 Evidence-based exclusion table for `.cursor/rules/*.mdc` content.
-Sources: Industry Research (ETH "Evaluating context files", a-guide-to-agents.md, hooks/automate-workflow-with-hooks.md)
 
 ---
 
 ## Exclusion Evidence Table
 
-| Content Type | Why to Exclude | Evidence Quote | Source |
-|-------------|----------------|---------------|--------|
-| Directory/file structure listings | Agents use grep/glob to navigate; static lists become stale instantly | "Not effective at providing repository overview" | Industry Research (ETH) |
-| Standard language conventions | Agent training data already includes these | Agent "already knows these from training data" | Industry Research |
-| Codebase overview paragraphs | Increases exploration steps without improving navigation success | "Increases steps without improving navigation" | Industry Research (ETH) |
-| Vague guidance ("write clean code") | Cannot be acted on; wastes attention budget without guiding behavior | "Not actionable, wastes attention budget" | Industry Research (a-guide-to-agents.md) |
-| File path references | Paths change constantly; stale paths actively mislead the agent | "File paths change constantly... actively poisons context" | Industry Research |
-| Everything in one rule (all topics) | Exceeds ~150-200 instruction attention budget; creates ball-of-mud | "Ball of mud problem, exceeds attention budget" | Industry Research |
-| Obvious tooling ("use git for version control") | Agent already knows standard tooling from training | Agent already does this correctly without extra instruction | Industry Research |
-| Duplicated information across rules | Consumes tokens on every applicable conversation; creates contradiction risk | "Wastes tokens on every request" | Industry Research |
-| Version numbers and release names | High-churn content; stale immediately after updates | "Information that changes frequently" (explicit ❌ Exclude) | Industry Research |
-| Long explanations and tutorials | Context is for instructions, not education | Listed in explicit ❌ Exclude column | Industry Research |
-| Detailed API documentation | Link to external docs instead of inlining | Listed in explicit ❌ Exclude column | Industry Research |
-| Anything the agent can infer from code | Agent reads code directly; redundant instructions waste tokens | Anything the agent can infer by reading code should stay out of configuration files | Industry Research |
-| Hook-enforced behaviors (formatting, file blocking, notifications) | Hooks handle these deterministically; rule instructions are redundant and may conflict with hook execution. **Migrate** to hook configuration for zero context cost | Hooks provide deterministic control over agent behavior instead of repeated context instructions | Industry Research (Hooks Guide) |
+| Content Type | Why to Exclude | Evidence Quote |
+|-------------|----------------|----------------|
+| Directory/file structure listings | Agents use grep/glob to navigate; static lists become stale instantly | "Not effective at providing repository overview" |
+| Standard language conventions | Agent training data already includes these | Agent "already knows these from training data" |
+| Codebase overview paragraphs | Increases exploration steps without improving navigation success | "Increases steps without improving navigation" |
+| Vague guidance ("write clean code") | Cannot be acted on; wastes attention budget without guiding behavior | "Not actionable, wastes attention budget" |
+| File path references | Paths change constantly; stale paths actively mislead the agent | "File paths change constantly... actively poisons context" |
+| Everything in one rule (all topics) | Exceeds ~150-200 instruction attention budget; creates ball-of-mud | "Ball of mud problem, exceeds attention budget" |
+| Obvious tooling ("use git for version control") | Agent already knows standard tooling from training | Agent already does this correctly without extra instruction |
+| Duplicated information across rules | Consumes tokens on every applicable conversation; creates contradiction risk | "Wastes tokens on every request" |
+| Version numbers and release names | High-churn content; stale immediately after updates | "Information that changes frequently" (explicit ❌ Exclude) |
+| Long explanations and tutorials | Context is for instructions, not education | Listed in explicit ❌ Exclude column |
+| Detailed API documentation | Link to external docs instead of inlining | Listed in explicit ❌ Exclude column |
+| Anything the agent can infer from code | Agent reads code directly; redundant instructions waste tokens | Anything the agent can infer by reading code should stay out of configuration files |
+| Hook-enforced behaviors (formatting, file blocking, notifications) | Hooks handle these deterministically; rule instructions are redundant and may conflict with hook execution. **Migrate** to hook configuration for zero context cost | Hooks provide deterministic control over agent behavior instead of repeated context instructions |
 
-*Source: Industry Research — research-context-engineering-comprehensive.md:113-121; ETH Evaluating-AGENTS-paper.md abstract*
 
 ### Exclusion Actions
 

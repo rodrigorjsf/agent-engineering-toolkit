@@ -1,7 +1,6 @@
 # Skill Authoring Guide
 
 Evidence-based guidance for creating Cursor SKILL.md packages that conform to the Agent Skills open standard.
-Source: docs/cursor/skills/agent-skills-guide.md
 
 ---
 
@@ -40,7 +39,6 @@ Challenge each piece of content:
 
 **Safe persuasion** — use warm-up phases, curated references, explicit limits, and cited standards to improve compliance with legitimate work. Never use persuasion framing to bypass safeguards, refusals, or scope boundaries.
 
-*Source: docs/cursor/skills/agent-skills-guide.md "What are skills?" and "How skills work"*
 
 ---
 
@@ -56,7 +54,6 @@ Cursor automatically discovers skills from these directories at startup:
 
 The agent is presented with available skills and decides when they are relevant based on context. Skills can also be invoked manually by typing `/` in the agent chat and searching for the skill name.
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Skill directories"*
 
 ---
 
@@ -74,7 +71,6 @@ my-skill/
 
 Keep `SKILL.md` focused — move detailed reference material into `references/`. The agent loads supporting files progressively, only when the body of `SKILL.md` directs it to.
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Skill directories" and "Optional directories"*
 
 ---
 
@@ -93,7 +89,6 @@ Each skill begins with YAML frontmatter. The Agent Skills standard recognises si
 
 No other fields are part of the standard. Adding fields outside this set introduces foreign-platform dialect and breaks portability.
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Frontmatter fields"*
 
 ---
 
@@ -109,7 +104,6 @@ No other fields are part of the standard. Adding fields outside this set introdu
 
 Include three things in every description: (1) what it does, (2) when to use it, (3) the trigger terms an agent might match against.
 
-*Source: docs/cursor/skills/agent-skills-guide.md "SKILL.md file format" and "Frontmatter fields"*
 
 ---
 
@@ -129,7 +123,6 @@ Each reference file has one job and is cited explicitly from the phase that need
 
 Keep `SKILL.md` under 500 lines. Move detail to `references/`. Reference supporting files explicitly so the agent knows what they contain.
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Optional directories"*
 
 ---
 
@@ -149,7 +142,6 @@ Do not use string-substitution variables to refer to bundled files; the relative
 
 Scripts can be written in any language the agent can execute (Bash, Python, JavaScript, etc.). They should be self-contained, include helpful error messages, and handle edge cases gracefully.
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Including scripts in skills"*
 
 ---
 
@@ -159,7 +151,6 @@ By default, skills are automatically applied when the agent determines they are 
 
 Use this for workflows with side effects (commit, deploy, send-message) or for skills the user wants to gate manually.
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Disabling automatic invocation"*
 
 ---
 
@@ -175,4 +166,3 @@ Use this for workflows with side effects (commit, deploy, send-message) or for s
 | Contradictions between phases | Agent picks one arbitrarily | Review all phases for consistency |
 | Loading every reference in Phase 1 | Defeats progressive disclosure | Load each reference only in the phase that needs it |
 
-*Source: docs/cursor/skills/agent-skills-guide.md "SKILL.md file format" and "Optional directories"*

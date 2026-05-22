@@ -1,7 +1,6 @@
 # What NOT to Include
 
 Evidence-based exclusion guide for AGENTS.md and CLAUDE.md.
-Sources: ETH Zurich paper (Evaluating AGENTS.md), Anthropic Best Practices, a-guide-to-agents.md.
 
 ---
 
@@ -9,7 +8,6 @@ Sources: ETH Zurich paper (Evaluating AGENTS.md), Anthropic Best Practices, a-gu
 
 Exclude these categories: directory/file structure listings (agents use grep/glob; static lists go stale — ETH Zurich); standard language conventions (already in training data); codebase overview paragraphs (increase exploration steps without improving navigation — ETH Zurich); vague guidance like "write clean code" (not actionable — wastes attention); file path references (paths change constantly and actively poison context); everything in one file (exceeds the ~150-200 instruction attention budget); obvious tooling ("use git for version control"); duplicated information across files (wastes tokens per request, creates contradictions); version numbers / release names (high-churn, stale instantly); long explanations or tutorials (context is for instructions, not education); detailed API documentation (link out instead); anything inferable from code; hook-enforced behaviors (formatting, file blocking, notifications) — migrate to a hook for deterministic enforcement at zero context cost.
 
-*Source: init-agents/SKILL.md:106-116 expanded; research-context-engineering-comprehensive.md:113-121; Evaluating-AGENTS-paper.md abstract*
 
 ### Exclusion Actions
 

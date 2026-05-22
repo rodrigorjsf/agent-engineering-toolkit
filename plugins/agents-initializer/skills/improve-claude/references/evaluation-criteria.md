@@ -1,7 +1,6 @@
 # Evaluation Criteria
 
 Scoring rubric for assessing existing AGENTS.md / CLAUDE.md files before improvement. IMPROVE skills only.
-Source: file-evaluator.md, research-context-engineering-comprehensive.md.
 
 The canonical Hard Limits Table, Bloat Indicators, Staleness Indicators, Progressive Disclosure Assessment, Quality Score Rubric, and Evaluation Output Template all live in `agents/file-evaluator.md` (the subagent that produces the structured evaluation report). The Migration Candidate Indicators table lives in `automation-token-impact.md`. This file holds only criteria specific to the IMPROVE workflow.
 
@@ -11,7 +10,6 @@ Goldilocks: ✅ specific and actionable: "Use 2-space indentation"; ❌ too vagu
 
 **Config-enforcement distinction**: rules already enforced by config files ("Strict mode" with `tsconfig.json` `"strict": true`) → DELETE. Project decisions not in config ("Use `unknown` over `any`; validate with `zod`") → keep.
 
-*Source: research-context-engineering-comprehensive.md lines 131-134*
 
 ## Calibrated Improvement Mode
 

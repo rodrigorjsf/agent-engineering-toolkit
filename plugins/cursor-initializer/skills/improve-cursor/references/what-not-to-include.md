@@ -1,7 +1,6 @@
 # What NOT to Include
 
 Exclusion guide for AGENTS.md and `.cursor/rules/*.mdc`.
-Sources: Industry Research (ETH "Evaluating context files", a-guide-to-agents.md, hooks/automate-workflow-with-hooks.md).
 
 ---
 
@@ -9,7 +8,6 @@ Sources: Industry Research (ETH "Evaluating context files", a-guide-to-agents.md
 
 Exclude: directory/file structure listings (static lists go stale — ETH); standard language conventions (already in training data); codebase overview paragraphs (increase exploration steps without improving navigation — ETH); vague guidance ("write clean code"); file path references (paths churn and poison context); everything in one file (exceeds ~150-200 instruction attention budget); obvious tooling ("use git for version control"); duplicated information across files; version numbers / release names (high-churn); long explanations or tutorials; detailed API documentation (link out); anything inferable from code; hook-enforced behaviors (formatting, file blocking, notifications) — migrate to a hook.
 
-*Source: Industry Research — research-context-engineering-comprehensive.md:113-121; ETH Evaluating-AGENTS-paper.md abstract*
 
 ### Exclusion Actions
 

@@ -1,7 +1,6 @@
 # Skill Evaluation Criteria
 
 Scoring rubric for assessing existing Cursor SKILL.md packages before improvement.
-Source: docs/cursor/skills/agent-skills-guide.md
 
 ---
 
@@ -20,19 +19,18 @@ Source: docs/cursor/skills/agent-skills-guide.md
 
 ## Hard Limits Table
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| SKILL.md body length | ≤ 500 lines | Agent Skills best practice: keep SKILL.md focused |
-| Reference files | ≤ 200 lines each | reference-files convention |
-| Reference files >100 lines | Must include a `## Contents` table of contents | reference-files convention |
-| `description` field | Present, non-empty, ≤ 1024 chars | Agent Skills specification |
-| `name` field | Present, non-empty, 1-64 chars, kebab-case, matches parent folder | Agent Skills specification |
-| Frontmatter fields | Restricted to the six recognised by the Agent Skills standard | Agent Skills specification |
-| Phase structure | At least one clear phase defined | Agent Skills authoring patterns |
+| Criterion | Threshold |
+|-----------|-----------|
+| SKILL.md body length | ≤ 500 lines |
+| Reference files | ≤ 200 lines each |
+| Reference files >100 lines | Must include a `## Contents` table of contents |
+| `description` field | Present, non-empty, ≤ 1024 chars |
+| `name` field | Present, non-empty, 1-64 chars, kebab-case, matches parent folder |
+| Frontmatter fields | Restricted to the six recognised by the Agent Skills standard |
+| Phase structure | At least one clear phase defined |
 
 A skill violating any hard limit is flagged **OVER LIMIT** regardless of content quality.
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Frontmatter fields" and "Optional directories"*
 
 ---
 
@@ -40,7 +38,6 @@ A skill violating any hard limit is flagged **OVER LIMIT** regardless of content
 
 For every instruction, line, and reference, ask: **"Would removing this cause the agent to make mistakes?"** If the answer is no, flag it for removal. ETH Zurich (Feb 2026) measured that LLM-generated agent files reduce success rate by ~3% and increase cost by ~20% — the failure mode is content that looks helpful but adds no decision value. The deletion test is the rubric for separating signal from bloat.
 
-*Source: docs/general-llm/Evaluating-AGENTS-paper.pdf*
 
 ---
 
@@ -56,7 +53,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Explaining standard practices the agent already knows | Agents are already capable; add only novel context |
 | Hardcoded absolute or project-relative paths for bundled files | Will go stale; bundled paths must be relative to the skill root |
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Optional directories"*
 
 ---
 
@@ -70,7 +66,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Hardcoded file paths in SKILL.md body | Check that referenced bundled paths actually exist |
 | Foreign-platform dialect | See dedicated section below — auto-fail |
 
-*Source: docs/cursor/skills/agent-skills-guide.md "SKILL.md file format"*
 
 ---
 
@@ -96,7 +91,6 @@ The Cursor distribution is product-strict. Apply the following allowlists to the
 | Are supporting files referenced explicitly? | "Read the relevant supporting file for this phase" | Files exist but never referenced |
 | Is SKILL.md body under 500 lines? | Clean entry point with external depth | Monolithic, all content inline |
 
-*Source: docs/cursor/skills/agent-skills-guide.md "Optional directories"*
 
 ---
 

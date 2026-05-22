@@ -1,7 +1,6 @@
 # Claude Rules System
 
 `.claude/rules/` and CLAUDE.md hierarchy. Claude Code-specific.
-Sources: research-claude-code-skills-format.md, research-context-engineering-comprehensive.md, init-claude/SKILL.md, memory/how-claude-remembers-a-project.md.
 
 ## Loading Behavior
 

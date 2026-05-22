@@ -2,8 +2,6 @@
 
 Evidence-based routing rule for deciding whether a skill's generated output artifact
 should default to HTML or Markdown.
-Source: Agent Skills open standard; project convention on HTML artifacts
-(human-rich + agent-executable dual-consumer design).
 
 ---
 

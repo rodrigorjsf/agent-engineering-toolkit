@@ -1,7 +1,6 @@
 # Rule Evaluation Criteria
 
 Scoring rubric for assessing existing `.cursor/rules/*.mdc` rule files before improvement.
-Source: docs/cursor/rules/rules.md, Industry Research (research-context-engineering-comprehensive.md)
 
 ---
 
@@ -20,18 +19,17 @@ Source: docs/cursor/rules/rules.md, Industry Research (research-context-engineer
 
 ## Hard Limits Table
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| Rule length | ≤ 200 lines | Industry Research: 200-line target for configuration files in this toolkit |
-| YAML frontmatter | Valid YAML | docs/cursor/rules/rules.md — Rule anatomy |
-| Frontmatter fields | ONLY `description`, `alwaysApply`, `globs` | docs/cursor/rules/rules.md — Rule file format |
-| Banned frontmatter key | `paths` MUST NOT appear | Cross-platform leakage |
-| Activation-mode well-formedness | One of always / globs / description, with the matching field set | docs/cursor/rules/rules.md — Rule anatomy |
-| Instruction actionability | Verifiable, not vague | docs/cursor/rules/rules.md — Best practices |
+| Criterion | Threshold |
+|-----------|-----------|
+| Rule length | ≤ 200 lines |
+| YAML frontmatter | Valid YAML |
+| Frontmatter fields | ONLY `description`, `alwaysApply`, `globs` |
+| Banned frontmatter key | `paths` MUST NOT appear |
+| Activation-mode well-formedness | One of always / globs / description, with the matching field set |
+| Instruction actionability | Verifiable, not vague |
 
 A rule violating any hard limit is flagged **OVER LIMIT** or **INVALID**.
 
-*Source: docs/cursor/rules/rules.md — Best practices, Rule file format*
 
 ---
 
@@ -39,7 +37,6 @@ A rule violating any hard limit is flagged **OVER LIMIT** or **INVALID**.
 
 For every instruction, line, and reference, ask: **"Would removing this cause the agent to make mistakes?"** If the answer is no, flag it for removal. ETH Zurich (Feb 2026) measured that LLM-generated agent files reduce success rate by ~3% and increase cost by ~20% — the failure mode is content that looks helpful but adds no decision value. The deletion test is the rubric for separating signal from bloat.
 
-*Source: docs/general-llm/Evaluating-AGENTS-paper.pdf*
 
 ---
 
@@ -56,7 +53,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Inlined file content that could be `@path/to/file` reference | Token waste; staleness risk |
 | Edge-case instructions for situations that rarely apply | Steals attention from common paths |
 
-*Source: docs/cursor/rules/rules.md — What to avoid in rules*
 
 ---
 
@@ -70,7 +66,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Globs pointing to deleted or moved directories | Verify directory paths exist |
 | `@path/to/file` references to deleted files | Resolve every `@`-reference |
 
-*Source: Industry Research: stale paths poison context*
 
 ---
 
@@ -83,7 +78,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Cross-cutting / domain topic (auth, observability, accessibility) | `description:` | Always-apply, when the agent only needs it on relevant tasks |
 | User-controlled template or snippet | Manual (no frontmatter trigger) | Auto-attached with overly broad globs |
 
-*Source: docs/cursor/rules/rules.md — Rule anatomy*
 
 ---
 
@@ -99,7 +93,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | References instead of inlined file content? | `@components/Button.tsx` | Whole file body pasted into the rule |
 | No overlap with other rules? | Each rule covers a distinct topic | Same instruction in 3 rule files |
 
-*Source: docs/cursor/rules/rules.md — Best practices*
 
 ---
 
@@ -114,7 +107,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Consistency | 0 contradictions across files | 1 contradiction | 2+ contradictions |
 | **Overall** | | | |
 
-*Source: docs/cursor/rules/rules.md — Best practices; Industry Research on context budgets*
 
 ---
 

@@ -1,28 +1,26 @@
 # What NOT to Include
 
 Evidence-based exclusion table for AGENTS.md content.
-Sources: ETH Zurich paper (Evaluating AGENTS.md), Anthropic Best Practices, a-guide-to-agents.md
 
 ---
 
 ## Exclusion Evidence Table
 
-| Content Type | Why to Exclude | Evidence Quote | Source |
-|-------------|----------------|---------------|--------|
-| Directory/file structure listings | Agents use grep/glob to navigate; static lists become stale instantly | "Not effective at providing repository overview" | ETH Zurich: Evaluating AGENTS.md |
-| Standard language conventions | Agent training data already includes these | Agent "already knows these from training data" | Anthropic Best Practices |
-| Codebase overview paragraphs | Increases exploration steps without improving navigation success | "Increases steps without improving navigation" | ETH Zurich: Evaluating AGENTS.md |
-| Vague guidance ("write clean code") | Cannot be acted on; wastes attention budget without guiding behavior | "Not actionable, wastes attention budget" | a-guide-to-agents.md |
-| File path references | Paths change constantly; stale paths actively mislead the agent | "File paths change constantly... actively poisons context" | a-guide-to-agents.md |
-| Everything in one file (all topics) | Exceeds ~150-200 instruction attention budget; creates ball-of-mud | "Ball of mud problem, exceeds attention budget" | a-guide-to-agents.md |
-| Obvious tooling ("use git for version control") | Agent already knows standard tooling from training | "If Claude already does it correctly, delete it" | Anthropic Best Practices |
-| Duplicated information across files | Consumes tokens on every request; creates contradiction risk | "Wastes tokens on every request" | research-context-engineering-comprehensive.md |
-| Version numbers and release names | High-churn content; stale immediately after updates | "Information that changes frequently" (explicit ❌ Exclude) | Anthropic Best Practices |
-| Long explanations and tutorials | Context is for instructions, not education | Listed in explicit ❌ Exclude column | Anthropic Best Practices |
-| Detailed API documentation | Link to external docs instead of inlining | Listed in explicit ❌ Exclude column | Anthropic Best Practices |
-| Anything the agent can infer from code | Agent reads code directly; redundant instructions waste tokens | "Anything Claude can figure out by reading code" | Anthropic Best Practices |
+| Content Type | Why to Exclude | Evidence Quote |
+|-------------|----------------|---------------|
+| Directory/file structure listings | Agents use grep/glob to navigate; static lists become stale instantly | "Not effective at providing repository overview" |
+| Standard language conventions | Agent training data already includes these | Agent "already knows these from training data" |
+| Codebase overview paragraphs | Increases exploration steps without improving navigation success | "Increases steps without improving navigation" |
+| Vague guidance ("write clean code") | Cannot be acted on; wastes attention budget without guiding behavior | "Not actionable, wastes attention budget" |
+| File path references | Paths change constantly; stale paths actively mislead the agent | "File paths change constantly... actively poisons context" |
+| Everything in one file (all topics) | Exceeds ~150-200 instruction attention budget; creates ball-of-mud | "Ball of mud problem, exceeds attention budget" |
+| Obvious tooling ("use git for version control") | Agent already knows standard tooling from training | "If Claude already does it correctly, delete it" |
+| Duplicated information across files | Consumes tokens on every request; creates contradiction risk | "Wastes tokens on every request" |
+| Version numbers and release names | High-churn content; stale immediately after updates | "Information that changes frequently" (explicit ❌ Exclude) |
+| Long explanations and tutorials | Context is for instructions, not education | Listed in explicit ❌ Exclude column |
+| Detailed API documentation | Link to external docs instead of inlining | Listed in explicit ❌ Exclude column |
+| Anything the agent can infer from code | Agent reads code directly; redundant instructions waste tokens | "Anything Claude can figure out by reading code" |
 
-*Source: init-agents/SKILL.md:106-116 expanded; research-context-engineering-comprehensive.md:113-121; Evaluating-AGENTS-paper.md abstract*
 
 ### Exclusion Actions
 

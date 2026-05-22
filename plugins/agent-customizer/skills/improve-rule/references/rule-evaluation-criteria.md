@@ -1,8 +1,6 @@
 # Rule Evaluation Criteria
 
 Scoring rubric for assessing existing `.claude/rules/*.md` rule files before improvement.
-Source: memory/how-claude-remembers-a-project.md
-
 ---
 
 ## Contents
@@ -19,16 +17,15 @@ Source: memory/how-claude-remembers-a-project.md
 
 ## Hard Limits Table
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| Rules | `paths:` array present | memory/how-claude-remembers-a-project.md lines 147-164 |
-| Rules | ≤ 50 lines | Context budget: loaded when matching files read — project convention |
-| YAML frontmatter | Valid YAML if present | memory/how-claude-remembers-a-project.md |
-| Instructions | Actionable and verifiable | memory/how-claude-remembers-a-project.md lines 61-75 |
+| Criterion | Threshold |
+|-----------|-----------|
+| Rules | `paths:` array present |
+| Rules | ≤ 50 lines |
+| YAML frontmatter | Valid YAML if present |
+| Instructions | Actionable and verifiable |
 
 A rule file violating any hard limit is flagged **OVER LIMIT** or **INVALID**.
 
-*Source: memory/how-claude-remembers-a-project.md lines 61-75; 123-145; Project convention — `.github/instructions/rules.instructions.md`*
 
 ---
 
@@ -36,7 +33,6 @@ A rule file violating any hard limit is flagged **OVER LIMIT** or **INVALID**.
 
 For every instruction, line, and reference, ask: **"Would removing this cause the agent to make mistakes?"** If the answer is no, flag it for removal. ETH Zurich (Feb 2026) measured that LLM-generated agent files reduce success rate by ~3% and increase cost by ~20% — the failure mode is content that looks helpful but adds no decision value. The deletion test is the rubric for separating signal from bloat.
 
-*Source: docs/general-llm/Evaluating-AGENTS-paper.pdf*
 
 ---
 
@@ -51,7 +47,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Long explanations or tutorials | Rules are instructions, not documentation |
 | Examples in rules | Token waste; be specific instead |
 
-*Source: memory/how-claude-remembers-a-project.md lines 61-75*
 
 ---
 
@@ -64,7 +59,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Instructions for conventions no longer used | Check if convention is still in use |
 | Paths pointing to deleted or moved directories | Verify directory paths exist |
 
-*Source: memory/how-claude-remembers-a-project.md lines 147-164*
 
 ---
 
@@ -78,7 +72,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | No overlap with other rules? | Each rule file covers distinct domain | Same instruction in 3 rule files |
 | Rule scope narrow enough for the token cost? | Specific globs for real target files | Missing `paths:` or broad scope |
 
-*Source: memory/how-claude-remembers-a-project.md lines 123-145*
 
 ---
 
@@ -93,7 +86,6 @@ For every instruction, line, and reference, ask: **"Would removing this cause th
 | Consistency | 0 contradictions across files | 1 contradiction | 2+ contradictions |
 | **Overall** | | | |
 
-*Source: memory/how-claude-remembers-a-project.md lines 61-75; 123-145*
 
 ---
 

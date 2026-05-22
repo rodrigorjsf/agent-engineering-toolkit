@@ -11,8 +11,8 @@ readonly: true
      Forbidden: any other frontmatter key; any other model value.
      Rule: Project subagents must not spawn other subagents.
      Rule: name must be kebab-case and distinct from every other subagent name in the project.
-     Rule: The body wraps logical blocks in the canonical semantic-tag vocabulary
-           (see wiki/knowledge/skill-body-convention.md). Mandatory for subagents:
+     Rule: The body wraps logical blocks in the canonical semantic-tag vocabulary.
+           Mandatory for subagents:
            <BEHAVIOUR>, <HARD_RULES>, <PROCESS> with one or more <PHASE id="N" name="X">.
            Optional: <TRIGGER>, <PREFLIGHT>, <REFERENCES>, <EXAMPLE>, <ANTI_PATTERN>,
            <OUTPUT>, <VALIDATION>. Closed attribute set: avoid=, always=, when=, name=, id=, priority=.

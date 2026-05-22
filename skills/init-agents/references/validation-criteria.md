@@ -1,7 +1,6 @@
 # Validation Criteria
 
 Quality checklist for generated and improved AGENTS.md files.
-Source: improve-agents/SKILL.md:108-122, file-evaluator.md:23-59
 
 ---
 
@@ -9,13 +8,13 @@ Source: improve-agents/SKILL.md:108-122, file-evaluator.md:23-59
 
 Any file violating these criteria must be fixed before proceeding:
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| File length | ≤ 200 lines | Anthropic Docs: "Target under 200 lines per CLAUDE.md file" |
-| Instruction count | ≤ 150-200 | HumanLayer: "~150-200 instructions with reasonable consistency" |
-| Contradictions (within or between files) | 0 | Anthropic: "Claude may pick one arbitrarily" |
-| Language-specific rules in root | 0 | Domain rules belong in separate files |
-| Stale file path references | 0 | "File paths change constantly... actively poisons context" |
+| Criterion | Threshold |
+|-----------|-----------|
+| File length | ≤ 200 lines |
+| Instruction count | ≤ 150-200 |
+| Contradictions (within or between files) | 0 |
+| Language-specific rules in root | 0 |
+| Stale file path references | 0 |
 
 ## Recommended Targets (Advisory)
 

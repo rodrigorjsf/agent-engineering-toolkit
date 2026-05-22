@@ -1,7 +1,6 @@
 # Context Optimization
 
 Evidence-based instructions for managing token budgets and attention in `.cursor/rules/*.mdc` files.
-Source: Industry Research — research-context-engineering-comprehensive.md
 
 ---
 
@@ -13,17 +12,16 @@ Source: Industry Research — research-context-engineering-comprehensive.md
 - Quality over quantity checklist (include/exclude decision table)
 - Context poisoning vectors (detection and removal)
 - JIT documentation patterns (on-demand loading strategies)
-- Key citations
 
 ---
 
 ## Hard Limits
 
-| Limit | Value | Source |
-|-------|-------|--------|
-| Lines per rule file | ≤ 200 | Industry Research: 200-line target for configuration files in this toolkit |
-| Instructions per file | ≤ 150-200 | Industry Research: "Frontier LLMs can follow ~150-200 instructions with reasonable consistency." |
-| Contradictions between files | 0 | Industry Research: conflicting instructions make the model choose inconsistently. |
+| Limit | Value |
+|-------|-------|
+| Lines per rule file | ≤ 200 — 200-line target for configuration files in this toolkit |
+| Instructions per file | ≤ 150-200 — "Frontier LLMs can follow ~150-200 instructions with reasonable consistency." |
+| Contradictions between files | 0 — conflicting instructions make the model choose inconsistently. |
 
 > Industry Research generalizes here: bloated configuration files cause the model to miss important instructions.
 > — Industry Research
@@ -79,7 +77,6 @@ For each instruction line, ask: **"Would removing this cause the agent to make m
 - ✅ "Run `npm test` before committing" vs. ❌ "Test your changes"
 - ✅ "API handlers live in `src/api/handlers/`" vs. ❌ "Keep files organized"
 
-*Source: Industry Research — research-context-engineering-comprehensive.md lines 113-134*
 
 ---
 
@@ -97,7 +94,6 @@ Detect and remove these before generating or improving rule files:
 
 > Treat configuration files like code: review them when things go wrong, prune them regularly. — Industry Research
 
-*Source: Industry Research — research-context-engineering-comprehensive.md lines 213-253*
 
 ---
 
@@ -115,17 +111,6 @@ Use these patterns to move content from always-consumed to on-demand locations:
 > "Rather than pre-processing all relevant data up front, agents maintain lightweight identifiers and use these references to dynamically load data into context at runtime."
 > — Industry Research, Effective Context Engineering
 
-*Source: Industry Research — research-context-engineering-comprehensive.md lines 138-208, 451-461*
 
 ---
 
-## Key Citations
-
-| Claim | Source |
-|-------|--------|
-| ≤200 lines per file | Industry Research (Agent Skills Standard) |
-| ~150-200 instruction limit | Industry Research (HumanLayer) |
-| n² attention constraint / context rot | Industry Research (Effective Context Engineering) |
-| Lost-in-the-middle effect | Industry Research, Liu et al., arXiv:2307.03172 |
-| Quality over quantity heuristic | Industry Research |
-| JIT documentation strategy | Industry Research, Effective Context Engineering |

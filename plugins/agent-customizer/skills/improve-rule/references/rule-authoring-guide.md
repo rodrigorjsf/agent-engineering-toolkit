@@ -1,8 +1,6 @@
 # Rule Authoring Guide
 
 Evidence-based guidance for creating effective Claude Code rule files (`.claude/rules/*.md`).
-Source: memory/how-claude-remembers-a-project.md
-
 ---
 
 ## Contents
@@ -29,7 +27,6 @@ Rules are instruction files loaded on-demand when Claude reads files matching th
 
 **Rules load into context** when matching files are read, so keep them focused and concise.
 
-*Source: memory/how-claude-remembers-a-project.md lines 123-145; .github/instructions/rules.instructions.md*
 
 ---
 
@@ -48,7 +45,6 @@ Each file should cover **one topic** with a descriptive filename. All `.md` file
 
 For this project, rules should use `paths` frontmatter so they load only when Claude reads matching files. Put always-loaded project guidance in root `CLAUDE.md`, not in `.claude/rules/`.
 
-*Source: memory/how-claude-remembers-a-project.md lines 123-145*
 
 ---
 
@@ -81,7 +77,6 @@ paths:
 ---
 ```
 
-*Source: memory/how-claude-remembers-a-project.md lines 147-186*
 
 ---
 
@@ -98,7 +93,6 @@ paths:
 
 Path-scoped rules trigger when Claude **reads files** matching the pattern, not on every tool use.
 
-*Source: memory/how-claude-remembers-a-project.md lines 166-183*
 
 ---
 
@@ -121,7 +115,6 @@ Path-scoped rules trigger when Claude **reads files** matching the pattern, not 
 
 **No contradictions** — if two rules conflict, Claude may pick one arbitrarily. Review `.claude/rules/` periodically to remove outdated or conflicting instructions.
 
-*Source: memory/how-claude-remembers-a-project.md lines 61-75; Project convention — `.github/instructions/rules.instructions.md`*
 
 ---
 
@@ -136,4 +129,3 @@ Path-scoped rules trigger when Claude **reads files** matching the pattern, not 
 | Always-loaded rules for rare situations | Context cost on every session | Convert to path-scoped or skill |
 | Rule files exceeding 50 lines | Poor adherence; attention fragmentation | Split into multiple focused files |
 
-*Source: memory/how-claude-remembers-a-project.md lines 61-75; 123-145; Project convention — `.github/instructions/rules.instructions.md`*

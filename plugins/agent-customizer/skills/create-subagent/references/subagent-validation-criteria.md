@@ -1,7 +1,6 @@
 # Subagent Validation Criteria
 
 Quality checklist for generated and improved Claude Code subagent definitions.
-Source: subagents/creating-custom-subagents.md, subagents/research-subagent-best-practices.md, `wiki/knowledge/skill-body-convention.md`
 
 ---
 
@@ -20,16 +19,15 @@ Source: subagents/creating-custom-subagents.md, subagents/research-subagent-best
 
 Any subagent violating these criteria must be fixed before proceeding:
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| YAML frontmatter | Valid YAML syntax | subagents/creating-custom-subagents.md |
-| `name` field | Lowercase letters and hyphens only | subagents/creating-custom-subagents.md lines 217-220 |
-| `description` field | Present and non-empty | subagents/creating-custom-subagents.md lines 217-220 |
-| `model` field | Recognized alias or full model ID | subagents/creating-custom-subagents.md lines 234-241 |
-| `maxTurns` | 15 for analysis agents; 20 for evaluators; values outside 15–20 require justification | Project convention — `.claude/rules/agent-files.md` |
-| System prompt | Not empty; task-specific | subagents/creating-custom-subagents.md lines 199-212 |
+| Criterion | Threshold |
+|-----------|-----------|
+| YAML frontmatter | Valid YAML syntax |
+| `name` field | Lowercase letters and hyphens only |
+| `description` field | Present and non-empty |
+| `model` field | Recognized alias or full model ID |
+| `maxTurns` | 15 for analysis agents; 20 for evaluators; values outside 15–20 require justification |
+| System prompt | Not empty; task-specific |
 
-*Source: subagents/creating-custom-subagents.md lines 213-232; subagents/research-subagent-best-practices.md lines 33-55*
 
 ---
 
@@ -64,7 +62,6 @@ The subagent body (everything after the YAML frontmatter) MUST wrap its logical 
 
 A self-closing tag (`<TRIGGER ... />`) counts as balanced. `<PHASE>` missing its mandatory `id=` is a hard-fail (a mandatory attribute is absent, not malformed).
 
-*Source: wiki/knowledge/skill-body-convention.md; docs/adr/0007-skill-body-semantic-tag-convention.md*
 
 ---
 

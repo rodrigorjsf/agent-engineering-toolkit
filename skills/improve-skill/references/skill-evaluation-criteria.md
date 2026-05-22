@@ -1,7 +1,6 @@
 # Skill Evaluation Criteria
 
 Scoring rubric for assessing existing SKILL.md files before improvement.
-Source: skills/skill-authoring-best-practices.md, Evaluating-AGENTS-paper.md
 
 ---
 
@@ -18,18 +17,17 @@ Source: skills/skill-authoring-best-practices.md, Evaluating-AGENTS-paper.md
 
 ## Hard Limits Table
 
-| Criterion | Threshold | Source |
-|-----------|-----------|--------|
-| SKILL.md body length | ≤ 500 lines | Anthropic: "Keep SKILL.md under 500 lines" |
-| Reference files | ≤ 200 lines each | Reference files hard limit |
-| Reference files >100 lines | Must include a `## Contents` TOC | skill-authoring-best-practices.md line 403 |
-| `description` field | Present, non-empty, ≤ 1024 chars | Required for skill discovery and Agent Skills spec |
-| `name` field | Present, non-empty, 1-64 chars, kebab-case | Agent Skills specification |
-| Phase structure | At least one clear phase defined | Anthropic skill authoring patterns |
+| Criterion | Threshold |
+|-----------|-----------|
+| SKILL.md body length | ≤ 500 lines |
+| Reference files | ≤ 200 lines each |
+| Reference files >100 lines | Must include a `## Contents` TOC |
+| `description` field | Present, non-empty, ≤ 1024 chars |
+| `name` field | Present, non-empty, 1-64 chars, kebab-case |
+| Phase structure | At least one clear phase defined |
 
 A skill violating any hard limit is flagged **OVER LIMIT** regardless of content quality.
 
-*Source: skills/skill-authoring-best-practices.md line 259*
 
 ---
 
@@ -44,7 +42,6 @@ A skill violating any hard limit is flagged **OVER LIMIT** regardless of content
 | Explaining standard practices Claude already knows | "Claude is already very smart — add only novel context" |
 | Hardcoded absolute paths (not using relative `references/` paths) | Will go stale; breaks skill portability |
 
-*Source: skills/skill-authoring-best-practices.md lines 11-60*
 
 ---
 
@@ -58,7 +55,6 @@ A skill violating any hard limit is flagged **OVER LIMIT** regardless of content
 | Hardcoded file paths in SKILL.md body | Check if referenced paths actually exist |
 | `user-invocable: true` (was the default, now explicit) | Remove redundant explicit defaults |
 
-*Source: skills/skill-authoring-best-practices.md lines 146-167*
 
 ---
 
@@ -71,7 +67,6 @@ A skill violating any hard limit is flagged **OVER LIMIT** regardless of content
 | Are supporting files referenced explicitly? | "Read references/X.md" | Files exist but never referenced |
 | Is SKILL.md body under 500 lines? | Clean entry point with external depth | Monolithic, all content inline |
 
-*Source: skills/skill-authoring-best-practices.md lines 251-300*
 
 ---
 
@@ -88,7 +83,6 @@ Score each dimension 1–10 based on observed issues:
 | Evidence Grounding | References cited per phase | Some references | No references |
 | **Overall** | | | |
 
-*Source: Evaluating-AGENTS-paper.md lines 1-100*
 
 ---
 

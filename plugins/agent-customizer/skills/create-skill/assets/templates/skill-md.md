@@ -11,8 +11,8 @@ description: "[What this skill does and when to use it. Third person.]"
      Rule: Use ${CLAUDE_SKILL_DIR}/assets/templates/ for output templates
      Rule: Progressive disclosure — load references per phase, not all upfront
      Rule: If analysis finds a monorepo or multi-service layout, generated phases must name the target service/workspace explicitly
-     Rule: The body wraps logical blocks in the canonical semantic-tag vocabulary
-           (see wiki/knowledge/skill-body-convention.md). Mandatory: <TRIGGER>,
+     Rule: The body wraps logical blocks in the canonical semantic-tag vocabulary.
+           Mandatory: <TRIGGER>,
            <BEHAVIOUR>, <HARD_RULES>, <PROCESS> with one or more <PHASE id name>.
            Optional: <PREFLIGHT>, <REFERENCES>, <EXAMPLE>, <ANTI_PATTERN>, <OUTPUT>, <VALIDATION>.
            Closed attribute set: avoid=, always=, when=, name=, id=, priority=.
