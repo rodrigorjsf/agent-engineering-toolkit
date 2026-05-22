@@ -26,16 +26,24 @@ const verificationEntrySchema = z.object({
 });
 
 /**
- * Result envelope for the implementer role. `status` keeps the implementer's
- * existing vocabulary: 'completed' or 'blocked'.
+ * Result envelope for the implementer role. `status` carries the implementer's
+ * three-value vocabulary: 'completed', 'incomplete', or 'blocked'.
  */
 export const implementerEnvelopeSchema = z.object({
   role: z.literal("implementer").describe("Discriminant — the implementer role."),
   status: z
-    .enum(["completed", "blocked"])
+    .enum(["completed", "incomplete", "blocked"])
     .describe(
       "Outcome. 'completed' = acceptance criteria met and every configured " +
-        "capability tool passed; 'blocked' = the implementer could not finish."
+        "capability tool passed; 'incomplete' = the implementer's graceful " +
+        "turn-budget self-report — it foresaw it could not finish within the " +
+        "remaining turns and stopped cleanly with the partial work recorded, " +
+        "rather than being cut off mid-sentence (a hard turn-limit cutoff " +
+        "instead leaves an unclosed fence and is reported 'invalid'); " +
+        "'blocked' = the implementer hit an unrecoverable obstacle and could " +
+        "not finish. 'incomplete' and 'blocked' are both non-success outcomes " +
+        "but stay distinct: 'incomplete' is partial and resumable, 'blocked' " +
+        "is an obstacle that must be cleared first."
     ),
   filesChanged: z
     .array(z.string())
