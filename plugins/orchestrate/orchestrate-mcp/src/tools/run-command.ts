@@ -37,12 +37,18 @@ export type CapabilityVerb = (typeof CAPABILITY_VERBS)[number];
  * never be word-split, glob-expanded, or interpreted. Unknown keys are
  * stripped, so a `$schema` pointer or future additive keys do not break an
  * existing config.
+ *
+ * `install` is a setup verb, not a capability verb — it runs once after a
+ * worktree is created (a fresh worktree has no installed dependencies) so the
+ * four capability commands above have what they need. It is optional: a
+ * project whose capability commands need no install simply omits it.
  */
 export const commandsConfigSchema = z.object({
   tests: z.array(z.string().min(1)).optional(),
   typecheck: z.array(z.string().min(1)).optional(),
   build: z.array(z.string().min(1)).optional(),
   lint: z.array(z.string().min(1)).optional(),
+  install: z.array(z.string().min(1)).optional(),
 });
 
 export const runCommandInputSchema = z.object({
@@ -269,6 +275,63 @@ async function execCommand(
   }
 }
 
+/**
+ * Outcome of loading and validating `.orchestrate/commands.json`. `runInstall`
+ * and `runConfiguredCommand` share this loader so the file is read, parsed, and
+ * shape-checked in exactly one place.
+ */
+type LoadCommandsConfigResult =
+  | { kind: "loaded"; config: CommandsConfig }
+  | { kind: "not-configured"; reason: string }
+  | { kind: "invalid"; errorMessage: string };
+
+/**
+ * Reads `<cwd>/.orchestrate/commands.json` and validates it against
+ * {@link commandsConfigSchema}. A missing file is not an error — it means the
+ * project has not configured orchestrate commands yet. Malformed JSON or a
+ * wrong shape is a real misconfiguration. Never throws.
+ */
+function loadCommandsConfig(cwd: string): LoadCommandsConfigResult {
+  const configPath = path.join(cwd, ".orchestrate", "commands.json");
+
+  let raw: string;
+  try {
+    raw = fs.readFileSync(configPath, "utf8");
+  } catch {
+    return {
+      kind: "not-configured",
+      reason:
+        `No .orchestrate/commands.json found in ${cwd}. Copy the orchestrate ` +
+        `plugin's templates/commands.json to .orchestrate/commands.json.`,
+    };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      kind: "invalid",
+      errorMessage: `.orchestrate/commands.json is not valid JSON: ${firstLine(
+        err instanceof Error ? err.message : String(err)
+      )}`,
+    };
+  }
+
+  const config = commandsConfigSchema.safeParse(parsed);
+  if (!config.success) {
+    const detail = config.error.issues
+      .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+      .join("; ");
+    return {
+      kind: "invalid",
+      errorMessage: `.orchestrate/commands.json does not match the expected shape: ${detail}`,
+    };
+  }
+
+  return { kind: "loaded", config: config.data };
+}
+
 // ─── Core ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -286,54 +349,22 @@ export async function runConfiguredCommand(
 ): Promise<RunCommandOutput> {
   const cwd = input.repoPath ?? process.cwd();
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const configPath = path.join(cwd, ".orchestrate", "commands.json");
 
-  // Load the config file. A missing file is not an error — it means the
-  // project has not configured orchestrate commands yet.
-  let raw: string;
-  try {
-    raw = fs.readFileSync(configPath, "utf8");
-  } catch {
-    return {
-      status: "not-configured",
-      capability: verb,
-      reason:
-        `No .orchestrate/commands.json found in ${cwd}. Copy the orchestrate ` +
-        `plugin's templates/commands.json to .orchestrate/commands.json and ` +
-        `set the "${verb}" command.`,
-    };
+  const loaded = loadCommandsConfig(cwd);
+  if (loaded.kind === "not-configured") {
+    return { status: "not-configured", capability: verb, reason: loaded.reason };
   }
-
-  // Malformed JSON is a real misconfiguration the caller must fix.
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
+  if (loaded.kind === "invalid") {
     return {
       status: "error",
       capability: verb,
       errorCode: "CONFIG_INVALID",
-      errorMessage: `.orchestrate/commands.json is not valid JSON: ${firstLine(
-        err instanceof Error ? err.message : String(err)
-      )}`,
-    };
-  }
-
-  const config = commandsConfigSchema.safeParse(parsed);
-  if (!config.success) {
-    const detail = config.error.issues
-      .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
-      .join("; ");
-    return {
-      status: "error",
-      capability: verb,
-      errorCode: "CONFIG_INVALID",
-      errorMessage: `.orchestrate/commands.json does not match the expected shape: ${detail}`,
+      errorMessage: loaded.errorMessage,
     };
   }
 
   // An absent key or an empty argv array both mean "this verb is unconfigured".
-  const argv = config.data[verb];
+  const argv = loaded.config[verb];
   if (!argv || argv.length === 0) {
     return {
       status: "not-configured",
@@ -399,3 +430,107 @@ export const runBuild = (input: RunCommandInput, opts?: RunCommandOptions) =>
 
 export const runLint = (input: RunCommandInput, opts?: RunCommandOptions) =>
   runConfiguredCommand("lint", input, opts);
+
+// ─── Install (setup verb) ─────────────────────────────────────────────────────
+
+/**
+ * Result of running the configured `install` command.
+ *
+ * Not an MCP tool output — `runInstall` is internal, called by `create_worktree`
+ * after a worktree is created. Mirrors the shape of {@link RunCommandOutput}
+ * minus `capability`: `install` is a setup verb, not one of the four capability
+ * verbs.
+ *
+ * - `installed` — the install command exited 0.
+ * - `not-configured` — no `install` command is set (a clean, expected state —
+ *   a project that needs no install simply omits it).
+ * - `failed` — the install command exited non-zero.
+ * - `error` — the command could not be run (invalid config, timeout, spawn
+ *   failure).
+ */
+export interface InstallResult {
+  status: "installed" | "not-configured" | "failed" | "error";
+  command?: string[];
+  exitCode?: number;
+  stdout?: string;
+  stderr?: string;
+  truncated?: boolean;
+  durationMs?: number;
+  reason?: string;
+  errorCode?: "CONFIG_INVALID" | "EXEC_ERROR" | "TIMEOUT";
+  errorMessage?: string;
+}
+
+/**
+ * Runs the project's configured `install` command — the dependency-install step
+ * a freshly created worktree needs before any capability command can run.
+ *
+ * Reads `<repoPath>/.orchestrate/commands.json` and executes the `install` argv
+ * with no shell. A missing file or absent `install` key is `not-configured`,
+ * never an error. Every failure mode is a structured result; this function does
+ * not throw.
+ */
+export async function runInstall(
+  input: RunCommandInput,
+  opts: RunCommandOptions = {}
+): Promise<InstallResult> {
+  const cwd = input.repoPath ?? process.cwd();
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  const loaded = loadCommandsConfig(cwd);
+  if (loaded.kind === "not-configured") {
+    return { status: "not-configured", reason: loaded.reason };
+  }
+  if (loaded.kind === "invalid") {
+    return {
+      status: "error",
+      errorCode: "CONFIG_INVALID",
+      errorMessage: loaded.errorMessage,
+    };
+  }
+
+  // An absent key or an empty argv array both mean "no install step needed".
+  const argv = loaded.config.install;
+  if (!argv || argv.length === 0) {
+    return {
+      status: "not-configured",
+      reason: `No "install" command is configured in .orchestrate/commands.json.`,
+    };
+  }
+
+  const exec = await execCommand(argv, cwd, timeoutMs);
+
+  if (exec.kind === "timeout") {
+    const out = capOutput(exec.stdout);
+    const errOut = capOutput(exec.stderr);
+    return {
+      status: "error",
+      errorCode: "TIMEOUT",
+      errorMessage: `The "install" command exceeded the ${timeoutMs} ms time limit and was killed.`,
+      stdout: out.text,
+      stderr: errOut.text,
+      truncated: out.truncated || errOut.truncated,
+      durationMs: exec.durationMs,
+    };
+  }
+  if (exec.kind === "exec-error") {
+    return {
+      status: "error",
+      errorCode: "EXEC_ERROR",
+      errorMessage: `The "install" command could not be executed: ${exec.message}`,
+      durationMs: exec.durationMs,
+    };
+  }
+
+  const out = capOutput(exec.stdout);
+  const errOut = capOutput(exec.stderr);
+  return {
+    status: exec.exitCode === 0 ? "installed" : "failed",
+    command: argv,
+    exitCode: exec.exitCode,
+    stdout: out.text,
+    stderr: errOut.text,
+    truncated: out.truncated || errOut.truncated,
+    durationMs: exec.durationMs,
+  };
+}

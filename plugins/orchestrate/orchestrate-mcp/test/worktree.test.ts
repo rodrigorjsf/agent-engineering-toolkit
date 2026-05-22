@@ -36,6 +36,20 @@ function rmrf(dirPath: string) {
   }
 }
 
+/**
+ * Writes `.orchestrate/commands.json` into `repo` and commits it, so a worktree
+ * branched from HEAD carries the config.
+ */
+function commitCommandsJson(repo: string, commands: unknown): void {
+  fs.mkdirSync(path.join(repo, ".orchestrate"), { recursive: true });
+  fs.writeFileSync(
+    path.join(repo, ".orchestrate", "commands.json"),
+    JSON.stringify(commands, null, 2)
+  );
+  git(["add", "."], repo);
+  git(["commit", "-m", "Add orchestrate commands.json"], repo);
+}
+
 // ─── Test state ───────────────────────────────────────────────────────────────
 
 let repoPath: string;
@@ -284,6 +298,89 @@ describe("create_worktree", () => {
       rmrf(remoteDir);
       rmrf(stubDir);
     }
+  });
+
+  it("runs the configured install command and reports installStatus='installed'", async () => {
+    commitCommandsJson(repoPath, {
+      install: [
+        "node",
+        "-e",
+        "require('fs').writeFileSync('INSTALLED.marker', 'ok')",
+      ],
+    });
+
+    const wtPath = path.join(worktreesDir, "install-wt");
+    const result = await createWorktree({
+      baseRef: "HEAD",
+      branch: "install-branch",
+      worktreePath: wtPath,
+      repoPath,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.installStatus).toBe("installed");
+    // The install command runs with the worktree as cwd — its side-effect
+    // must land inside the worktree.
+    expect(fs.existsSync(path.join(wtPath, "INSTALLED.marker"))).toBe(true);
+  });
+
+  it("reports installStatus='not-configured' when no install command is set", async () => {
+    // createTempRepo writes no commands.json — install is simply absent.
+    const wtPath = path.join(worktreesDir, "no-install-wt");
+    const result = await createWorktree({
+      baseRef: "HEAD",
+      branch: "no-install-branch",
+      worktreePath: wtPath,
+      repoPath,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.installStatus).toBe("not-configured");
+    expect(fs.existsSync(wtPath)).toBe(true);
+  });
+
+  it("returns errorCode=INSTALL_FAILED when the install command exits non-zero", async () => {
+    commitCommandsJson(repoPath, {
+      install: ["node", "-e", "process.exit(1)"],
+    });
+
+    const wtPath = path.join(worktreesDir, "install-fail-wt");
+    const result = await createWorktree({
+      baseRef: "HEAD",
+      branch: "install-fail-branch",
+      worktreePath: wtPath,
+      repoPath,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorCode).toBe("INSTALL_FAILED");
+    expect(result.errorMessage).toBeDefined();
+    // The worktree was created before the install failed — it is left on
+    // disk for inspection, consistent with the skill's failed-slice handling.
+    expect(fs.existsSync(wtPath)).toBe(true);
+  });
+
+  it("returns errorCode=INSTALL_FAILED when the install command cannot be spawned", async () => {
+    // A nonexistent binary makes runInstall return status='error' (EXEC_ERROR),
+    // exercising the create_worktree failure branch distinct from a non-zero exit.
+    commitCommandsJson(repoPath, {
+      install: ["orchestrate-nonexistent-binary-xyz", "--ci"],
+    });
+
+    const wtPath = path.join(worktreesDir, "install-exec-error-wt");
+    const result = await createWorktree({
+      baseRef: "HEAD",
+      branch: "install-exec-error-branch",
+      worktreePath: wtPath,
+      repoPath,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorCode).toBe("INSTALL_FAILED");
+    expect(result.errorMessage).toBeDefined();
+    // The failure detail must carry a real reason, never the literal "undefined".
+    expect(result.errorMessage).not.toContain("undefined");
+    expect(fs.existsSync(wtPath)).toBe(true);
   });
 });
 

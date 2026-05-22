@@ -7,6 +7,7 @@ import {
   runTypecheck,
   runBuild,
   runLint,
+  runInstall,
   runCommandInputSchema,
 } from "../src/tools/run-command.js";
 
@@ -211,4 +212,93 @@ describe("run-command capability tools", () => {
   it("exposes only repoPath as input — never a free-form command string", () => {
     expect(Object.keys(runCommandInputSchema.shape)).toEqual(["repoPath"]);
   });
+});
+
+describe("runInstall", () => {
+  it("returns status='installed' when the configured install command exits 0", async () => {
+    const dir = project({ install: ["node", "-e", "process.exit(0)"] });
+    const r = await runInstall({ repoPath: dir });
+
+    expect(r.status).toBe("installed");
+    expect(r.exitCode).toBe(0);
+    expect(r.command).toEqual(["node", "-e", "process.exit(0)"]);
+    expect(typeof r.durationMs).toBe("number");
+  });
+
+  it("returns status='failed' with the non-zero exitCode when the install command fails", async () => {
+    const dir = project({ install: ["node", "-e", "process.exit(5)"] });
+    const r = await runInstall({ repoPath: dir });
+
+    expect(r.status).toBe("failed");
+    expect(r.exitCode).toBe(5);
+  });
+
+  it("returns status='not-configured' when no install command is set", async () => {
+    const dir = project({ tests: ["node", "-e", "process.exit(0)"] });
+    const r = await runInstall({ repoPath: dir });
+
+    expect(r.status).toBe("not-configured");
+    expect(r.reason).toBeDefined();
+    expect(r.errorCode).toBeUndefined();
+  });
+
+  it("returns status='not-configured' when no commands.json file exists", async () => {
+    const dir = project(null);
+    const r = await runInstall({ repoPath: dir });
+
+    expect(r.status).toBe("not-configured");
+    expect(r.reason).toBeDefined();
+  });
+
+  it("returns errorCode='CONFIG_INVALID' for malformed commands.json", async () => {
+    const dir = project("{ not valid json");
+    const r = await runInstall({ repoPath: dir });
+
+    expect(r.status).toBe("error");
+    expect(r.errorCode).toBe("CONFIG_INVALID");
+    expect(r.errorMessage).toBeDefined();
+  });
+
+  it("captures stdout from the install command", async () => {
+    const dir = project({
+      install: ["node", "-e", "process.stdout.write('deps installed')"],
+    });
+    const r = await runInstall({ repoPath: dir });
+
+    expect(r.status).toBe("installed");
+    expect(r.stdout).toContain("deps installed");
+  });
+
+  it("treats an empty install argv array as not-configured", async () => {
+    const dir = project({ install: [] });
+    const r = await runInstall({ repoPath: dir });
+
+    expect(r.status).toBe("not-configured");
+  });
+
+  it("returns errorCode='EXEC_ERROR' when the install binary does not exist", async () => {
+    const dir = project({
+      install: ["orchestrate-nonexistent-binary-xyz", "--ci"],
+    });
+    const r = await runInstall({ repoPath: dir });
+
+    expect(r.status).toBe("error");
+    expect(r.errorCode).toBe("EXEC_ERROR");
+    expect(r.errorMessage).toBeDefined();
+  });
+
+  it(
+    "returns errorCode='TIMEOUT' when the install command exceeds the limit",
+    async () => {
+      const dir = project({
+        install: ["node", "-e", "setTimeout(() => {}, 30000)"],
+      });
+      const r = await runInstall({ repoPath: dir }, { timeoutMs: 1500 });
+
+      expect(r.status).toBe("error");
+      expect(r.errorCode).toBe("TIMEOUT");
+      expect(typeof r.durationMs).toBe("number");
+    },
+    10_000
+  );
 });

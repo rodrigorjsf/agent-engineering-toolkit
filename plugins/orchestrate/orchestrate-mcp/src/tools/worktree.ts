@@ -7,6 +7,7 @@ import {
   cleanGitError,
   GitExecError,
 } from "../git.js";
+import { runInstall } from "./run-command.js";
 
 // ─── Schemas — z.object is the single source of truth; TS types via z.infer ───
 
@@ -96,6 +97,16 @@ export const createWorktreeOutputSchema = z.object({
       "Cleaned, human-readable reason the fetch failed. Present only when " +
         "fetchStatus='failed'."
     ),
+  installStatus: z
+    .enum(["installed", "not-configured"])
+    .optional()
+    .describe(
+      "Outcome of the post-creation dependency install. Present when " +
+        "status='ok'. 'installed' = the configured install command ran and " +
+        "exited 0; 'not-configured' = no install command is set, so the step " +
+        "was a no-op. An install that fails makes the whole call status='error' " +
+        "with errorCode='INSTALL_FAILED' — it is never reported here."
+    ),
   errorCode: z
     .enum([
       "INVALID_INPUT",
@@ -103,6 +114,7 @@ export const createWorktreeOutputSchema = z.object({
       "PATH_EXISTS",
       "BASE_REF_NOT_FOUND",
       "GIT_ERROR",
+      "INSTALL_FAILED",
     ])
     .optional()
     .describe("Machine-readable failure category. Present when status='error'."),
@@ -325,12 +337,41 @@ export async function createWorktree(
     };
   }
 
+  // The worktree exists, but `git worktree add` checks out only tracked
+  // files — a gitignored dependency directory (node_modules and the like) is
+  // absent. Run the configured install command so the capability tools have
+  // what they need. A missing install command is a clean no-op.
+  const install = await runInstall({ repoPath: absWorktreePath });
+  if (install.status === "failed" || install.status === "error") {
+    // The `??` fallbacks are defensive: runInstall always sets exitCode on
+    // "failed" and errorMessage on "error", but the InstallResult type does
+    // not prove it — guard against a future return path that forgets.
+    const detail =
+      install.status === "failed"
+        ? `the install command exited ${install.exitCode ?? "(unknown)"}`
+        : install.errorMessage ?? "unknown error";
+    // Surface the install's own stderr tail — without it, diagnosing a failed
+    // `npm ci` (or similar) means opening the worktree on disk by hand.
+    const stderrTail = install.stderr?.trim()
+      ? `\nInstall stderr (tail):\n${install.stderr.trim().slice(-1000)}`
+      : "";
+    return {
+      status: "error",
+      errorCode: "INSTALL_FAILED",
+      errorMessage:
+        `The worktree was created at ${absWorktreePath} but the dependency ` +
+        `install step failed (${detail}). The worktree is left on disk for ` +
+        `inspection.${stderrTail}`,
+    };
+  }
+
   return {
     status: "ok",
     path: absWorktreePath,
     branch,
     fetchStatus,
     ...(fetchError ? { fetchError } : {}),
+    installStatus: install.status,
   };
 }
 

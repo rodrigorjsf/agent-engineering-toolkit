@@ -21102,8 +21102,8 @@ var StdioServerTransport = class {
 };
 
 // src/tools/worktree.ts
-var path = __toESM(require("path"));
-var fs = __toESM(require("fs"));
+var path2 = __toESM(require("path"));
+var fs2 = __toESM(require("fs"));
 
 // src/git.ts
 var import_child_process = require("child_process");
@@ -21184,292 +21184,9 @@ function cleanGitError(err) {
   return firstLine7 ?? "Unknown git error";
 }
 
-// src/tools/worktree.ts
-var createWorktreeInputSchema = external_exports.object({
-  baseRef: external_exports.string().describe(
-    "The git ref (branch, tag, or SHA) to branch the new worktree from. A 'git fetch' is attempted before branching; see the `fetchStatus` output field for whether it ran."
-  ),
-  branch: external_exports.string().describe(
-    "Name of the new local branch to create for the worktree. Must not already exist (see the BRANCH_EXISTS error code)."
-  ),
-  worktreePath: external_exports.string().describe(
-    "Absolute or relative (to `repoPath`) filesystem path where the worktree will be created. Must not already exist."
-  ),
-  repoPath: external_exports.string().optional().describe(
-    "Path to the git repository. Defaults to the current working directory."
-  )
-});
-var removeWorktreeInputSchema = external_exports.object({
-  worktreePath: external_exports.string().describe(
-    "Absolute or relative (to `repoPath`) path to the worktree ROOT to remove. Must be a registered worktree root, not a subdirectory of one."
-  ),
-  repoPath: external_exports.string().optional().describe(
-    "Path to the git repository that owns the worktree. Defaults to the current working directory."
-  ),
-  force: external_exports.boolean().optional().describe(
-    "When true, remove the worktree even if it has uncommitted or untracked changes ('git worktree remove --force'), and the dirty check is skipped. Default false \u2014 a dirty worktree is refused. The registered-worktree-root guard is always enforced, force or not."
-  )
-});
-var createWorktreeOutputSchema = external_exports.object({
-  status: external_exports.enum(["ok", "error"]).describe(
-    "Outcome discriminant. 'ok' = worktree created; 'error' = creation failed. create_worktree never refuses."
-  ),
-  path: external_exports.string().optional().describe(
-    "Absolute filesystem path of the created worktree. Present when status='ok'."
-  ),
-  branch: external_exports.string().optional().describe("Name of the branch in the worktree. Present when status='ok'."),
-  fetchStatus: external_exports.enum(["ok", "skipped-no-remote", "failed"]).optional().describe(
-    "Outcome of the pre-branch 'git fetch'. Present when status='ok'. 'ok' = fetch succeeded; 'skipped-no-remote' = no remote configured; 'failed' = a remote exists but fetch threw (the worktree was still created from a possibly-stale ref \u2014 see `fetchError`)."
-  ),
-  fetchError: external_exports.string().optional().describe(
-    "Cleaned, human-readable reason the fetch failed. Present only when fetchStatus='failed'."
-  ),
-  errorCode: external_exports.enum([
-    "INVALID_INPUT",
-    "BRANCH_EXISTS",
-    "PATH_EXISTS",
-    "BASE_REF_NOT_FOUND",
-    "GIT_ERROR"
-  ]).optional().describe("Machine-readable failure category. Present when status='error'."),
-  errorMessage: external_exports.string().optional().describe(
-    "Cleaned, human-readable failure description. Present when status='error'."
-  )
-});
-var removeWorktreeOutputSchema = external_exports.object({
-  status: external_exports.enum(["ok", "refused", "error"]).describe(
-    "Outcome discriminant. 'ok' = worktree removed; 'refused' = worktree had uncommitted/untracked changes and was left intact; 'error' = the request could not be processed."
-  ),
-  removedPath: external_exports.string().optional().describe(
-    "Absolute path of the worktree that was removed. Present when status='ok'."
-  ),
-  dirtyFiles: external_exports.array(external_exports.string()).optional().describe(
-    "Real path strings of the uncommitted/untracked files that triggered the refusal. Present when status='refused'. Each entry is a single path \u2014 rename/copy entries are never rendered as 'old -> new'."
-  ),
-  refusalReason: external_exports.string().optional().describe(
-    "Human-readable explanation of why removal was refused. Present when status='refused'."
-  ),
-  errorCode: external_exports.enum(["INVALID_INPUT", "PATH_NOT_FOUND", "NOT_A_WORKTREE", "GIT_ERROR"]).optional().describe("Machine-readable failure category. Present when status='error'."),
-  errorMessage: external_exports.string().optional().describe(
-    "Cleaned, human-readable failure description. Present when status='error'."
-  )
-});
-function classifyCreateError(err) {
-  const stderr = (err instanceof GitExecError ? err.stderr : "").toLowerCase();
-  if (stderr.includes("already exists")) {
-    return "PATH_EXISTS";
-  }
-  if (stderr.includes("not a valid") || stderr.includes("invalid reference") || stderr.includes("unknown revision")) {
-    return "BASE_REF_NOT_FOUND";
-  }
-  return "GIT_ERROR";
-}
-function resolveWorktreePath(worktreePath, cwd) {
-  return path.isAbsolute(worktreePath) ? worktreePath : path.resolve(cwd, worktreePath);
-}
-function canonicalize(p) {
-  try {
-    return fs.realpathSync(p);
-  } catch {
-    return path.resolve(p);
-  }
-}
-async function branchExists(branch, cwd) {
-  try {
-    await gitExecFile(
-      ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`],
-      cwd
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function listWorktreeRoots(cwd) {
-  const { stdout } = await gitExecFile(
-    ["worktree", "list", "--porcelain"],
-    cwd
-  );
-  const roots = [];
-  for (const line of stdout.split("\n")) {
-    if (line.startsWith("worktree ")) {
-      roots.push(line.slice("worktree ".length).trim());
-    }
-  }
-  return roots;
-}
-async function createWorktree(input) {
-  const { baseRef, branch, worktreePath } = input;
-  const cwd = input.repoPath ?? process.cwd();
-  for (const [field, value] of [
-    ["branch", branch],
-    ["baseRef", baseRef],
-    ["worktreePath", worktreePath]
-  ]) {
-    const guardErr = optionInjectionError(field, value);
-    if (guardErr) {
-      return {
-        status: "error",
-        errorCode: "INVALID_INPUT",
-        errorMessage: guardErr
-      };
-    }
-  }
-  if (await branchExists(branch, cwd)) {
-    return {
-      status: "error",
-      errorCode: "BRANCH_EXISTS",
-      errorMessage: `A branch named "${branch}" already exists.`
-    };
-  }
-  let fetchStatus;
-  let fetchError;
-  try {
-    const { stdout: remotes } = await gitExecFile(["remote"], cwd);
-    if (remotes.trim().length === 0) {
-      fetchStatus = "skipped-no-remote";
-    } else {
-      try {
-        await gitExecFile(["fetch", "--all", "--prune"], cwd);
-        fetchStatus = "ok";
-      } catch (err) {
-        fetchStatus = "failed";
-        fetchError = cleanGitError(err);
-      }
-    }
-  } catch (err) {
-    fetchStatus = "failed";
-    fetchError = cleanGitError(err);
-  }
-  const absWorktreePath = resolveWorktreePath(worktreePath, cwd);
-  try {
-    await gitExecFile(
-      ["worktree", "add", "-b", branch, "--", absWorktreePath, baseRef],
-      cwd
-    );
-  } catch (err) {
-    try {
-      await gitExecFile(["branch", "-D", branch], cwd);
-    } catch {
-    }
-    return {
-      status: "error",
-      errorCode: classifyCreateError(err),
-      errorMessage: cleanGitError(err)
-    };
-  }
-  return {
-    status: "ok",
-    path: absWorktreePath,
-    branch,
-    fetchStatus,
-    ...fetchError ? { fetchError } : {}
-  };
-}
-async function removeWorktree(input) {
-  const { worktreePath } = input;
-  const cwd = input.repoPath ?? process.cwd();
-  const guardErr = optionInjectionError("worktreePath", worktreePath);
-  if (guardErr) {
-    return {
-      status: "error",
-      errorCode: "INVALID_INPUT",
-      errorMessage: guardErr
-    };
-  }
-  const absWorktreePath = resolveWorktreePath(worktreePath, cwd);
-  if (!fs.existsSync(absWorktreePath)) {
-    return {
-      status: "error",
-      errorCode: "PATH_NOT_FOUND",
-      errorMessage: `Worktree path does not exist: ${absWorktreePath}`
-    };
-  }
-  let worktreeRoots;
-  try {
-    worktreeRoots = await listWorktreeRoots(cwd);
-  } catch (err) {
-    return {
-      status: "error",
-      errorCode: "GIT_ERROR",
-      errorMessage: cleanGitError(err)
-    };
-  }
-  const canonicalTarget = canonicalize(absWorktreePath);
-  const isRegisteredRoot = worktreeRoots.some(
-    (root) => canonicalize(root) === canonicalTarget
-  );
-  if (!isRegisteredRoot) {
-    return {
-      status: "error",
-      errorCode: "NOT_A_WORKTREE",
-      errorMessage: `Path is not a registered git worktree root: ${absWorktreePath}`
-    };
-  }
-  const force = input.force ?? false;
-  if (!force) {
-    let porcelain;
-    try {
-      const { stdout } = await gitExecFile(
-        ["status", "--porcelain", "-z"],
-        absWorktreePath
-      );
-      porcelain = stdout;
-    } catch (err) {
-      return {
-        status: "error",
-        errorCode: "GIT_ERROR",
-        errorMessage: cleanGitError(err)
-      };
-    }
-    const dirtyFiles = parsePorcelainZ(porcelain);
-    if (dirtyFiles.length > 0) {
-      return {
-        status: "refused",
-        dirtyFiles,
-        refusalReason: "Worktree has uncommitted or untracked changes; removal refused. The worktree and its branch have been left intact. Pass force=true to remove it anyway."
-      };
-    }
-  }
-  const removeArgs = force ? ["worktree", "remove", "--force", "--", absWorktreePath] : ["worktree", "remove", "--", absWorktreePath];
-  try {
-    await gitExecFile(removeArgs, cwd);
-  } catch (err) {
-    return {
-      status: "error",
-      errorCode: "GIT_ERROR",
-      errorMessage: cleanGitError(err)
-    };
-  }
-  return {
-    status: "ok",
-    removedPath: absWorktreePath
-  };
-}
-function parsePorcelainZ(porcelain) {
-  const tokens = porcelain.split("\0").filter((t) => t.length > 0);
-  const paths = [];
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
-    const statusPrefix = token.slice(0, 2);
-    const renameOrCopy = statusPrefix.includes("R") || statusPrefix.includes("C");
-    const filePath = token.slice(3);
-    if (filePath.length > 0) {
-      paths.push(filePath);
-    }
-    if (renameOrCopy) {
-      const source = tokens[i + 1];
-      if (source !== void 0 && source.length > 0) {
-        paths.push(source);
-        i++;
-      }
-    }
-  }
-  return paths;
-}
-
 // src/tools/run-command.ts
-var path2 = __toESM(require("path"));
-var fs2 = __toESM(require("fs"));
+var path = __toESM(require("path"));
+var fs = __toESM(require("fs"));
 var import_child_process2 = require("child_process");
 var import_util7 = require("util");
 var execFileAsync2 = (0, import_util7.promisify)(import_child_process2.execFile);
@@ -21480,7 +21197,8 @@ var commandsConfigSchema = external_exports.object({
   tests: external_exports.array(external_exports.string().min(1)).optional(),
   typecheck: external_exports.array(external_exports.string().min(1)).optional(),
   build: external_exports.array(external_exports.string().min(1)).optional(),
-  lint: external_exports.array(external_exports.string().min(1)).optional()
+  lint: external_exports.array(external_exports.string().min(1)).optional(),
+  install: external_exports.array(external_exports.string().min(1)).optional()
 });
 var runCommandInputSchema = external_exports.object({
   repoPath: external_exports.string().optional().describe(
@@ -21587,18 +21305,15 @@ async function execCommand(argv, cwd, timeoutMs) {
     };
   }
 }
-async function runConfiguredCommand(verb, input, opts = {}) {
-  const cwd = input.repoPath ?? process.cwd();
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const configPath = path2.join(cwd, ".orchestrate", "commands.json");
+function loadCommandsConfig(cwd) {
+  const configPath = path.join(cwd, ".orchestrate", "commands.json");
   let raw;
   try {
-    raw = fs2.readFileSync(configPath, "utf8");
+    raw = fs.readFileSync(configPath, "utf8");
   } catch {
     return {
-      status: "not-configured",
-      capability: verb,
-      reason: `No .orchestrate/commands.json found in ${cwd}. Copy the orchestrate plugin's templates/commands.json to .orchestrate/commands.json and set the "${verb}" command.`
+      kind: "not-configured",
+      reason: `No .orchestrate/commands.json found in ${cwd}. Copy the orchestrate plugin's templates/commands.json to .orchestrate/commands.json.`
     };
   }
   let parsed;
@@ -21606,9 +21321,7 @@ async function runConfiguredCommand(verb, input, opts = {}) {
     parsed = JSON.parse(raw);
   } catch (err) {
     return {
-      status: "error",
-      capability: verb,
-      errorCode: "CONFIG_INVALID",
+      kind: "invalid",
       errorMessage: `.orchestrate/commands.json is not valid JSON: ${firstLine(
         err instanceof Error ? err.message : String(err)
       )}`
@@ -21618,13 +21331,28 @@ async function runConfiguredCommand(verb, input, opts = {}) {
   if (!config2.success) {
     const detail = config2.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
     return {
-      status: "error",
-      capability: verb,
-      errorCode: "CONFIG_INVALID",
+      kind: "invalid",
       errorMessage: `.orchestrate/commands.json does not match the expected shape: ${detail}`
     };
   }
-  const argv = config2.data[verb];
+  return { kind: "loaded", config: config2.data };
+}
+async function runConfiguredCommand(verb, input, opts = {}) {
+  const cwd = input.repoPath ?? process.cwd();
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const loaded = loadCommandsConfig(cwd);
+  if (loaded.kind === "not-configured") {
+    return { status: "not-configured", capability: verb, reason: loaded.reason };
+  }
+  if (loaded.kind === "invalid") {
+    return {
+      status: "error",
+      capability: verb,
+      errorCode: "CONFIG_INVALID",
+      errorMessage: loaded.errorMessage
+    };
+  }
+  const argv = loaded.config[verb];
   if (!argv || argv.length === 0) {
     return {
       status: "not-configured",
@@ -21673,6 +21401,361 @@ var runTests = (input, opts) => runConfiguredCommand("tests", input, opts);
 var runTypecheck = (input, opts) => runConfiguredCommand("typecheck", input, opts);
 var runBuild = (input, opts) => runConfiguredCommand("build", input, opts);
 var runLint = (input, opts) => runConfiguredCommand("lint", input, opts);
+async function runInstall(input, opts = {}) {
+  const cwd = input.repoPath ?? process.cwd();
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const loaded = loadCommandsConfig(cwd);
+  if (loaded.kind === "not-configured") {
+    return { status: "not-configured", reason: loaded.reason };
+  }
+  if (loaded.kind === "invalid") {
+    return {
+      status: "error",
+      errorCode: "CONFIG_INVALID",
+      errorMessage: loaded.errorMessage
+    };
+  }
+  const argv = loaded.config.install;
+  if (!argv || argv.length === 0) {
+    return {
+      status: "not-configured",
+      reason: `No "install" command is configured in .orchestrate/commands.json.`
+    };
+  }
+  const exec = await execCommand(argv, cwd, timeoutMs);
+  if (exec.kind === "timeout") {
+    const out2 = capOutput(exec.stdout);
+    const errOut2 = capOutput(exec.stderr);
+    return {
+      status: "error",
+      errorCode: "TIMEOUT",
+      errorMessage: `The "install" command exceeded the ${timeoutMs} ms time limit and was killed.`,
+      stdout: out2.text,
+      stderr: errOut2.text,
+      truncated: out2.truncated || errOut2.truncated,
+      durationMs: exec.durationMs
+    };
+  }
+  if (exec.kind === "exec-error") {
+    return {
+      status: "error",
+      errorCode: "EXEC_ERROR",
+      errorMessage: `The "install" command could not be executed: ${exec.message}`,
+      durationMs: exec.durationMs
+    };
+  }
+  const out = capOutput(exec.stdout);
+  const errOut = capOutput(exec.stderr);
+  return {
+    status: exec.exitCode === 0 ? "installed" : "failed",
+    command: argv,
+    exitCode: exec.exitCode,
+    stdout: out.text,
+    stderr: errOut.text,
+    truncated: out.truncated || errOut.truncated,
+    durationMs: exec.durationMs
+  };
+}
+
+// src/tools/worktree.ts
+var createWorktreeInputSchema = external_exports.object({
+  baseRef: external_exports.string().describe(
+    "The git ref (branch, tag, or SHA) to branch the new worktree from. A 'git fetch' is attempted before branching; see the `fetchStatus` output field for whether it ran."
+  ),
+  branch: external_exports.string().describe(
+    "Name of the new local branch to create for the worktree. Must not already exist (see the BRANCH_EXISTS error code)."
+  ),
+  worktreePath: external_exports.string().describe(
+    "Absolute or relative (to `repoPath`) filesystem path where the worktree will be created. Must not already exist."
+  ),
+  repoPath: external_exports.string().optional().describe(
+    "Path to the git repository. Defaults to the current working directory."
+  )
+});
+var removeWorktreeInputSchema = external_exports.object({
+  worktreePath: external_exports.string().describe(
+    "Absolute or relative (to `repoPath`) path to the worktree ROOT to remove. Must be a registered worktree root, not a subdirectory of one."
+  ),
+  repoPath: external_exports.string().optional().describe(
+    "Path to the git repository that owns the worktree. Defaults to the current working directory."
+  ),
+  force: external_exports.boolean().optional().describe(
+    "When true, remove the worktree even if it has uncommitted or untracked changes ('git worktree remove --force'), and the dirty check is skipped. Default false \u2014 a dirty worktree is refused. The registered-worktree-root guard is always enforced, force or not."
+  )
+});
+var createWorktreeOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = worktree created; 'error' = creation failed. create_worktree never refuses."
+  ),
+  path: external_exports.string().optional().describe(
+    "Absolute filesystem path of the created worktree. Present when status='ok'."
+  ),
+  branch: external_exports.string().optional().describe("Name of the branch in the worktree. Present when status='ok'."),
+  fetchStatus: external_exports.enum(["ok", "skipped-no-remote", "failed"]).optional().describe(
+    "Outcome of the pre-branch 'git fetch'. Present when status='ok'. 'ok' = fetch succeeded; 'skipped-no-remote' = no remote configured; 'failed' = a remote exists but fetch threw (the worktree was still created from a possibly-stale ref \u2014 see `fetchError`)."
+  ),
+  fetchError: external_exports.string().optional().describe(
+    "Cleaned, human-readable reason the fetch failed. Present only when fetchStatus='failed'."
+  ),
+  installStatus: external_exports.enum(["installed", "not-configured"]).optional().describe(
+    "Outcome of the post-creation dependency install. Present when status='ok'. 'installed' = the configured install command ran and exited 0; 'not-configured' = no install command is set, so the step was a no-op. An install that fails makes the whole call status='error' with errorCode='INSTALL_FAILED' \u2014 it is never reported here."
+  ),
+  errorCode: external_exports.enum([
+    "INVALID_INPUT",
+    "BRANCH_EXISTS",
+    "PATH_EXISTS",
+    "BASE_REF_NOT_FOUND",
+    "GIT_ERROR",
+    "INSTALL_FAILED"
+  ]).optional().describe("Machine-readable failure category. Present when status='error'."),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='error'."
+  )
+});
+var removeWorktreeOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "refused", "error"]).describe(
+    "Outcome discriminant. 'ok' = worktree removed; 'refused' = worktree had uncommitted/untracked changes and was left intact; 'error' = the request could not be processed."
+  ),
+  removedPath: external_exports.string().optional().describe(
+    "Absolute path of the worktree that was removed. Present when status='ok'."
+  ),
+  dirtyFiles: external_exports.array(external_exports.string()).optional().describe(
+    "Real path strings of the uncommitted/untracked files that triggered the refusal. Present when status='refused'. Each entry is a single path \u2014 rename/copy entries are never rendered as 'old -> new'."
+  ),
+  refusalReason: external_exports.string().optional().describe(
+    "Human-readable explanation of why removal was refused. Present when status='refused'."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT", "PATH_NOT_FOUND", "NOT_A_WORKTREE", "GIT_ERROR"]).optional().describe("Machine-readable failure category. Present when status='error'."),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='error'."
+  )
+});
+function classifyCreateError(err) {
+  const stderr = (err instanceof GitExecError ? err.stderr : "").toLowerCase();
+  if (stderr.includes("already exists")) {
+    return "PATH_EXISTS";
+  }
+  if (stderr.includes("not a valid") || stderr.includes("invalid reference") || stderr.includes("unknown revision")) {
+    return "BASE_REF_NOT_FOUND";
+  }
+  return "GIT_ERROR";
+}
+function resolveWorktreePath(worktreePath, cwd) {
+  return path2.isAbsolute(worktreePath) ? worktreePath : path2.resolve(cwd, worktreePath);
+}
+function canonicalize(p) {
+  try {
+    return fs2.realpathSync(p);
+  } catch {
+    return path2.resolve(p);
+  }
+}
+async function branchExists(branch, cwd) {
+  try {
+    await gitExecFile(
+      ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`],
+      cwd
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function listWorktreeRoots(cwd) {
+  const { stdout } = await gitExecFile(
+    ["worktree", "list", "--porcelain"],
+    cwd
+  );
+  const roots = [];
+  for (const line of stdout.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      roots.push(line.slice("worktree ".length).trim());
+    }
+  }
+  return roots;
+}
+async function createWorktree(input) {
+  const { baseRef, branch, worktreePath } = input;
+  const cwd = input.repoPath ?? process.cwd();
+  for (const [field, value] of [
+    ["branch", branch],
+    ["baseRef", baseRef],
+    ["worktreePath", worktreePath]
+  ]) {
+    const guardErr = optionInjectionError(field, value);
+    if (guardErr) {
+      return {
+        status: "error",
+        errorCode: "INVALID_INPUT",
+        errorMessage: guardErr
+      };
+    }
+  }
+  if (await branchExists(branch, cwd)) {
+    return {
+      status: "error",
+      errorCode: "BRANCH_EXISTS",
+      errorMessage: `A branch named "${branch}" already exists.`
+    };
+  }
+  let fetchStatus;
+  let fetchError;
+  try {
+    const { stdout: remotes } = await gitExecFile(["remote"], cwd);
+    if (remotes.trim().length === 0) {
+      fetchStatus = "skipped-no-remote";
+    } else {
+      try {
+        await gitExecFile(["fetch", "--all", "--prune"], cwd);
+        fetchStatus = "ok";
+      } catch (err) {
+        fetchStatus = "failed";
+        fetchError = cleanGitError(err);
+      }
+    }
+  } catch (err) {
+    fetchStatus = "failed";
+    fetchError = cleanGitError(err);
+  }
+  const absWorktreePath = resolveWorktreePath(worktreePath, cwd);
+  try {
+    await gitExecFile(
+      ["worktree", "add", "-b", branch, "--", absWorktreePath, baseRef],
+      cwd
+    );
+  } catch (err) {
+    try {
+      await gitExecFile(["branch", "-D", branch], cwd);
+    } catch {
+    }
+    return {
+      status: "error",
+      errorCode: classifyCreateError(err),
+      errorMessage: cleanGitError(err)
+    };
+  }
+  const install = await runInstall({ repoPath: absWorktreePath });
+  if (install.status === "failed" || install.status === "error") {
+    const detail = install.status === "failed" ? `the install command exited ${install.exitCode ?? "(unknown)"}` : install.errorMessage ?? "unknown error";
+    const stderrTail = install.stderr?.trim() ? `
+Install stderr (tail):
+${install.stderr.trim().slice(-1e3)}` : "";
+    return {
+      status: "error",
+      errorCode: "INSTALL_FAILED",
+      errorMessage: `The worktree was created at ${absWorktreePath} but the dependency install step failed (${detail}). The worktree is left on disk for inspection.${stderrTail}`
+    };
+  }
+  return {
+    status: "ok",
+    path: absWorktreePath,
+    branch,
+    fetchStatus,
+    ...fetchError ? { fetchError } : {},
+    installStatus: install.status
+  };
+}
+async function removeWorktree(input) {
+  const { worktreePath } = input;
+  const cwd = input.repoPath ?? process.cwd();
+  const guardErr = optionInjectionError("worktreePath", worktreePath);
+  if (guardErr) {
+    return {
+      status: "error",
+      errorCode: "INVALID_INPUT",
+      errorMessage: guardErr
+    };
+  }
+  const absWorktreePath = resolveWorktreePath(worktreePath, cwd);
+  if (!fs2.existsSync(absWorktreePath)) {
+    return {
+      status: "error",
+      errorCode: "PATH_NOT_FOUND",
+      errorMessage: `Worktree path does not exist: ${absWorktreePath}`
+    };
+  }
+  let worktreeRoots;
+  try {
+    worktreeRoots = await listWorktreeRoots(cwd);
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "GIT_ERROR",
+      errorMessage: cleanGitError(err)
+    };
+  }
+  const canonicalTarget = canonicalize(absWorktreePath);
+  const isRegisteredRoot = worktreeRoots.some(
+    (root) => canonicalize(root) === canonicalTarget
+  );
+  if (!isRegisteredRoot) {
+    return {
+      status: "error",
+      errorCode: "NOT_A_WORKTREE",
+      errorMessage: `Path is not a registered git worktree root: ${absWorktreePath}`
+    };
+  }
+  const force = input.force ?? false;
+  if (!force) {
+    let porcelain;
+    try {
+      const { stdout } = await gitExecFile(
+        ["status", "--porcelain", "-z"],
+        absWorktreePath
+      );
+      porcelain = stdout;
+    } catch (err) {
+      return {
+        status: "error",
+        errorCode: "GIT_ERROR",
+        errorMessage: cleanGitError(err)
+      };
+    }
+    const dirtyFiles = parsePorcelainZ(porcelain);
+    if (dirtyFiles.length > 0) {
+      return {
+        status: "refused",
+        dirtyFiles,
+        refusalReason: "Worktree has uncommitted or untracked changes; removal refused. The worktree and its branch have been left intact. Pass force=true to remove it anyway."
+      };
+    }
+  }
+  const removeArgs = force ? ["worktree", "remove", "--force", "--", absWorktreePath] : ["worktree", "remove", "--", absWorktreePath];
+  try {
+    await gitExecFile(removeArgs, cwd);
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "GIT_ERROR",
+      errorMessage: cleanGitError(err)
+    };
+  }
+  return {
+    status: "ok",
+    removedPath: absWorktreePath
+  };
+}
+function parsePorcelainZ(porcelain) {
+  const tokens = porcelain.split("\0").filter((t) => t.length > 0);
+  const paths = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    const statusPrefix = token.slice(0, 2);
+    const renameOrCopy = statusPrefix.includes("R") || statusPrefix.includes("C");
+    const filePath = token.slice(3);
+    if (filePath.length > 0) {
+      paths.push(filePath);
+    }
+    if (renameOrCopy) {
+      const source = tokens[i + 1];
+      if (source !== void 0 && source.length > 0) {
+        paths.push(source);
+        i++;
+      }
+    }
+  }
+  return paths;
+}
 
 // src/tools/plan-waves.ts
 var planWavesInputSchema = external_exports.object({
