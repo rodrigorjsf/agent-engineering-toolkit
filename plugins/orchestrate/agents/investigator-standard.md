@@ -1,7 +1,7 @@
 ---
 name: investigator-standard
 description: Investigates the codebase and issue before implementation — explores relevant files, patterns, and risks, then returns a research brief for the implementer. Standard-effort variant for complex-tier issues. Spawned by the orchestrate skill before the implementer; not invoked directly.
-tools: Read, Grep, Glob, mcp__orchestrate__search_structural
+tools: Read, Grep, Glob, mcp__plugin_orchestrate_orchestrate__search_structural
 model: sonnet
 maxTurns: 20
 ---
