@@ -22948,6 +22948,81 @@ async function searchStructural(input, opts = {}) {
   }
 }
 
+// src/tools/backlog-partitioner.ts
+var backlogIssueSchema = external_exports.object({
+  number: external_exports.number().int().positive().describe("GitHub issue number."),
+  title: external_exports.string().min(1).describe("Issue title, verbatim from GitHub."),
+  blockedBy: external_exports.array(external_exports.number().int().positive()).describe(
+    "Issue numbers this issue is blocked by \u2014 the parsed 'Blocked by' section of the issue body (`- #NNN` lines). Empty array when the section is absent or has no entries."
+  ),
+  parent: external_exports.number().int().positive().nullable().describe(
+    "The issue number named in the 'Parent' section of this issue's body (the `PRD #NNN` line), or null when no parent is declared."
+  )
+});
+var partitionBacklogInputSchema = external_exports.object({
+  issues: external_exports.array(backlogIssueSchema).describe(
+    "The full ready-for-agent backlog. Each issue carries its parsed Blocked by and Parent sections."
+  )
+});
+var partitionBacklogOutputSchema = external_exports.object({
+  slices: external_exports.array(backlogIssueSchema).describe(
+    "Issues to process as implementation slices, in the same order they appeared in the input. The parent PRD (if any) is excluded."
+  ),
+  parentIssue: backlogIssueSchema.nullable().describe(
+    "The detected parent PRD issue, or null when none was detected. This is only the progress-comment target \u2014 it is never implemented as a slice."
+  )
+});
+var filterToOneParentPrdInputSchema = external_exports.object({
+  issues: external_exports.array(backlogIssueSchema).describe("The full backlog to filter."),
+  prdNumber: external_exports.number().int().positive().describe(
+    "The issue number of the parent PRD whose children are requested."
+  )
+});
+var filterToOneParentPrdOutputSchema = external_exports.object({
+  issues: external_exports.array(backlogIssueSchema).describe(
+    "The subset of issues whose parent field equals prdNumber, in input order. The parent PRD issue itself is excluded."
+  )
+});
+function hasPrdTitlePrefix(title) {
+  return /^prd\s*:/i.test(title.trim());
+}
+function partitionBacklog(issues) {
+  if (issues.length === 0) {
+    return { slices: [], parentIssue: null };
+  }
+  const byNumber = /* @__PURE__ */ new Map();
+  for (const issue2 of issues) {
+    byNumber.set(issue2.number, issue2);
+  }
+  const referencedAsParent = /* @__PURE__ */ new Set();
+  for (const issue2 of issues) {
+    if (issue2.parent !== null && byNumber.has(issue2.parent)) {
+      referencedAsParent.add(issue2.parent);
+    }
+  }
+  if (referencedAsParent.size > 0) {
+    const parentIssue = issues.find((i) => referencedAsParent.has(i.number)) ?? null;
+    const parentNumber = parentIssue?.number ?? -1;
+    return {
+      parentIssue,
+      slices: issues.filter((i) => i.number !== parentNumber)
+    };
+  }
+  const prdByTitle = issues.find((i) => hasPrdTitlePrefix(i.title));
+  if (prdByTitle) {
+    return {
+      parentIssue: prdByTitle,
+      slices: issues.filter((i) => i.number !== prdByTitle.number)
+    };
+  }
+  return { slices: issues, parentIssue: null };
+}
+function filterToOneParentPrd(issues, prdNumber) {
+  return issues.filter(
+    (i) => i.parent === prdNumber && i.number !== prdNumber
+  );
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
@@ -23202,6 +23277,48 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleSearchStructural
+);
+var handlePartitionBacklog = async (input) => {
+  const result = partitionBacklog(input.issues);
+  const sliceCount = result.slices.length;
+  const parentNote = result.parentIssue ? ` Parent PRD is issue #${result.parentIssue.number}.` : " No parent PRD detected.";
+  const text = `Partitioned backlog into ${sliceCount} slice(s).${parentNote}`;
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "partition_backlog",
+  {
+    title: "Partition Backlog",
+    description: "Splits the ready-for-agent backlog into implementation slices and an optional parent PRD issue. The parent PRD is detected by two signals in order: (1) parent-field reference \u2014 if any issue names another backlog issue as its parent, that issue is the parent PRD; (2) PRD: title heuristic \u2014 if no explicit parent reference exists, any issue whose title starts with 'PRD:' (case-insensitive) is treated as the parent PRD. The detected parent PRD is excluded from slices and surfaced as parentIssue. If no parent is detected, parentIssue is null and all issues are returned as slices.",
+    inputSchema: partitionBacklogInputSchema.shape,
+    outputSchema: partitionBacklogOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handlePartitionBacklog
+);
+var handleFilterToOneParentPrd = async (input) => {
+  const filtered = filterToOneParentPrd(input.issues, input.prdNumber);
+  const text = `Filtered to ${filtered.length} issue(s) whose parent is #${input.prdNumber}.`;
+  return {
+    structuredContent: { issues: filtered },
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "filter_to_one_parent_prd",
+  {
+    title: "Filter Backlog to One Parent PRD",
+    description: "Narrows the full backlog to only the issues whose parent field equals prdNumber. The parent PRD issue itself is excluded from the result \u2014 only its child slices are returned, in input order. Use this before calling partition_backlog when the run is scoped to a single PRD (e.g. /orchestrate <PRD#>).",
+    inputSchema: filterToOneParentPrdInputSchema.shape,
+    outputSchema: filterToOneParentPrdOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleFilterToOneParentPrd
 );
 async function main() {
   const transport = new StdioServerTransport();
