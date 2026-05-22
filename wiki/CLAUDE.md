@@ -7,7 +7,7 @@ Wiki-first lookup is the contract for every agent in this repo (see `.claude/rul
 ## Folder structure
 
 ```text
-docs/                   -- source documents (immutable -- never modify these)
+docs/                   -- source documents (vendor-doc mirrors are living; all else immutable -- see ADR-0010)
 wiki/                   -- root wiki folder
 wiki/knowledge          -- markdown pages maintained by Claude
 wiki/knowledge/index.md -- table of contents for the entire wiki
@@ -45,7 +45,7 @@ Link to related concepts using [[knowledge-links]] throughout the text.
 
 ## Rules
 
-- Never modify anything in the `docs/` folder
+- Never modify `docs/` artifacts, except the vendor-documentation mirrors `docs/claude/`, `docs/claude-code/`, `docs/cursor/`, which are re-synced against upstream — see [ADR-0010](../docs/adr/0010-vendor-doc-mirrors-are-living.md)
 - Always update `wiki/knowledge/index.md` and `wiki/knowledge/log.md` after substantive changes
 - Keep page names lowercase with hyphens (e.g. `machine-learning.md`)
 - Write in clear, plain language

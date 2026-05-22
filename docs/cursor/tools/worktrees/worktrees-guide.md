@@ -1,68 +1,34 @@
 # Worktrees
 
-Use `/worktree` for one isolated run and `/best-of-n` to compare multiple models on the same task in isolated worktrees.
+The UI-native worktrees feature described on this page is only available in the Agents Window. In the Editor Window, use the Worktree Skills commands below.
 
-A worktree is a separate Git checkout that lives beside your main checkout. Cursor uses it to keep local agent work isolated while still working against the same repository.
+[Media](/docs-static/images/configuration/worktrees/cursor-worktrees-2.mp4)
 
-Each worktree has its own files and uncommitted changes. Your main checkout stays untouched until you apply a result back.
+Worktrees let Agent work in isolated Git checkouts. Each task gets its own files, dependencies, and changes while your main checkout stays untouched.
 
-The [Cursor CLI](/docs/cli/using#cli-worktrees) supports the same isolation with the global `--worktree` flag. Those sessions use the same `~/.cursor/worktrees` storage and cleanup behavior as editor worktrees (see [How are old worktrees cleaned up?](#how-are-old-worktrees-cleaned-up)).
+Use worktrees when you want to start several agents on the same repo without conflicts.
 
-## Use /worktree for one isolated run
+## Create a worktree in the Agents Window
 
-Start a task with `/worktree` when you want Cursor to do the rest of that chat in a separate checkout.
+When you start or move an agent into a worktree from the Agents Window, Cursor creates a separate checkout for that agent. The agent continues the task inside the worktree, so changes stay isolated from your main checkout.
 
-- Keep experimental edits away from your main checkout
-- Run installs, builds, and tests without disturbing your current branch
-- Work on risky refactors with a simple cleanup path
-
-```
-/worktree fix the failing auth tests and update the login copy
-```
-
-In a lot of cases, you should be able to commit/push directly from the worktree. You can do this by asking the agent directly:
-
-```
-Commit and push these changes, then open a PR
-```
-
-However, if you want to bring the changes into your main checkout to test them, use `/apply-worktree`. When you are done with the isolated checkout, use `/delete-worktree`.
-
-If you want to see all worktrees in your repository, run:
-
-```
-git worktree list
-```
-
-## Use /best-of-n to compare multiple models
-
-`/best-of-n` runs the same task across multiple models at once. Each run gets its own worktree, so the candidates stay isolated from each other and from your main checkout.
-
-```
-/best-of-n sonnet, gpt, composer fix the flaky logout test
-```
-
-Use it when you want to:
-
-- Compare different models on the same prompt
-- Try multiple approaches for a hard change
-- Pick the strongest result before applying anything
-
-`/best-of-n` compares runs only. It does not merge changes back into your main checkout for you. After you pick a winner, you can commit/push directly from the worktree or use `/apply-worktree` to bring the changes into your main checkout.
+After the agent finishes, review the result in the Agents Window. You can keep working in the worktree, create a commit or PR from that checkout, or bring the result back into your main workspace.
 
 ## How does worktree setup work?
 
-You can customize worktree setup with `.cursor/worktrees.json`. Cursor looks for this file in the following order:
+You can customize worktree setup with `.cursor/worktrees.json`. Cursor checks this file when it creates a worktree in the Agents Window, the Editor Window, or the [Cursor CLI](https://cursor.com/docs/cli/using.md#cli-worktrees).
+
+Cursor looks for `.cursor/worktrees.json` in this order:
 
 1. In the worktree path
 2. In the root path of your project
 
 ### Configuration options
 
-The `worktrees.json` file supports three configuration keys:
+The `worktrees.json` file supports three setup keys:
 
-- **`setup-worktree-unix`**: Commands or script path for macOS and Linux. This takes precedence over `setup-worktree` on Unix systems.
-- **`setup-worktree-windows`**: Commands or script path for Windows. This takes precedence over `setup-worktree` on Windows.
+- **`setup-worktree-unix`**: Commands or a script path for macOS and Linux. This takes precedence over `setup-worktree` on Unix systems.
+- **`setup-worktree-windows`**: Commands or a script path for Windows. This takes precedence over `setup-worktree` on Windows.
 - **`setup-worktree`**: Generic fallback for all operating systems.
 
 Each key accepts either:
@@ -72,17 +38,11 @@ Each key accepts either:
 
 ## Example setup configurations
 
-You could manually create worktrees with `git worktree add <...>`. However, using these commands provides several advantages.
-
-- You can use Cursor's built-in tooling to ensure that the worktree is set up correctly for the project.
-- Cursor's automatic worktree cleanup documented below will run for these worktrees.
-- Our prompts have been tuned for the most common use cases.
-
 ### Using command arrays
 
 #### Node.js project
 
-```
+```json
 {
   "setup-worktree": [
     "npm ci",
@@ -95,7 +55,7 @@ We do not recommend symlinking dependencies into the worktree. This can cause is
 
 #### Python project with virtual environment
 
-```
+```json
 {
   "setup-worktree": [
     "python -m venv venv",
@@ -107,7 +67,7 @@ We do not recommend symlinking dependencies into the worktree. This can cause is
 
 #### Project with database migrations
 
-```
+```json
 {
   "setup-worktree": [
     "npm ci",
@@ -119,7 +79,7 @@ We do not recommend symlinking dependencies into the worktree. This can cause is
 
 #### Build and link dependencies
 
-```
+```json
 {
   "setup-worktree": [
     "pnpm install",
@@ -133,7 +93,7 @@ We do not recommend symlinking dependencies into the worktree. This can cause is
 
 For more complex setups, reference script files instead of inline commands:
 
-```
+```json
 {
   "setup-worktree-unix": "setup-worktree-unix.sh",
   "setup-worktree-windows": "setup-worktree-windows.ps1",
@@ -147,7 +107,7 @@ Place your scripts in the `.cursor/` directory next to `worktrees.json`.
 
 **setup-worktree-unix.sh** (Unix and macOS):
 
-```
+```bash
 #!/bin/bash
 set -e
 
@@ -165,7 +125,7 @@ echo "Worktree setup complete!"
 
 **setup-worktree-windows.ps1** (Windows):
 
-```
+```powershell
 $ErrorActionPreference = 'Stop'
 
 # Install dependencies
@@ -184,7 +144,7 @@ Write-Host "Worktree setup complete!"
 
 You can provide different setup commands for different operating systems:
 
-```
+```json
 {
   "setup-worktree-unix": [
     "npm ci",
@@ -202,25 +162,72 @@ You can provide different setup commands for different operating systems:
 
 If you want to debug worktree setup, open the Output panel in the editor and select `Worktrees Setup`.
 
-## How are old worktrees cleaned up?
+## How does Cursor discover existing worktrees?
 
-You can always remove a worktree yourself with `/delete-worktree`. Cursor can also clean up older worktrees automatically to limit disk usage.
+Cursor 3.5 keeps a modified time checkpoint for the machine worktree root and for each workspace subdirectory. On startup, Cursor re-scans the filesystem unless those timestamps prove nothing changed since the last discovery. This avoids skipping new worktrees that were created while Cursor was closed and eliminates the older `worktree.discoveryComplete` flag.
 
-Worktrees created from the CLI with [`--worktree`](/docs/cli/using#cli-worktrees) live under `~/.cursor/worktrees` together with editor worktrees, so the same automatic cleanup applies.
+## Worktrees cleanup
 
-```
+The cleanup behavior in this section reflects Cursor 3.5 and later.
+
+Cursor can clean up older worktrees automatically to limit disk usage. Cleanup runs on an interval and keeps the newest worktrees up to the configured machine-wide maximum count across every workspace on the device.
+
+```json
 {
   "cursor.worktreeCleanupIntervalHours": 6,
-  "cursor.worktreeMaxCount": 20
+  "cursor.worktreeMaxCount": 25
 }
 ```
 
-## How is this different from the previous parallel agents feature in Cursor?
+Use these machine-scoped settings to control cleanup:
 
-Automatic management of worktrees was removed in Cursor 3.0 and replaced with the new commands `/worktree` and `/best-of-n`. We also have added worktree support for the Cursor CLI.
+- **`cursor.worktreeCleanupIntervalHours`**: how often Cursor checks for old worktrees. Cursor 3.5 catches up after restarts by scheduling a delayed cleanup if the last successful run is older than this interval.
+- **`cursor.worktreeMaxCount`**: the maximum number of worktrees Cursor keeps before cleaning up older ones. The default cap is 25 worktrees per machine, and all workspaces contribute toward the same limit.
 
-Management of worktrees is now fully agentic. This makes it simpler to support use cases such as starting an agent, and only doing work in a worktree later on in the chat's lifecycle.
+Cursor re-discovers the worktree root on every cleanup pass, so worktrees created outside the manager (for example, worktrees created by `/worktree` skills or `git worktree add`) are eligible for deletion. When creating a worktree would exceed the cap, Cursor debounces bursts of events and starts an immediate cleanup instead of waiting for the next interval.
 
-`/best-of-n` makes comparing the results of multiple models much easier. The parent agent will provide commentary on the different results and you can pick the best one. Additionally, you can even ask the parent agent to merge different parts of the different implementations into a single commit.
+## Worktree Skills in Editor Window
 
-If you had agents that were previously running in a worktree, those chats will still work. However, you will need to use the new commands to start new agents in worktrees.
+In the editor window, you can use the `/worktree` and `/best-of-n` commands to run tasks in isolated worktrees.
+
+### Use `/worktree` for one isolated run
+
+Start a task with `/worktree` when you want Cursor to do the rest of that chat in a separate checkout.
+
+- Keep experimental edits away from your main checkout
+- Run installs, builds, and tests without disturbing your current branch
+- Work on risky refactors with a simple cleanup path
+
+```text
+/worktree fix the failing auth tests and update the login copy
+```
+
+In many cases, you can commit and push directly from the worktree. Ask the agent:
+
+```text
+Commit and push these changes, then open a PR
+```
+
+If you want to bring the changes into your main checkout to test them, use `/apply-worktree`. When you are done with the isolated checkout, use `/delete-worktree`.
+
+If you want to see all worktrees in your repository, run:
+
+```bash
+git worktree list
+```
+
+### Use `/best-of-n` to compare multiple models
+
+`/best-of-n` runs the same task across multiple models at once. Each run gets its own worktree, so the candidates stay isolated from each other and from your main checkout.
+
+```text
+/best-of-n sonnet,gpt,composer fix the flaky logout test
+```
+
+Use it when you want to:
+
+- Compare different models on the same prompt
+- Try multiple approaches for a hard change
+- Pick the strongest result before applying anything
+
+`/best-of-n` compares runs only. It does not merge changes back into your main checkout for you. After you pick a winner, you can commit and push directly from the worktree or use `/apply-worktree` to bring the changes into your main checkout.

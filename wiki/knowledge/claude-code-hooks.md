@@ -1,8 +1,8 @@
 # Claude Code Hooks
 
-**Summary**: Deterministic automation points in the Claude Code lifecycle that execute shell commands, HTTP requests, LLM prompts, or agent-based verification at specific events — enabling formatting, validation, auditing, and control flow without relying on the model's judgment.
+**Summary**: Deterministic automation points in the Claude Code lifecycle that execute shell commands, HTTP requests, MCP tool calls, LLM prompts, or agent-based verification at specific events — enabling formatting, validation, auditing, and control flow without relying on the model's judgment.
 **Sources**: automate-workflow-with-hooks.md, claude-hook-reference-doc.md, analysis-automate-workflow-with-hooks.md, analysis-claude-hook-reference-doc.md
-**Last updated**: 2026-04-18
+**Last updated**: 2026-05-22
 
 ---
 
@@ -12,14 +12,17 @@ Hooks provide **deterministic control** — they run reliably regardless of the 
 
 ## Hook Types
 
-| Type        | Mechanism                                | Use Case                                   | Default Timeout |
-| ----------- | ---------------------------------------- | ------------------------------------------ | --------------- |
-| **Command** | Shell script execution                   | Formatting, file protection, audit logging | 600s (10 min)   |
-| **HTTP**    | POST to external endpoint                | Notifications, CI triggers, webhooks       | 30s             |
-| **Prompt**  | Single-turn Claude evaluation            | Conditional logic, policy decisions        | 30s             |
-| **Agent**   | Claude with tool access (up to 50 turns) | Complex verification, multi-step checks    | 60s             |
+There are **five** hook handler types (source: claude-hook-reference-doc.md):
 
-All timeouts are configurable per hook via the `timeout` field (in seconds).
+| Type         | Mechanism                                | Use Case                                   | Default Timeout |
+| ------------ | ---------------------------------------- | ------------------------------------------ | --------------- |
+| **Command**  | Shell script execution                   | Formatting, file protection, audit logging | 600s (10 min)   |
+| **HTTP**     | POST to external endpoint                | Notifications, CI triggers, webhooks       | 600s (10 min)   |
+| **MCP tool** | Call a tool on a connected MCP server    | Reuse existing MCP integrations as hooks   | 600s (10 min)   |
+| **Prompt**   | Single-turn Claude evaluation            | Conditional logic, policy decisions        | 30s             |
+| **Agent**    | Claude with tool access (up to 50 turns) | Complex verification, multi-step checks    | 60s             |
+
+All timeouts are configurable per hook via the `timeout` field (in seconds). `UserPromptSubmit` lowers the `command`/`http`/`mcp_tool` default to 30s. **Agent hooks are experimental** and may change — prefer command hooks for production (source: automate-workflow-with-hooks.md).
 
 ## Complete Lifecycle Events
 
@@ -29,49 +32,62 @@ Every event in the Claude Code lifecycle has a corresponding hook point. Events 
 
 | Event                | Triggers When                                         | Matcher Target                                                                                       | Can Block? |
 | -------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ---------- |
+| `Setup`              | Claude Code starts with `--init-only`, or `--init`/`--maintenance` in `-p` mode — for one-time CI/script prep | CLI flag: `init`, `maintenance`                                       | No         |
 | `SessionStart`       | Session begins or resumes                             | Source: `startup`, `resume`, `clear`, `compact`                                                      | No         |
 | `InstructionsLoaded` | CLAUDE.md or `.claude/rules/*.md` loaded into context | Load reason: `session_start`, `nested_traversal`, `path_glob_match`, `include`, `compact`            | No         |
 | `SessionEnd`         | Session terminates                                    | End reason: `clear`, `resume`, `logout`, `prompt_input_exit`, `bypass_permissions_disabled`, `other` | No         |
 
+`Setup` is one of the seven events added in the May 2026 upstream sync (source: automate-workflow-with-hooks.md).
+
 ### User Interaction Events
 
-| Event              | Triggers When                                    | Matcher Target                                                                 | Can Block?                                           |
-| ------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| `UserPromptSubmit` | User sends a prompt (before Claude processes it) | No matcher support                                                             | Yes — blocks prompt processing and erases the prompt |
-| `Notification`     | Claude Code sends a notification                 | Type: `permission_prompt`, `idle_prompt`, `auth_success`, `elicitation_dialog` | No                                                   |
+| Event                 | Triggers When                                              | Matcher Target                                                                                                          | Can Block?                                           |
+| --------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `UserPromptSubmit`    | User sends a prompt (before Claude processes it)           | No matcher support                                                                                                      | Yes — blocks prompt processing and erases the prompt |
+| `UserPromptExpansion` | A user-typed command expands into a prompt, before Claude  | Command name (your skill/command names)                                                                                 | Yes — blocks the expansion                           |
+| `Notification`        | Claude Code sends a notification                           | Type: `permission_prompt`, `idle_prompt`, `auth_success`, `elicitation_dialog`, `elicitation_complete`, `elicitation_response` | No                                             |
 
 ### Tool Execution Events
 
-| Event                | Triggers When             | Matcher Target                                                                | Can Block?                  |
-| -------------------- | ------------------------- | ----------------------------------------------------------------------------- | --------------------------- |
-| `PreToolUse`         | Before tool execution     | Tool name: `Bash`, `Edit`, `Write`, `Read`, `Glob`, `Grep`, `Agent`, `mcp__*` | Yes — blocks the tool call  |
-| `PermissionRequest`  | Permission dialog appears | Tool name                                                                     | Yes — denies the permission |
-| `PostToolUse`        | After tool succeeds       | Tool name                                                                     | No (tool already ran)       |
-| `PostToolUseFailure` | After tool fails          | Tool name                                                                     | No (tool already failed)    |
+| Event                | Triggers When                                       | Matcher Target                            | Can Block?                                                |
+| -------------------- | --------------------------------------------------- | ----------------------------------------- | --------------------------------------------------------- |
+| `PreToolUse`         | Before tool execution                               | Tool name: `Bash`, `Edit`, `mcp__*`, etc. | Yes — blocks the tool call                                |
+| `PermissionRequest`  | Permission dialog appears                           | Tool name                                 | Yes — denies the permission                               |
+| `PermissionDenied`   | A tool call is denied by the auto-mode classifier   | Tool name                                 | No — denial already happened; return `{retry: true}` JSON to let the model retry |
+| `PostToolUse`        | After tool succeeds                                 | Tool name                                 | No (tool already ran)                                     |
+| `PostToolUseFailure` | After tool fails                                    | Tool name                                 | No (tool already failed)                                  |
+| `PostToolBatch`      | After a full batch of parallel tool calls resolves, before the next model call | No matcher support             | Yes — stops the agentic loop before the next model call   |
 
-### Subagent and Team Events
+Tool events support an optional per-handler `if` field that uses permission-rule syntax (`"Bash(git *)"`, `"Edit(*.ts)"`) to filter by tool name **and** arguments — narrower than `matcher`, which filters only by tool name (source: automate-workflow-with-hooks.md).
 
-| Event           | Triggers When                        | Matcher Target                                      | Can Block?                            |
-| --------------- | ------------------------------------ | --------------------------------------------------- | ------------------------------------- |
-| `SubagentStart` | Subagent spawned                     | Agent type: `Bash`, `Explore`, `Plan`, custom names | No                                    |
-| `SubagentStop`  | Subagent finishes                    | Agent type (same as SubagentStart)                  | Yes — prevents subagent from stopping |
-| `TeammateIdle`  | Agent team teammate about to go idle | No matcher support                                  | Yes — keeps teammate working          |
-| `TaskCompleted` | Task marked as completed             | No matcher support                                  | Yes — prevents completion             |
+### Subagent and Task Events
+
+| Event           | Triggers When                        | Matcher Target                                              | Can Block?                            |
+| --------------- | ------------------------------------ | ----------------------------------------------------------- | ------------------------------------- |
+| `SubagentStart` | Subagent spawned                     | Agent type: `general-purpose`, `Explore`, `Plan`, custom    | No                                    |
+| `SubagentStop`  | Subagent finishes                    | Agent type (same as SubagentStart)                          | Yes — prevents subagent from stopping |
+| `TaskCreated`   | A task is being created via `TaskCreate` | No matcher support                                       | Yes — rolls back the task creation    |
+| `TaskCompleted` | A task is being marked as completed  | No matcher support                                          | Yes — prevents completion             |
+| `TeammateIdle`  | Agent team teammate about to go idle | No matcher support                                          | Yes — keeps teammate working          |
 
 ### Completion Events
 
 | Event         | Triggers When              | Matcher Target                                                                                                                        | Can Block?                                      |
 | ------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | `Stop`        | Claude finishes responding | No matcher support                                                                                                                    | Yes — prevents stopping, continues conversation |
-| `StopFailure` | Turn ends due to API error | Error type: `rate_limit`, `authentication_failed`, `billing_error`, `invalid_request`, `server_error`, `max_output_tokens`, `unknown` | No (output/exit code ignored)                   |
+| `StopFailure` | Turn ends due to API error | Error type: `rate_limit`, `authentication_failed`, `oauth_org_not_allowed`, `billing_error`, `invalid_request`, `model_not_found`, `server_error`, `max_output_tokens`, `unknown` | No (output/exit code ignored)                   |
 
 ### Context and Configuration Events
 
 | Event          | Triggers When                             | Matcher Target                                                                             | Can Block?                     |
 | -------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------ |
-| `PreCompact`   | Before context compaction                 | Trigger: `manual`, `auto`                                                                  | No                             |
+| `PreCompact`   | Before context compaction                 | Trigger: `manual`, `auto`                                                                  | Yes — blocks compaction        |
 | `PostCompact`  | After compaction completes                | Trigger: `manual`, `auto`                                                                  | No                             |
 | `ConfigChange` | Configuration file changes during session | Source: `user_settings`, `project_settings`, `local_settings`, `policy_settings`, `skills` | Yes (except `policy_settings`) |
+| `CwdChanged`   | Working directory changes (e.g. Claude runs `cd`) — useful for reactive env management with direnv | No matcher support              | No                             |
+| `FileChanged`  | A watched file changes on disk            | Literal filenames to watch, `\|`-separated (e.g. `.envrc\|.env`) — split into literal names, not regex | No             |
+
+`CwdChanged` and `FileChanged` are part of the May 2026 sync; both pair with `SessionStart` to keep `CLAUDE_ENV_FILE` current as Claude moves between directories or watched files change (source: automate-workflow-with-hooks.md).
 
 ### Worktree Events
 
@@ -110,12 +126,15 @@ hooks → event name → matcher group array → hooks array → handler
 
 ### Handler Fields (Common)
 
-| Field           | Required | Description                                                                |
-| --------------- | -------- | -------------------------------------------------------------------------- |
-| `type`          | Yes      | `"command"`, `"http"`, `"prompt"`, or `"agent"`                            |
-| `timeout`       | No       | Seconds before canceling (defaults: 600 command, 30 prompt/http, 60 agent) |
-| `statusMessage` | No       | Custom spinner message while hook runs                                     |
-| `once`          | No       | If `true`, runs only once per session (skills only)                        |
+| Field           | Required | Description                                                                                          |
+| --------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `type`          | Yes      | `"command"`, `"http"`, `"mcp_tool"`, `"prompt"`, or `"agent"`                                        |
+| `if`            | No       | Permission-rule filter (`"Bash(git *)"`) — tool events only                                          |
+| `timeout`       | No       | Seconds before canceling (defaults: 600 command/http/mcp_tool, 30 prompt, 60 agent)                  |
+| `statusMessage` | No       | Custom spinner message while hook runs                                                               |
+| `once`          | No       | If `true`, runs only once per session (skill frontmatter only)                                       |
+
+Command hooks also accept `args` (switches to exec form — no shell tokenization), `async`/`asyncRewake` (background execution), and `shell` (`"bash"` default or `"powershell"`). Exec form is preferred for any hook that references a path placeholder, since each `args` element passes as one argument with no quoting (source: claude-hook-reference-doc.md).
 
 ## Exit Code Control
 
@@ -188,15 +207,15 @@ Set `"async": true` on command hooks to run them in the background without block
 
 ## Matchers
 
-Matchers narrow hook scope using regex patterns against event-specific fields:
+How a matcher is evaluated depends on the characters it contains (source: claude-hook-reference-doc.md):
 
-- `"Bash"` — Only Bash tool invocations
-- `"Edit|Write"` — Edit OR Write tools
-- `"mcp__.*"` — All MCP tools
-- `"mcp__github__.*"` — All tools from the GitHub MCP server
-- `"mcp__.*__write.*"` — Any write tool from any MCP server
+- `"*"`, `""`, or omitted — match all (fires on every occurrence)
+- Only letters, digits, `_`, and `|` — exact string, or `|`-separated list of exact strings (`Bash`, `Edit|Write`)
+- Contains any other character — JavaScript regular expression (`^Notebook`, `mcp__memory__.*`, `mcp__.*__write.*`)
 
-Events without matcher support (`UserPromptSubmit`, `Stop`, `TeammateIdle`, `TaskCompleted`, `WorktreeCreate`, `WorktreeRemove`) always fire on every occurrence. A `matcher` field on these events is silently ignored.
+Because `mcp__memory` contains only letters and underscores it is matched as an exact string and matches no tool — append `.*` (`mcp__memory__.*`) to match every tool from a server.
+
+Events without matcher support (`UserPromptSubmit`, `PostToolBatch`, `Stop`, `TeammateIdle`, `TaskCreated`, `TaskCompleted`, `WorktreeCreate`, `WorktreeRemove`, `CwdChanged`) always fire on every occurrence. A `matcher` field on these events is silently ignored. `FileChanged` does **not** follow the rules above — its matcher value is split into literal filenames to build the watch list, not evaluated as a regex.
 
 **Keep matchers narrow** to avoid unintended matches. Matching on `".*"` or leaving matcher empty for `PermissionRequest` would auto-approve every permission prompt.
 
@@ -256,7 +275,17 @@ Use for decisions requiring judgment rather than deterministic rules.
 - **2xx with JSON body** → parsed using same JSON output schema as command hooks
 - **Non-2xx / connection failure / timeout** → non-blocking error, execution continues
 
-To block a tool call via HTTP, return a 2xx response with appropriate `hookSpecificOutput` fields. Status codes alone cannot block actions. Header values support env var interpolation via `$VAR_NAME` syntax, but only variables listed in `allowedEnvVars` are resolved.
+- **2xx with plain text body** → success, the text is added as context
+
+To block a tool call via HTTP, return a 2xx response with appropriate `hookSpecificOutput` fields. Status codes alone cannot block actions. Header values support env var interpolation via `$VAR_NAME`/`${VAR_NAME}` syntax, but only variables listed in `allowedEnvVars` are resolved.
+
+## MCP Tool Hooks
+
+`type: "mcp_tool"` hooks call a tool on an already-connected MCP server instead of running a shell command (source: claude-hook-reference-doc.md). Required fields are `server` and `tool`; `input` passes arguments and supports `${path}` substitution from the hook's JSON input (e.g. `"${tool_input.file_path}"`). The tool's text output is treated like command-hook stdout — parsed as a decision if it is valid JSON, shown as plain text otherwise. The server must already be connected: the hook never triggers an OAuth or connection flow, so hooks on `SessionStart`/`Setup` should expect a "not connected" error on first run.
+
+## Windows: PowerShell Tool
+
+On Windows, hooks run via Git Bash by default, or PowerShell when Git Bash is not installed. Set a command hook's `shell` field to `"powershell"` to run that hook through PowerShell explicitly — this does **not** require the `CLAUDE_CODE_USE_POWERSHELL_TOOL` env var, since hooks spawn PowerShell directly (source: claude-hook-reference-doc.md). The `shell` field is ignored when `args` (exec form) is set. In exec form on Windows, `command` must resolve to a real executable: the `.cmd`/`.bat` shims that npm and similar tools install cannot be spawned without a shell — invoke the underlying script with `node` directly, or use shell form to run a shim by name.
 
 ## Hooks in Skills and Agents
 
