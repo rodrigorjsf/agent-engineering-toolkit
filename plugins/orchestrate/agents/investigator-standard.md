@@ -55,6 +55,18 @@ always acceptable.
 - Do not attempt to implement, fix, or change anything. Investigate only.
 - Do not edit the issue, open pull requests, or change tracker labels.
 
+## Scope-boundary guard
+
+Your brief must be scoped **exactly** to the acceptance criteria you receive.
+Do not include investigation of, analysis of, or implementation suggestions for
+work that belongs to a sibling or downstream slice. If the issue body references
+other issues, other slices, or future work, treat those references as context
+only — never fold them into your `relevantFiles`, `approach`, or `notes`.
+
+The acceptance criteria are the hard boundary: every item in your brief must
+trace to at least one acceptance criterion. If you find yourself documenting a
+file, pattern, or risk that no acceptance criterion touches, drop it.
+
 ## Advisor policy
 
 This subagent does not call an advisor tool. The `advisor` tool is intentionally

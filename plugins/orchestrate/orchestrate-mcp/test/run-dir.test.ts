@@ -18,6 +18,21 @@ describe("isValidRunId", () => {
     expect(isValidRunId("A")).toBe(true);
   });
 
+  it("accepts the prd<N>-<timestamp> id of a partitioned run", () => {
+    expect(isValidRunId("prd195-20260521-015143")).toBe(true);
+  });
+
+  it("accepts the backlog-<timestamp> id of a no-argument run", () => {
+    expect(isValidRunId("backlog-20260521-015143")).toBe(true);
+  });
+
+  it("rejects a path-traversal id even with the prd<N>- prefix", () => {
+    // The prefixed forms must not weaken the path-traversal guard: a runId
+    // carrying `..` or a separator stays rejected regardless of its prefix.
+    expect(isValidRunId("prd195-../etc")).toBe(false);
+    expect(isValidRunId("backlog-../../etc")).toBe(false);
+  });
+
   it("rejects an empty string", () => {
     expect(isValidRunId("")).toBe(false);
   });
@@ -142,6 +157,23 @@ describe("resolveRunDir — per-run path isolation", () => {
           expect(ap).not.toBe(bp);
         }
       }
+    }
+  });
+
+  it("resolves a prd<N>- and a backlog- runId to disjoint run directories", () => {
+    // Two concurrent runs in one repository — one partitioned, one whole-backlog
+    // — must never resolve to a shared run directory.
+    const partitioned = resolveRunDir("/repo", "prd195-20260521-015143");
+    const wholeBacklog = resolveRunDir("/repo", "backlog-20260521-015143");
+    expect(partitioned.ok && wholeBacklog.ok).toBe(true);
+    if (partitioned.ok && wholeBacklog.ok) {
+      expect(partitioned.paths.runDir).not.toBe(wholeBacklog.paths.runDir);
+      expect(partitioned.paths.runDir).toBe(
+        path.join("/repo", ".orchestrate", "runs", "prd195-20260521-015143")
+      );
+      expect(wholeBacklog.paths.runDir).toBe(
+        path.join("/repo", ".orchestrate", "runs", "backlog-20260521-015143")
+      );
     }
   });
 
