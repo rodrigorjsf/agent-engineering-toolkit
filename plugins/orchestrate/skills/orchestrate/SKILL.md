@@ -74,27 +74,33 @@ as a checkable end-state, e.g. `/goal the orchestrate run has opened its final
 integration pull request, or a successor session has been launched`. An
 autonomous run must not stop mid-wave.
 
-Also clear any stale handoff flag: if `.orchestrate/context-flag.json` exists,
-delete it. On a resumed run it is the predecessor's handoff trigger, now
-consumed; on a fresh run it is leftover from an earlier run. Either way,
-leaving it would make this session hand off immediately (section 2, step 4).
+Every run keeps its ephemeral state in a **per-run directory**,
+`.orchestrate/runs/<runId>/`, holding that run's `run-state.json`,
+`context-flag.json`, and rendered HTML artifacts. The committed config files
+(`commands.json`, `routing.json`, `handoff.json`) stay flat at the
+`.orchestrate/` top level. The run directory's schema and rationale are in
+`references/run-state.md`.
 
-Then check for `.orchestrate/run-state.json` (its schema is in
-`references/run-state.md`).
+**Discover the active run.** Scan `.orchestrate/runs/*/run-state.json` for a run
+whose `status` is `in-progress`.
 
-- **It exists and `status` is `in-progress`** — resume. Load the whole file,
-  preserving every top-level field — `runId`, `umbrellaBranch`, `parentIssue`,
-  `waves`, `completedWaves`, `finalPullRequest`, and `slices`. Every slice in a
-  terminal state (`passed`, `failed`, `skipped`) is left untouched — completed
-  work is never redone. Every slice still `in-progress` was interrupted before
-  finishing: discard its partial artifacts so it re-processes cleanly — if it
-  has a `worktreePath`, call `remove_worktree` (`force: true`); delete its
-  `sliceBranch` if it exists (locally, and on the remote if it was pushed) —
-  deleting the remote branch also auto-closes any orphaned slice pull request
-  GitHub opened for it, so re-processing produces a clean branch and PR with no
-  manual PR cleanup needed — then coerce that slice back to `pending`. Skip to
-  section 2.
-- **It is absent, or `status` is `completed`** — start a fresh run below.
+- **A run directory with an `in-progress` `run-state.json` exists** — resume it.
+  Its `runId` is the directory name. First clear that run's stale handoff flag:
+  if `.orchestrate/runs/<runId>/context-flag.json` exists, delete it — it is the
+  predecessor's handoff trigger, now consumed, and leaving it would make this
+  session hand off immediately (section 2, step 4). Then load the whole
+  `run-state.json`, preserving every top-level field — `runId`,
+  `umbrellaBranch`, `parentIssue`, `waves`, `completedWaves`,
+  `finalPullRequest`, and `slices`. Every slice in a terminal state (`passed`,
+  `failed`, `skipped`) is left untouched — completed work is never redone. Every
+  slice still `in-progress` was interrupted before finishing: discard its
+  partial artifacts so it re-processes cleanly — if it has a `worktreePath`,
+  call `remove_worktree` (`force: true`); delete its `sliceBranch` if it exists
+  (locally, and on the remote if it was pushed) — deleting the remote branch
+  also auto-closes any orphaned slice pull request GitHub opened for it, so
+  re-processing produces a clean branch and PR with no manual PR cleanup needed
+  — then coerce that slice back to `pending`. Skip to section 2.
+- **No run directory holds an `in-progress` run** — start a fresh run below.
 
 ### Fresh run
 
@@ -116,15 +122,37 @@ Then check for `.orchestrate/run-state.json` (its schema is in
    If the backlog is empty, report "no ready-for-agent issues" and stop — a
    clean no-op.
 3. For each issue, parse the **Blocked by** section of its body into a list of
-   blocker issue numbers (the `- #NNN` lines), and assess its **complexity
-   tier** — `trivial` (a small, localized change), `standard` (an ordinary
-   feature or fix), or `complex` (broad, cross-cutting, or high-risk work).
-   Base the tier on the issue's scope, the number of files it likely touches,
-   and its risk. The tier drives routing in section 3. Also note the parent
-   PRD from each issue's **Parent** section (the `PRD #NNN` line): use the PRD
-   shared by all backlog issues as `parentIssue`, or `null` if they name
-   differing parents or none.
-4. Call the `plan_waves` MCP tool with one entry per issue
+   blocker issue numbers (the `- #NNN` lines), and the **Parent** section into
+   a single parent issue number (`PRD #NNN` line) or `null`. Then assess its
+   **complexity tier** — `trivial` (a small, localized change), `standard` (an
+   ordinary feature or fix), or `complex` (broad, cross-cutting, or high-risk
+   work). Base the tier on the issue's scope, the number of files it likely
+   touches, and its risk. The tier drives routing in section 3.
+
+   Once every issue is parsed, call the **`partition_backlog` MCP tool** to
+   split the backlog into `slices` and `parentIssue`:
+
+   - Pass the full backlog as the `issues` array to `partition_backlog`. It
+     returns `{ slices, parentIssue }`.
+   - `slices` is the subset of issues to process as implementation work — any
+     issue detected as the parent PRD is automatically excluded.
+   - `parentIssue` is the detected parent PRD, or `null`. The parent PRD is
+     only the progress-comment target (section 2 step 6) — it is **never**
+     enrolled as a slice.
+   - Detection uses two signals in order: (1) a `Parent` field reference — if
+     any issue names another backlog issue as its parent, that issue is the
+     parent PRD; (2) the `PRD:` title heuristic — if no explicit parent
+     reference exists, any issue whose title starts with `PRD:` (case-
+     insensitive) is treated as the parent PRD. This ensures a decomposed PRD
+     is never accidentally implemented as a slice.
+
+   To scope a run to one parent PRD's children (e.g. `/orchestrate <PRD#>`),
+   call the **`filter_to_one_parent_prd` MCP tool** first — pass the full
+   backlog and the `prdNumber`; it returns only the issues whose `parent` field
+   equals `prdNumber`, which you then pass to `partition_backlog`.
+
+4. Call the `plan_waves` MCP tool with one entry per **slice** (not the full
+   backlog — the parent PRD is excluded):
    (`{ id: "<number>", blockedBy: ["<number>", ...] }`). If it returns
    `status: "error"` with `errorCode: "CYCLE_DETECTED"`, report the cycle and
    stop — the backlog cannot be ordered.
@@ -136,8 +164,9 @@ Then check for `.orchestrate/run-state.json` (its schema is in
    git push -u origin orchestrate/umbrella-<runId>
    ```
 
-6. Write the initial `.orchestrate/run-state.json` with **every field the
-   schema declares** (see `references/run-state.md`):
+6. Create the run directory `.orchestrate/runs/<runId>/`, then write the initial
+   `run-state.json` into it as `.orchestrate/runs/<runId>/run-state.json` with
+   **every field the schema declares** (see `references/run-state.md`):
    - Top level: `runId`, `status: "in-progress"`, `umbrellaBranch`,
      `integrationBase: "development"`, `parentIssue` (the parent PRD number, or
      null), `startedAt` and `updatedAt` (current UTC time), the `waves` from
@@ -182,10 +211,10 @@ Process waves in order, starting at index `completedWaves`. For each wave:
 4. **Integrate sequentially.** The commit, pull-request, and merge steps
    (section 3, steps 6–9) run **one slice at a time** — merges into the
    umbrella branch must not race each other. After each slice finishes
-   integrating, check for `.orchestrate/context-flag.json`: if it exists, the
-   context-watchdog has signalled that this session's context is filling. Do
-   not start the next slice — finish writing `run-state.json` for the slice
-   just integrated, then go to section 4 (Context handoff).
+   integrating, check for `.orchestrate/runs/<runId>/context-flag.json`: if it
+   exists, the context-watchdog has signalled that this session's context is
+   filling. Do not start the next slice — finish writing `run-state.json` for
+   the slice just integrated, then go to section 4 (Context handoff).
 5. **Checkpoint the wave.** Set `completedWaves` to this wave's index + 1 and
    write `run-state.json`.
 6. **Report wave progress to the PRD.** If `parentIssue` is set, post a comment
@@ -205,16 +234,33 @@ gh pr create --base development --head orchestrate/umbrella-<runId> \
 Record its URL as `finalPullRequest` in `run-state.json`, set
 `status: "completed"`, and checkpoint. Then render the run's HTML artifacts
 from the final checkpoint — call the `render_dashboard`, `render_graph`, and
-`render_report` MCP tools, each with the repository root as `repoPath` — so a
-developer has a visual summary of the run. If `parentIssue` is set, post a
-final summary comment on it. Report to the user: the umbrella branch, the
-final pull request URL, the paths of the three rendered artifacts, and — per
-slice — its final state and pull request.
+`render_report` MCP tools, each with the repository root as `repoPath` and the
+run's `runId`; each tool reads `.orchestrate/runs/<runId>/run-state.json` and
+writes its artifact into that same run directory — so a developer has a visual
+summary of the run. If `parentIssue` is set, post a final summary comment on
+it. Report to the user: the umbrella branch, the final pull request URL, the
+paths of the three rendered artifacts, and — per slice — its final state and
+pull request.
 
 ## 3. Processing one slice
 
 These are the per-slice steps the wave loop invokes. Update the slice's entry in
 `run-state.json` and write the file at every state change.
+
+**The result-envelope contract.** Every subagent ends its turn with a **result
+envelope** — a fenced ` ```orchestrate-envelope ` JSON block conforming to a
+defined schema. The orchestrator determines a subagent's status and
+changed-file set **only** from this validated envelope; it never reads the
+subagent's prose. After each subagent (investigator, implementer, reviewer,
+conflict-resolver) returns, call the `validate_envelope` MCP tool with the
+subagent's verbatim returned text and its `role`:
+
+- `status: "valid"` — use the parsed `envelope` as the single source of the
+  subagent's outcome and `filesChanged`.
+- `status: "invalid"` (truncated, malformed, or off-schema) or
+  `status: "missing"` (no envelope emitted) — the subagent's result cannot be
+  trusted. The slice has **FAILED** (see *Failure handling*). A truncated
+  envelope is never silently accepted.
 
 1. **Create the worktree.** Set the slice `state` to `in-progress`, write its
    `sliceBranch` (`orchestrate/slice-<N>`) and the `worktreePath` you will use
@@ -237,25 +283,35 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
      has **FAILED**.
 3. **Run the investigator (higher tiers only).** If `routing.investigator` is
    non-null, spawn the `orchestrate:investigator-<effort>` subagent — `<effort>`
-   and the Agent `model` override both come from `routing.investigator`. Its prompt
-   carries the issue and the repository root; keep its returned brief for the
-   implementer. If `routing.investigator` is null, skip this step.
+   and the Agent `model` override both come from `routing.investigator`. Its
+   prompt carries the issue and the repository root. Validate its returned text
+   with `validate_envelope` (role `investigator`); a `valid` envelope is the
+   research brief to keep for the implementer. An `invalid` or `missing`
+   envelope is a failed investigation pass — the slice has **FAILED** (the
+   investigator is read-only, so no worktree fallback applies). If
+   `routing.investigator` is null, skip this step.
 4. **Run the implementer.** Spawn the `orchestrate:implementer-<effort>`
-   subagent — `<effort>` and the `model` override from `routing.implementer`. Its prompt
-   must carry the issue number/title/body, the worktree path (every change goes
-   there), the investigator's brief if one was produced, an instruction to
-   verify with the capability tools using the worktree path as `repoPath`, and
-   a reminder not to commit, push, or run git. If it returns `blocked`, the
-   slice has **FAILED**.
+   subagent — `<effort>` and the `model` override from `routing.implementer`. Its
+   prompt must carry the issue number/title/body, the worktree path (every
+   change goes there), the investigator's brief if one was produced, an
+   instruction to verify with the capability tools using the worktree path as
+   `repoPath`, and a reminder not to commit, push, or run git. Validate its
+   returned text with `validate_envelope` (role `implementer`). On a `valid`
+   envelope, an envelope `status` of `blocked` means the slice has **FAILED**;
+   `completed` proceeds. An `invalid` or `missing` envelope also means the slice
+   has **FAILED**.
 5. **Run the reviewer.** Spawn the `orchestrate:reviewer-<effort>` subagent —
    `<effort>` and the `model` override from `routing.reviewer` — in the same
-   worktree. Its prompt must carry the issue, the worktree path, the
-   implementer's `filesChanged` list and `notes`, and the investigator's brief
-   if one was produced. If it returns `failed`, the slice has **FAILED**.
+   worktree. Its prompt must carry the issue, the worktree path, the implementer
+   envelope's `filesChanged` and `notes`, and the investigator's brief if one
+   was produced. Validate its returned text with `validate_envelope` (role
+   `reviewer`). On a `valid` envelope, an envelope `status` of `failed` means
+   the slice has **FAILED**; `passed` proceeds. An `invalid` or `missing`
+   envelope also means the slice has **FAILED**.
 6. **Commit and push.** Stage only the files the subagents reported changing —
-   the union of the implementer's and reviewer's `filesChanged` lists. Never
-   `git add -A`: the capability tools leave untracked build artifacts in the
-   worktree.
+   the union of the `filesChanged` arrays from the validated implementer and
+   reviewer envelopes. Never `git add -A`: the capability tools leave untracked
+   build artifacts in the worktree.
 
    ```
    git -C <worktree-path> add -- <file> <file> ...
@@ -319,15 +375,18 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
       and the `model` override from `routing.conflict-resolver`. Its prompt
       must carry the issue, the worktree path, and the list of conflicted
       files.
-   5. If it returns `failed`, abort and the slice has **FAILED**:
-      `git -C <worktree-path> merge --abort`.
-   6. If it returns `resolved`, stage the resolved files and **confirm no
-      conflict markers remain** — inspect `git -C <worktree-path> diff --cached`
-      for leftover `<<<<<<<`, `=======`, or `>>>>>>>` lines. If any remain, the
-      resolution is incomplete: `git -C <worktree-path> merge --abort` and the
-      slice has **FAILED**. Otherwise complete the merge, push, and merge the pull
-      request — if `gh pr merge` fails (the resolution did not make the pull
-      request mergeable), the slice has **FAILED**; the one attempt is spent.
+   5. Validate its returned text with `validate_envelope` (role
+      `conflict-resolver`). An `invalid` or `missing` envelope, or a `valid`
+      envelope with `status: "failed"`, means resolution failed: abort and the
+      slice has **FAILED** — `git -C <worktree-path> merge --abort`.
+   6. On a `valid` envelope with `status: "resolved"`, stage the resolved files
+      and **confirm no conflict markers remain** — inspect
+      `git -C <worktree-path> diff --cached` for leftover `<<<<<<<`, `=======`,
+      or `>>>>>>>` lines. If any remain, the resolution is incomplete:
+      `git -C <worktree-path> merge --abort` and the slice has **FAILED**.
+      Otherwise complete the merge, push, and merge the pull request — if
+      `gh pr merge` fails (the resolution did not make the pull request
+      mergeable), the slice has **FAILED**; the one attempt is spent.
 
       ```
       git -C <worktree-path> add -- <resolved file> ...
@@ -346,18 +405,18 @@ These are the per-slice steps the wave loop invokes. Update the slice's entry in
 
 A long run can fill this session's context before every wave is done. The
 `context-watchdog` hook bundled with this plugin watches token usage and writes
-`.orchestrate/context-flag.json` past a configurable threshold. When the wave
-loop (section 2, step 4) sees that flag, hand the run off to a fresh Claude
-Code session instead of continuing — the successor resumes from the
-`run-state.json` checkpoint exactly as section 1 describes. See
+`.orchestrate/runs/<runId>/context-flag.json` past a configurable threshold.
+When the wave loop (section 2, step 4) sees that flag, hand the run off to a
+fresh Claude Code session instead of continuing — the successor resumes from
+the `run-state.json` checkpoint exactly as section 1 describes. See
 `references/context-handoff.md` for the full mechanism.
 
 To hand off:
 
 1. Make sure `run-state.json` is checkpointed and its `status` is still
    `in-progress` — the successor resumes from it. Do **not** delete
-   `.orchestrate/context-flag.json`; the successor deletes it on startup once
-   it has consumed it.
+   `.orchestrate/runs/<runId>/context-flag.json`; the successor deletes it on
+   startup once it has consumed it.
 2. Call the `spawn_successor` MCP tool with the repository root as `repoPath`.
    It launches a new interactive Claude Code session — terminal and `claude`
    flags come from `.orchestrate/handoff.json`, defaults otherwise — that
@@ -372,15 +431,32 @@ To hand off:
 
 ## Failure handling
 
-A slice **FAILS** when `create_worktree` errors, the implementer returns
-`blocked`, the reviewer returns `failed`, the staged changeset is empty, or a
-merge conflict the `conflict-resolver` cannot fix. On a FAILED slice:
+A slice **FAILS** when `create_worktree` errors, a subagent's result envelope
+is invalid or missing (`validate_envelope` returns `invalid` or `missing`), a
+validated implementer envelope has `status: "blocked"`, a validated reviewer
+envelope has `status: "failed"`, the staged changeset is empty, or a merge
+conflict the `conflict-resolver` cannot fix. The orchestrator decides FAILURE
+**only** from the validated envelope and tool results — never from a subagent's
+prose. An invalid or missing envelope is always a FAILED slice; it is never
+treated as success.
+
+On a FAILED slice:
 
 - Set its `state` to `failed` with a `failureReason`, checkpoint, and
   transition the issue's tracker label:
   `gh issue edit <N> --remove-label ready-for-agent --add-label needs-triage`.
 - Do **not** merge it. **Preserve its worktree** — leave it on disk for a
   developer to inspect. Do not call `remove_worktree`.
+- **Recover the changed-file set when the envelope was the failure cause.** If
+  the slice failed because a worker subagent's envelope was `invalid` or
+  `missing` — so its `filesChanged` array is unavailable or untrustworthy — call
+  the `recover_changed_files` MCP tool with the slice's `worktreePath`. It
+  inspects the preserved worktree directly with `git status` and returns the
+  full changed-file set (build artifacts included), so the `failureReason` can
+  record what the interrupted subagent had touched for the developer's
+  inspection. This fallback applies to the implementer, reviewer, and
+  conflict-resolver only — the investigator is read-only and leaves no worktree
+  changes to recover.
 - **Continue the wave.** A failed slice never cancels the other slices in its
   wave — they are independent and proceed normally.
 
@@ -408,8 +484,9 @@ commits close them when a developer merges the final umbrella pull request into
 
 ## Checkpointing
 
-Write `.orchestrate/run-state.json` after every slice state change and after
-every wave. Every write refreshes the top-level `updatedAt`, and a slice's own
-`updatedAt` whenever its entry changes, so an artifact rendered from the file
-has accurate timestamps. The checkpoint is what makes a run resumable: an
-interrupted run, re-invoked, skips every terminal-state slice and continues.
+Write the run's `run-state.json` — at `.orchestrate/runs/<runId>/run-state.json`
+— after every slice state change and after every wave. Every write refreshes
+the top-level `updatedAt`, and a slice's own `updatedAt` whenever its entry
+changes, so an artifact rendered from the file has accurate timestamps. The
+checkpoint is what makes a run resumable: an interrupted run, re-invoked, skips
+every terminal-state slice and continues.

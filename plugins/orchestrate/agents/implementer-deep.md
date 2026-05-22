@@ -56,6 +56,12 @@ The orchestrator gives you:
   main repository checkout.
 - Do not edit the issue, open pull requests, or change tracker labels.
 
+## Advisor policy
+
+This subagent does not call an advisor tool. The `advisor` tool is intentionally
+absent from this subagent's `tools:` frontmatter. Advisor passes, when used, run
+at the orchestrator boundary — not inside any subagent.
+
 ## Deep effort
 
 You are spawned for complex, high-risk issues where a shallow pass is not
@@ -75,14 +81,39 @@ exist specifically to support this wider, deeper pass — use them.
 
 ## What you return
 
-Return a structured summary with these fields:
+End your turn with a **result envelope** — a single fenced
+` ```orchestrate-envelope ` block holding one JSON object. The orchestrator
+validates this envelope; it never parses your prose. Emit the envelope as the
+**last thing** in your final message, complete and unabbreviated — a truncated
+or missing envelope is treated as a FAILED slice.
 
-- **status** — `completed` (acceptance criteria met and all configured
-  capability tools pass) or `blocked` (you could not finish).
-- **filesChanged** — the files you created or edited, as paths relative to the
-  worktree root.
-- **verification** — each capability tool you ran and its result (`passed`,
-  `failed`, or `not-configured`).
-- **notes** — anything the orchestrator or a later reviewer must know:
-  assumptions you made, partial work, or — if `blocked` — exactly what stopped
+The envelope object has exactly these fields:
+
+- **role** — the string `"implementer"`.
+- **status** — `"completed"` (acceptance criteria met and all configured
+  capability tools pass) or `"blocked"` (you could not finish).
+- **filesChanged** — an array of the files you created or edited, as paths
+  relative to the worktree root (`[]` if you changed nothing).
+- **verification** — an array of objects, one per capability tool you ran, each
+  `{ "capability": "tests" | "typecheck" | "build" | "lint", "result":
+  "passed" | "failed" | "not-configured" }`.
+- **notes** — a string: anything the orchestrator or a later reviewer must know
+  — assumptions you made, partial work, or, if `blocked`, exactly what stopped
   you and what was tried.
+
+Example:
+
+```orchestrate-envelope
+{
+  "role": "implementer",
+  "status": "completed",
+  "filesChanged": ["src/foo.ts", "test/foo.test.ts"],
+  "verification": [
+    { "capability": "typecheck", "result": "passed" },
+    { "capability": "build", "result": "passed" },
+    { "capability": "tests", "result": "passed" },
+    { "capability": "lint", "result": "not-configured" }
+  ],
+  "notes": "Implemented per the acceptance criteria."
+}
+```

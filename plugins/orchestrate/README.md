@@ -21,7 +21,7 @@ Given a repository with open issues labelled `ready-for-agent`, one `/orchestrat
 3. **Cuts an umbrella branch** from `development` — every slice's pull request merges into it, never directly into `development`.
 4. **Processes each slice** in its own isolated worktree — routed investigator (complex tier only), implementer, then reviewer; then commit, push, open a slice pull request, and squash-merge it into the umbrella branch.
 5. **Resolves merge conflicts** once per conflicting slice via a dedicated conflict-resolver subagent.
-6. **Checkpoints** `.orchestrate/run-state.json` after every step — an interrupted run re-invoked with `/orchestrate` skips every completed slice and continues.
+6. **Checkpoints** the run's `run-state.json` (under the per-run directory `.orchestrate/runs/<runId>/`) after every step — an interrupted run re-invoked with `/orchestrate` skips every completed slice and continues.
 7. **Hands off** to a fresh Claude Code session when the orchestrator's context window fills, so a long run survives without degrading.
 8. **Opens a final pull request** from the umbrella branch into `development`, left unmerged for a developer to review — and renders HTML dashboard, dependency-graph, and report artifacts from the run state.
 
@@ -42,6 +42,8 @@ Every other role is a **subagent**, spawned with the standard Agent tool by its 
 
 This is the **no-Bash safety model**: the subagents have no shell and no git access. They are sandboxed to a single worktree, and the investigator cannot write at all. Only the orchestrator runs commands, touches branches and remotes, and writes to the issue tracker. A subagent cannot push, cannot merge, cannot edit an issue, and cannot reach outside its worktree — so the blast radius of any one subagent is one directory.
 
+Every subagent ends its turn with a machine-checkable **result envelope** — a fenced ` ```orchestrate-envelope ` JSON block conforming to a per-role schema. The orchestrator reads a subagent's status and changed-file set only from this validated envelope (via the `validate_envelope` tool), never from its prose — so a turn that was truncated or cut short is detected, never silently accepted. When an envelope is missing or invalid, the orchestrator recovers the worktree's changed-file set by inspecting it directly with `recover_changed_files`, treating the worktree as the source of truth.
+
 ### The orchestrate MCP server
 
 The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing the deterministic tools the orchestrator and subagents call:
@@ -52,15 +54,50 @@ The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing 
 | `run_tests` / `run_typecheck` / `run_build` / `run_lint` | Run the project's configured capability commands |
 | `plan_waves` | Topologically sort issues into dependency waves; detects cycles |
 | `resolve_routing` | Resolve the model and effort variant for each role from a complexity tier |
+| `validate_envelope` | Validate a subagent's result envelope against its role schema — distinguishes a valid, a truncated/invalid, and a missing envelope |
+| `recover_changed_files` | Recover a worktree's changed-file set by inspecting it directly — the orchestrator's fallback when an envelope is missing or invalid |
 | `render_dashboard` / `render_graph` / `render_report` | Render standalone HTML artifacts from the run state |
 | `spawn_successor` | Launch a fresh Claude Code session that resumes the run |
 | `search_structural` | Syntax-aware (ast-grep) code search, with a text-search fallback |
 
 Every tool returns a discriminated `status` and never throws — failures are structured results, not exceptions.
 
+### Project capability detection
+
+The `detect-project` module (`orchestrate-mcp/src/tools/detect-project.ts`) auto-detects a repository's project type from its top-level manifest files and emits the matching capability command map. It is pure — repository root in, command map out, no side effects.
+
+**Detection precedence** (first match wins):
+
+| Manifest file | Project type | Command set |
+|---------------|-------------|-------------|
+| `package.json` | npm | `npm test`, `npm run typecheck`, `npm run build`, `npm run lint` |
+| `Cargo.toml` | Cargo | `cargo test`, `cargo check`, `cargo build`, `cargo clippy` |
+| `pyproject.toml` | Python | `pytest`, `mypy .`, `python -m build`, `ruff check .` |
+| `Makefile` | Make | `make test`, `make typecheck`, `make build`, `make lint` |
+| _(none found)_ | none | empty map — no capability tool is wired to a failing command |
+
+**Usage example** (TypeScript):
+
+```typescript
+import { detectCommandMap } from "./tools/detect-project.js";
+
+// Detect from a repository root — returns the command map or {} if unrecognized.
+const map = detectCommandMap("/path/to/repo");
+// For a repo with package.json:
+// { tests: ["npm", "test"], typecheck: ["npm", "run", "typecheck"],
+//   build: ["npm", "run", "build"], lint: ["npm", "run", "lint"] }
+
+// Or use the pure functions directly (no I/O):
+import { detectProjectType, buildCommandMap } from "./tools/detect-project.js";
+const type = detectProjectType(["Cargo.toml", "Makefile"]); // "cargo"
+const commands = buildCommandMap(type); // cargo argv arrays
+```
+
+A manifest-less repository yields `{}` — never an npm fallback — so no capability tool is ever wired to a command guaranteed to fail.
+
 ### Context handoff
 
-A long backlog can fill the orchestrator session's context window before every wave is done. The bundled `context-watchdog` hook (a `PostToolUse` hook) estimates context usage from the session transcript and, past a configurable threshold (default 40%), writes `.orchestrate/context-flag.json`. The orchestrator finishes the current slice, checkpoints, and calls `spawn_successor` to launch a new interactive Claude Code session that resumes from `run-state.json` — then the predecessor exits. The successor clears the stale flag on startup, so there is no handoff loop.
+A long backlog can fill the orchestrator session's context window before every wave is done. The bundled `context-watchdog` hook (a `PostToolUse` hook) estimates context usage from the session transcript and, past a configurable threshold (default 40%), writes the active run's `.orchestrate/runs/<runId>/context-flag.json`. The orchestrator finishes the current slice, checkpoints, and calls `spawn_successor` to launch a new interactive Claude Code session that resumes from `run-state.json` — then the predecessor exits. The successor clears the stale flag on startup, so there is no handoff loop.
 
 ## Installation
 
@@ -92,7 +129,7 @@ If the plugin is installed at user scope (the default), the namespace prefix is 
 /orchestrate
 ```
 
-The run is autonomous — it processes the whole backlog, resolves conflicts, checkpoints, hands off if its context fills, and ends by opening the final umbrella pull request. To resume an interrupted run, invoke `/orchestrate` again in the same repository: it detects `.orchestrate/run-state.json` and continues from the last checkpoint.
+The run is autonomous — it processes the whole backlog, resolves conflicts, checkpoints, hands off if its context fills, and ends by opening the final umbrella pull request. To resume an interrupted run, invoke `/orchestrate` again in the same repository: it scans `.orchestrate/runs/*/run-state.json` for an in-progress run and continues from the last checkpoint.
 
 ## Importing Into Another Project
 
@@ -106,15 +143,13 @@ To run orchestrate against another repository, that repository needs:
 
 Optionally, install the **`ast-grep` CLI** to enable the investigator and reviewer subagents' structural code search; without it, they fall back to text search.
 
-Add the run's generated, ephemeral files to the target repository's `.gitignore`:
+Add the run's generated, ephemeral files to the target repository's `.gitignore`. Every run keeps its `run-state.json`, `context-flag.json`, and rendered HTML artifacts under a per-run directory, `.orchestrate/runs/<runId>/`, so one gitignore line covers them all:
 
 ```gitignore
-.orchestrate/run-state.json
-.orchestrate/context-flag.json
-.orchestrate/*.html
+.orchestrate/runs/
 ```
 
-The committed `.orchestrate/commands.json`, `.orchestrate/routing.json`, and `.orchestrate/handoff.json` are configuration and stay tracked.
+The committed `.orchestrate/commands.json`, `.orchestrate/routing.json`, and `.orchestrate/handoff.json` stay flat at the `.orchestrate/` top level — they are configuration and stay tracked.
 
 ## Configuration Reference
 
@@ -197,9 +232,31 @@ Optional. Tunes the context-watchdog threshold and the successor-session launche
 
 The default terminal chain targets a WSL2 environment. On another host, replace the `terminals` entries with your terminal's new-window invocation. See `skills/orchestrate/references/context-handoff.md` for the full mechanism.
 
-### `.orchestrate/run-state.json`
+### `.orchestrate/runs/<runId>/` — per-run directory
 
-Generated, not authored — the durable run checkpoint. The orchestrator writes it after every slice state change and every wave, and reads it on startup to resume an interrupted run. Gitignore it. Its schema is documented in `skills/orchestrate/references/run-state.md`.
+Generated, not authored. Every run keeps its ephemeral state in its own per-run directory, `.orchestrate/runs/<runId>/`, where `<runId>` is the run's timestamp id. The directory holds:
+
+- `run-state.json` — the durable run checkpoint. The orchestrator writes it after every slice state change and every wave, and reads it on startup to resume an interrupted run.
+- `context-flag.json` — the context-handoff signal, written by the watchdog when the threshold is reached.
+- `dashboard.html`, `graph.html`, `report.html` — the rendered HTML artifacts.
+
+Two distinct runs never share a directory, so their ephemeral state never collides — the per-run layout is the structural foundation for concurrent runs. The committed config files (`commands.json`, `routing.json`, `handoff.json`) stay flat at the `.orchestrate/` top level.
+
+```text
+.orchestrate/
+├── commands.json                 # committed config (flat)
+├── routing.json                  # committed config (flat)
+├── handoff.json                  # committed config (flat)
+└── runs/
+    └── 20260521-015143/          # one per-run directory per run
+        ├── run-state.json
+        ├── context-flag.json     # present only after a handoff is signalled
+        ├── dashboard.html
+        ├── graph.html
+        └── report.html
+```
+
+Gitignore the `.orchestrate/runs/` directory. The `run-state.json` schema is documented in `skills/orchestrate/references/run-state.md`.
 
 ## Optional: Agent Teams
 

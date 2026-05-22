@@ -9,9 +9,13 @@ checkpoint, and the predecessor exits. This file documents the three pieces.
 
 `context-watchdog` is a `PostToolUse` hook bundled with the orchestrate plugin
 (`hooks/hooks.json`). It runs after every tool call, asynchronously, and is a
-**silent no-op unless an orchestration run is in progress** — it checks
-`.orchestrate/run-state.json` for `status: "in-progress"` first, so it is
-harmless in unrelated sessions even though the plugin is always enabled.
+**silent no-op unless an orchestration run is in progress**.
+
+The hook event carries only the session `cwd` and `transcript_path` — never a
+runId. The watchdog therefore first **discovers the active run**: it scans
+`.orchestrate/runs/*/run-state.json` for the single run whose `status` is
+`in-progress`. With no active run it does nothing, so it is harmless in
+unrelated sessions even though the plugin is always enabled.
 
 When a run is active it:
 
@@ -20,16 +24,18 @@ When a run is active it:
    `cache_read_input_tokens`).
 2. Compares that against the context window and threshold from
    `.orchestrate/handoff.json` (defaults: 40% of a 200000-token window).
-3. On the first sample that reaches the threshold, writes
-   `.orchestrate/context-flag.json` and surfaces a `systemMessage`. The flag is
-   written **at most once per run** — once it exists, later samples are no-ops.
+3. On the first sample that reaches the threshold, writes the discovered run's
+   `.orchestrate/runs/<runId>/context-flag.json` and surfaces a `systemMessage`.
+   The flag is written **at most once per run** — once it exists, later samples
+   are no-ops.
 
 The hook never throws and never blocks a tool call; a watchdog that disrupts
 the session would be worse than one that misses.
 
-## 2. `.orchestrate/context-flag.json` — the handoff signal
+## 2. `context-flag.json` — the handoff signal
 
-A small JSON file the watchdog writes when the threshold is reached:
+A small JSON file the watchdog writes when the threshold is reached. It lives in
+the run's per-run directory, at `.orchestrate/runs/<runId>/context-flag.json`:
 
 ```json
 {
@@ -46,8 +52,8 @@ integrates (SKILL.md section 2); the successor **deletes it on startup**
 (SKILL.md section 1) once consumed — a stale flag would make the successor hand
 off again immediately, an infinite spawn loop.
 
-It is ephemeral run state, not config — the target project should gitignore it
-alongside `run-state.json`.
+It is ephemeral run state, not config — it lives in `.orchestrate/runs/<runId>/`
+alongside `run-state.json`, which the target project should gitignore.
 
 ## 3. `.orchestrate/handoff.json` — configuration (optional)
 

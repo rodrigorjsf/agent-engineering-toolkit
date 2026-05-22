@@ -7,6 +7,7 @@ import {
   contextTokens,
   evaluateWatchdog,
   runWatchdog,
+  discoverActiveRunId,
 } from "../src/hooks/context-watchdog.js";
 
 // ─── Transcript fixtures ──────────────────────────────────────────────────────
@@ -41,19 +42,30 @@ function userLine(text: string): string {
 
 const created: string[] = [];
 
+/** The runId every test fixture uses unless a test needs a second run. */
+const RUN_ID = "20260521-015143";
+
+/**
+ * Creates a temp project dir. `runState` and `flag` are written under the
+ * per-run directory `.orchestrate/runs/<runId>/`; `handoff.json` stays flat at
+ * `.orchestrate/` (it is committed config, not ephemeral run state).
+ */
 function project(opts: {
   runState?: unknown;
   handoff?: unknown;
   transcript?: string;
   flag?: unknown;
+  runId?: string;
 }): { dir: string; transcriptPath?: string } {
+  const runId = opts.runId ?? RUN_ID;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-watchdog-"));
   created.push(dir);
-  fs.mkdirSync(path.join(dir, ".orchestrate"));
+  const runDir = path.join(dir, ".orchestrate", "runs", runId);
+  fs.mkdirSync(runDir, { recursive: true });
 
   if (opts.runState !== undefined) {
     fs.writeFileSync(
-      path.join(dir, ".orchestrate", "run-state.json"),
+      path.join(runDir, "run-state.json"),
       typeof opts.runState === "string"
         ? opts.runState
         : JSON.stringify(opts.runState)
@@ -67,7 +79,7 @@ function project(opts: {
   }
   if (opts.flag !== undefined) {
     fs.writeFileSync(
-      path.join(dir, ".orchestrate", "context-flag.json"),
+      path.join(runDir, "context-flag.json"),
       JSON.stringify(opts.flag)
     );
   }
@@ -87,8 +99,8 @@ afterEach(() => {
   created.length = 0;
 });
 
-function flagPath(dir: string): string {
-  return path.join(dir, ".orchestrate", "context-flag.json");
+function flagPath(dir: string, runId: string = RUN_ID): string {
+  return path.join(dir, ".orchestrate", "runs", runId, "context-flag.json");
 }
 
 // ─── parseLatestUsage ─────────────────────────────────────────────────────────
@@ -190,6 +202,49 @@ describe("evaluateWatchdog", () => {
   });
 });
 
+// ─── discoverActiveRunId ──────────────────────────────────────────────────────
+
+describe("discoverActiveRunId", () => {
+  it("returns null when there is no .orchestrate/runs directory", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-watchdog-"));
+    created.push(dir);
+    expect(discoverActiveRunId(dir)).toBeNull();
+  });
+
+  it("returns null when no run is in-progress", () => {
+    const { dir } = project({ runState: { status: "completed" } });
+    expect(discoverActiveRunId(dir)).toBeNull();
+  });
+
+  it("returns the runId of the single in-progress run", () => {
+    const { dir } = project({ runState: { status: "in-progress" } });
+    expect(discoverActiveRunId(dir)).toBe(RUN_ID);
+  });
+
+  it("returns null when a run-state.json is malformed", () => {
+    const { dir } = project({ runState: "{ not json" });
+    expect(discoverActiveRunId(dir)).toBeNull();
+  });
+
+  it("ignores a completed run and finds the in-progress one", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-watchdog-"));
+    created.push(dir);
+    const done = path.join(dir, ".orchestrate", "runs", "20260101-000000");
+    const active = path.join(dir, ".orchestrate", "runs", "20260202-000000");
+    fs.mkdirSync(done, { recursive: true });
+    fs.mkdirSync(active, { recursive: true });
+    fs.writeFileSync(
+      path.join(done, "run-state.json"),
+      JSON.stringify({ status: "completed" })
+    );
+    fs.writeFileSync(
+      path.join(active, "run-state.json"),
+      JSON.stringify({ status: "in-progress" })
+    );
+    expect(discoverActiveRunId(dir)).toBe("20260202-000000");
+  });
+});
+
 // ─── runWatchdog ──────────────────────────────────────────────────────────────
 
 describe("runWatchdog — no active run", () => {
@@ -197,7 +252,7 @@ describe("runWatchdog — no active run", () => {
     const { dir, transcriptPath } = project({
       transcript: assistantLine(2, 8000, 100000),
     });
-    const result = runWatchdog({ transcriptPath, cwd: dir });
+    const result = runWatchdog({ transcriptPath, cwd: dir, runId: RUN_ID });
     expect(result.acted).toBe(false);
     expect(result.flagRaised).toBe(false);
     expect(fs.existsSync(flagPath(dir))).toBe(false);
@@ -208,7 +263,7 @@ describe("runWatchdog — no active run", () => {
       runState: { status: "completed" },
       transcript: assistantLine(2, 8000, 100000),
     });
-    const result = runWatchdog({ transcriptPath, cwd: dir });
+    const result = runWatchdog({ transcriptPath, cwd: dir, runId: RUN_ID });
     expect(result.acted).toBe(false);
     expect(fs.existsSync(flagPath(dir))).toBe(false);
   });
@@ -218,8 +273,22 @@ describe("runWatchdog — no active run", () => {
       runState: "{ not json",
       transcript: assistantLine(2, 8000, 100000),
     });
-    const result = runWatchdog({ transcriptPath, cwd: dir });
+    const result = runWatchdog({ transcriptPath, cwd: dir, runId: RUN_ID });
     expect(result.acted).toBe(false);
+  });
+
+  it("is a no-op when the runId is malformed", () => {
+    const { dir, transcriptPath } = project({
+      runState: { status: "in-progress" },
+      transcript: assistantLine(2, 8000, 100000),
+    });
+    const result = runWatchdog({
+      transcriptPath,
+      cwd: dir,
+      runId: "../../etc",
+    });
+    expect(result.acted).toBe(false);
+    expect(result.flagRaised).toBe(false);
   });
 });
 
@@ -230,7 +299,7 @@ describe("runWatchdog — active run", () => {
       runState: { status: "in-progress" },
       transcript: assistantLine(2, 8000, 100000),
     });
-    const result = runWatchdog({ transcriptPath, cwd: dir });
+    const result = runWatchdog({ transcriptPath, cwd: dir, runId: RUN_ID });
 
     expect(result.acted).toBe(true);
     expect(result.flagRaised).toBe(true);
@@ -243,13 +312,26 @@ describe("runWatchdog — active run", () => {
     expect(typeof flag.raisedAt).toBe("string");
   });
 
+  it("writes the flag under the per-run directory", () => {
+    const { dir, transcriptPath } = project({
+      runState: { status: "in-progress" },
+      transcript: assistantLine(2, 8000, 100000),
+    });
+    const result = runWatchdog({ transcriptPath, cwd: dir, runId: RUN_ID });
+
+    expect(result.flagRaised).toBe(true);
+    expect(result.flagPath).toBe(
+      path.join(dir, ".orchestrate", "runs", RUN_ID, "context-flag.json")
+    );
+  });
+
   it("does not raise the flag when usage is below the threshold", () => {
     // 2 + 8000 + 40000 = 48002 tokens = 24% of the default window.
     const { dir, transcriptPath } = project({
       runState: { status: "in-progress" },
       transcript: assistantLine(2, 8000, 40000),
     });
-    const result = runWatchdog({ transcriptPath, cwd: dir });
+    const result = runWatchdog({ transcriptPath, cwd: dir, runId: RUN_ID });
 
     expect(result.acted).toBe(true);
     expect(result.flagRaised).toBe(false);
@@ -263,7 +345,7 @@ describe("runWatchdog — active run", () => {
       transcript: assistantLine(2, 8000, 100000),
       flag: { raisedAt: "2026-01-01T00:00:00Z", usedTokens: 1 },
     });
-    const result = runWatchdog({ transcriptPath, cwd: dir });
+    const result = runWatchdog({ transcriptPath, cwd: dir, runId: RUN_ID });
 
     expect(result.flagRaised).toBe(false);
     // The pre-existing flag is left untouched.
@@ -278,7 +360,7 @@ describe("runWatchdog — active run", () => {
       handoff: { watchdog: { thresholdPercent: 90 } },
       transcript: assistantLine(2, 8000, 100000),
     });
-    const result = runWatchdog({ transcriptPath, cwd: dir });
+    const result = runWatchdog({ transcriptPath, cwd: dir, runId: RUN_ID });
 
     expect(result.flagRaised).toBe(false);
     expect(fs.existsSync(flagPath(dir))).toBe(false);
@@ -291,14 +373,18 @@ describe("runWatchdog — active run", () => {
       handoff: { watchdog: { contextWindowTokens: 1000000 } },
       transcript: assistantLine(2, 8000, 100000),
     });
-    const result = runWatchdog({ transcriptPath, cwd: dir });
+    const result = runWatchdog({ transcriptPath, cwd: dir, runId: RUN_ID });
 
     expect(result.flagRaised).toBe(false);
   });
 
   it("does not raise the flag when no transcript is available", () => {
     const { dir } = project({ runState: { status: "in-progress" } });
-    const result = runWatchdog({ transcriptPath: undefined, cwd: dir });
+    const result = runWatchdog({
+      transcriptPath: undefined,
+      cwd: dir,
+      runId: RUN_ID,
+    });
 
     expect(result.acted).toBe(true);
     expect(result.flagRaised).toBe(false);
@@ -309,7 +395,7 @@ describe("runWatchdog — active run", () => {
       runState: { status: "in-progress" },
       transcript: [userLine("one"), userLine("two")].join("\n"),
     });
-    const result = runWatchdog({ transcriptPath, cwd: dir });
+    const result = runWatchdog({ transcriptPath, cwd: dir, runId: RUN_ID });
 
     expect(result.flagRaised).toBe(false);
   });
@@ -325,7 +411,7 @@ describe("runWatchdog — active run", () => {
       runState: { status: "in-progress" },
       transcript,
     });
-    const result = runWatchdog({ transcriptPath, cwd: dir });
+    const result = runWatchdog({ transcriptPath, cwd: dir, runId: RUN_ID });
 
     expect(result.flagRaised).toBe(true);
     expect(result.evaluation!.usedTokens).toBe(108002);

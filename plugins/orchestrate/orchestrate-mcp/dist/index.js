@@ -3226,8 +3226,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path6) {
-      let input = path6;
+    function removeDotSegments(path7) {
+      let input = path7;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3479,8 +3479,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path6, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path6 && path6 !== "/" ? path6 : void 0;
+        const [path7, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path7 && path7 !== "/" ? path7 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs6, exportName) {
+    function addFormats(ajv, list, fs7, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs6[f]);
+        ajv.addFormat(f, fs7[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -7364,8 +7364,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path6, errorMaps, issueData } = params;
-  const fullPath = [...path6, ...issueData.path || []];
+  const { data, path: path7, errorMaps, issueData } = params;
+  const fullPath = [...path7, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7481,11 +7481,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path6, key) {
+  constructor(parent, value, path7, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path6;
+    this._path = path7;
     this._key = key;
   }
   get path() {
@@ -11123,10 +11123,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path6) {
-  if (!path6)
+function getElementAtPath(obj, path7) {
+  if (!path7)
     return obj;
-  return path6.reduce((acc, key) => acc?.[key], obj);
+  return path7.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11446,11 +11446,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path6, issues) {
+function prefixIssues(path7, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path6);
+    iss.path.unshift(path7);
     return iss;
   });
 }
@@ -21961,8 +21961,38 @@ function resolveRoutingFromConfig(input) {
 }
 
 // src/tools/render.ts
-var path4 = __toESM(require("path"));
+var path5 = __toESM(require("path"));
 var fs4 = __toESM(require("fs"));
+
+// src/run-dir.ts
+var path4 = __toESM(require("path"));
+var RUN_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+function isValidRunId(runId) {
+  return RUN_ID_PATTERN.test(runId);
+}
+function resolveRunDir(repoPath, runId) {
+  if (!isValidRunId(runId)) {
+    return {
+      ok: false,
+      errorCode: "RUN_ID_INVALID",
+      errorMessage: `Invalid runId '${runId}': a runId must be a non-empty string of letters, digits, underscores, and hyphens (e.g. '20260521-015143').`
+    };
+  }
+  const runDir = path4.join(repoPath, ".orchestrate", "runs", runId);
+  return {
+    ok: true,
+    paths: {
+      runDir,
+      runStatePath: path4.join(runDir, "run-state.json"),
+      contextFlagPath: path4.join(runDir, "context-flag.json"),
+      dashboardPath: path4.join(runDir, "dashboard.html"),
+      graphPath: path4.join(runDir, "graph.html"),
+      reportPath: path4.join(runDir, "report.html")
+    }
+  };
+}
+
+// src/tools/render.ts
 var sliceStateEnum = external_exports.enum(["pending", "in-progress", "passed", "failed", "skipped"]);
 var tierEnum = external_exports.enum(["trivial", "standard", "complex"]);
 var sliceSchema = external_exports.object({
@@ -21992,26 +22022,29 @@ var runStateSchema = external_exports.object({
   slices: external_exports.record(external_exports.string(), sliceSchema)
 });
 var renderInputSchema = external_exports.object({
+  runId: external_exports.string().describe(
+    "The orchestration run's id (its YYYYMMDD-HHMMSS timestamp). It selects the per-run directory .orchestrate/runs/<runId>/, which holds that run's run-state.json and is where the HTML artifact is written. Required \u2014 every render call happens after the run has a runId."
+  ),
   repoPath: external_exports.string().optional().describe(
-    "Path to the project root that holds the .orchestrate/run-state.json file. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default."
+    "Path to the project root that holds the .orchestrate/ directory. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default."
   ),
   outputPath: external_exports.string().optional().describe(
-    "Override the default output path for the HTML artifact. When omitted the artifact is written under <repoPath>/.orchestrate/ with a fixed filename per tool (dashboard.html, graph.html, report.html)."
+    "Override the default output path for the HTML artifact. When omitted the artifact is written under <repoPath>/.orchestrate/runs/<runId>/ with a fixed filename per tool (dashboard.html, graph.html, report.html)."
   )
 });
 var renderOutputSchema = external_exports.object({
   status: external_exports.enum(["ok", "error"]).describe("Outcome discriminant. 'ok' = artifact written; 'error' = could not complete."),
   artifactPath: external_exports.string().optional().describe("Absolute path to the written HTML artifact. Present when status='ok'."),
-  errorCode: external_exports.enum(["RUN_STATE_NOT_FOUND", "RUN_STATE_INVALID", "WRITE_FAILED"]).optional().describe(
-    "Machine-readable failure category. Present when status='error'. 'RUN_STATE_NOT_FOUND' = no .orchestrate/run-state.json; 'RUN_STATE_INVALID' = malformed JSON or schema mismatch; 'WRITE_FAILED' = could not write the HTML artifact."
+  errorCode: external_exports.enum([
+    "RUN_ID_INVALID",
+    "RUN_STATE_NOT_FOUND",
+    "RUN_STATE_INVALID",
+    "WRITE_FAILED"
+  ]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'RUN_ID_INVALID' = the runId is malformed and cannot resolve a run directory; 'RUN_STATE_NOT_FOUND' = no run-state.json under .orchestrate/runs/<runId>/; 'RUN_STATE_INVALID' = malformed JSON or schema mismatch; 'WRITE_FAILED' = could not write the HTML artifact."
   ),
   errorMessage: external_exports.string().optional().describe("Human-readable failure description. Present when status='error'.")
 });
-var ARTIFACT_DEFAULTS = {
-  dashboard: ".orchestrate/dashboard.html",
-  graph: ".orchestrate/graph.html",
-  report: ".orchestrate/report.html"
-};
 function firstLine3(message) {
   const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
   return line ?? message.trim();
@@ -22034,8 +22067,22 @@ function formatDuration(startedAt, updatedAt) {
   if (mins > 0) return `${mins}m ${secs % 60}s`;
   return `${secs}s`;
 }
-function readAndValidateRunState(repoPath) {
-  const statePath = path4.join(repoPath, ".orchestrate", "run-state.json");
+function resolveRenderPaths(input) {
+  const repoPath = input.repoPath ?? process.cwd();
+  const resolved = resolveRunDir(repoPath, input.runId);
+  if (!resolved.ok) {
+    return {
+      ok: false,
+      response: {
+        status: "error",
+        errorCode: resolved.errorCode,
+        errorMessage: resolved.errorMessage
+      }
+    };
+  }
+  return { ok: true, paths: resolved.paths };
+}
+function readAndValidateRunState(statePath) {
   let raw;
   try {
     raw = fs4.readFileSync(statePath, "utf8");
@@ -22045,7 +22092,7 @@ function readAndValidateRunState(repoPath) {
       response: {
         status: "error",
         errorCode: "RUN_STATE_NOT_FOUND",
-        errorMessage: `No .orchestrate/run-state.json found in ${repoPath}.`
+        errorMessage: `No run-state.json found at ${statePath}.`
       }
     };
   }
@@ -22058,7 +22105,7 @@ function readAndValidateRunState(repoPath) {
       response: {
         status: "error",
         errorCode: "RUN_STATE_INVALID",
-        errorMessage: `.orchestrate/run-state.json is not valid JSON: ${firstLine3(
+        errorMessage: `run-state.json is not valid JSON: ${firstLine3(
           err instanceof Error ? err.message : String(err)
         )}`
       }
@@ -22072,7 +22119,7 @@ function readAndValidateRunState(repoPath) {
       response: {
         status: "error",
         errorCode: "RUN_STATE_INVALID",
-        errorMessage: `.orchestrate/run-state.json does not match the expected shape: ${detail}`
+        errorMessage: `run-state.json does not match the expected shape: ${detail}`
       }
     };
   }
@@ -22080,7 +22127,7 @@ function readAndValidateRunState(repoPath) {
 }
 function writeArtifact(html, outputPath) {
   try {
-    fs4.mkdirSync(path4.dirname(outputPath), { recursive: true });
+    fs4.mkdirSync(path5.dirname(outputPath), { recursive: true });
     fs4.writeFileSync(outputPath, html, "utf8");
     return void 0;
   } catch (err) {
@@ -22550,31 +22597,34 @@ function renderReport(state) {
 </html>`;
 }
 async function renderDashboardArtifact(input) {
-  const repoPath = input.repoPath ?? process.cwd();
-  const read = readAndValidateRunState(repoPath);
+  const resolved = resolveRenderPaths(input);
+  if (!resolved.ok) return resolved.response;
+  const read = readAndValidateRunState(resolved.paths.runStatePath);
   if (!read.ok) return read.response;
   const html = renderDashboard(read.state);
-  const artifactPath = input.outputPath ?? path4.join(repoPath, ARTIFACT_DEFAULTS.dashboard);
+  const artifactPath = input.outputPath ?? resolved.paths.dashboardPath;
   const writeErr = writeArtifact(html, artifactPath);
   if (writeErr) return writeErr;
   return { status: "ok", artifactPath };
 }
 async function renderGraphArtifact(input) {
-  const repoPath = input.repoPath ?? process.cwd();
-  const read = readAndValidateRunState(repoPath);
+  const resolved = resolveRenderPaths(input);
+  if (!resolved.ok) return resolved.response;
+  const read = readAndValidateRunState(resolved.paths.runStatePath);
   if (!read.ok) return read.response;
   const html = renderGraph(read.state);
-  const artifactPath = input.outputPath ?? path4.join(repoPath, ARTIFACT_DEFAULTS.graph);
+  const artifactPath = input.outputPath ?? resolved.paths.graphPath;
   const writeErr = writeArtifact(html, artifactPath);
   if (writeErr) return writeErr;
   return { status: "ok", artifactPath };
 }
 async function renderReportArtifact(input) {
-  const repoPath = input.repoPath ?? process.cwd();
-  const read = readAndValidateRunState(repoPath);
+  const resolved = resolveRenderPaths(input);
+  if (!resolved.ok) return resolved.response;
+  const read = readAndValidateRunState(resolved.paths.runStatePath);
   if (!read.ok) return read.response;
   const html = renderReport(read.state);
-  const artifactPath = input.outputPath ?? path4.join(repoPath, ARTIFACT_DEFAULTS.report);
+  const artifactPath = input.outputPath ?? resolved.paths.reportPath;
   const writeErr = writeArtifact(html, artifactPath);
   if (writeErr) return writeErr;
   return { status: "ok", artifactPath };
@@ -22584,7 +22634,7 @@ async function renderReportArtifact(input) {
 var import_child_process3 = require("child_process");
 
 // src/handoff-config.ts
-var path5 = __toESM(require("path"));
+var path6 = __toESM(require("path"));
 var fs5 = __toESM(require("fs"));
 var watchdogConfigSchema = external_exports.object({
   thresholdPercent: external_exports.number().min(1).max(100).default(40).describe(
@@ -22639,7 +22689,7 @@ function firstLine4(message) {
   return line ?? message.trim();
 }
 function loadHandoffConfig(repoPath) {
-  const configPath = path5.join(repoPath, ".orchestrate", "handoff.json");
+  const configPath = path6.join(repoPath, ".orchestrate", "handoff.json");
   const defaults = handoffConfigSchema.parse({});
   let raw;
   try {
@@ -22672,7 +22722,7 @@ function loadHandoffConfig(repoPath) {
 // src/tools/spawn-successor.ts
 var spawnSuccessorInputSchema = external_exports.object({
   repoPath: external_exports.string().optional().describe(
-    "Path to the repository root \u2014 the directory holding .orchestrate/. The successor session opens here and reads run-state.json to resume. Defaults to the MCP server process's current working directory; callers should pass it explicitly."
+    "Path to the repository root \u2014 the directory holding .orchestrate/. The successor session opens here and re-discovers the active run from .orchestrate/runs/*/run-state.json to resume. Defaults to the MCP server process's current working directory; callers should pass it explicitly."
   )
 });
 var launchAttemptSchema = external_exports.object({
@@ -22950,6 +23000,331 @@ async function searchStructural(input, opts = {}) {
   }
 }
 
+// src/tools/backlog-partitioner.ts
+var backlogIssueSchema = external_exports.object({
+  number: external_exports.number().int().positive().describe("GitHub issue number."),
+  title: external_exports.string().min(1).describe("Issue title, verbatim from GitHub."),
+  blockedBy: external_exports.array(external_exports.number().int().positive()).describe(
+    "Issue numbers this issue is blocked by \u2014 the parsed 'Blocked by' section of the issue body (`- #NNN` lines). Empty array when the section is absent or has no entries."
+  ),
+  parent: external_exports.number().int().positive().nullable().describe(
+    "The issue number named in the 'Parent' section of this issue's body (the `PRD #NNN` line), or null when no parent is declared."
+  )
+});
+var partitionBacklogInputSchema = external_exports.object({
+  issues: external_exports.array(backlogIssueSchema).describe(
+    "The full ready-for-agent backlog. Each issue carries its parsed Blocked by and Parent sections."
+  )
+});
+var partitionBacklogOutputSchema = external_exports.object({
+  slices: external_exports.array(backlogIssueSchema).describe(
+    "Issues to process as implementation slices, in the same order they appeared in the input. The parent PRD (if any) is excluded."
+  ),
+  parentIssue: backlogIssueSchema.nullable().describe(
+    "The detected parent PRD issue, or null when none was detected. This is only the progress-comment target \u2014 it is never implemented as a slice."
+  )
+});
+var filterToOneParentPrdInputSchema = external_exports.object({
+  issues: external_exports.array(backlogIssueSchema).describe("The full backlog to filter."),
+  prdNumber: external_exports.number().int().positive().describe(
+    "The issue number of the parent PRD whose children are requested."
+  )
+});
+var filterToOneParentPrdOutputSchema = external_exports.object({
+  issues: external_exports.array(backlogIssueSchema).describe(
+    "The subset of issues whose parent field equals prdNumber, in input order. The parent PRD issue itself is excluded."
+  )
+});
+function hasPrdTitlePrefix(title) {
+  return /^prd\s*:/i.test(title.trim());
+}
+function partitionBacklog(issues) {
+  if (issues.length === 0) {
+    return { slices: [], parentIssue: null };
+  }
+  const byNumber = /* @__PURE__ */ new Map();
+  for (const issue2 of issues) {
+    byNumber.set(issue2.number, issue2);
+  }
+  const referencedAsParent = /* @__PURE__ */ new Set();
+  for (const issue2 of issues) {
+    if (issue2.parent !== null && byNumber.has(issue2.parent)) {
+      referencedAsParent.add(issue2.parent);
+    }
+  }
+  if (referencedAsParent.size > 0) {
+    const parentIssue = issues.find((i) => referencedAsParent.has(i.number)) ?? null;
+    const parentNumber = parentIssue?.number ?? -1;
+    return {
+      parentIssue,
+      slices: issues.filter((i) => i.number !== parentNumber)
+    };
+  }
+  const prdByTitle = issues.find((i) => hasPrdTitlePrefix(i.title));
+  if (prdByTitle) {
+    return {
+      parentIssue: prdByTitle,
+      slices: issues.filter((i) => i.number !== prdByTitle.number)
+    };
+  }
+  return { slices: issues, parentIssue: null };
+}
+function filterToOneParentPrd(issues, prdNumber) {
+  return issues.filter(
+    (i) => i.parent === prdNumber && i.number !== prdNumber
+  );
+}
+
+// src/tools/validate-envelope.ts
+var verificationEntrySchema = external_exports.object({
+  capability: external_exports.enum(["tests", "typecheck", "build", "lint"]).describe("Which capability tool was run."),
+  result: external_exports.enum(["passed", "failed", "not-configured"]).describe(
+    "Outcome of that run. 'not-configured' means the verb has no command set."
+  )
+});
+var implementerEnvelopeSchema = external_exports.object({
+  role: external_exports.literal("implementer").describe("Discriminant \u2014 the implementer role."),
+  status: external_exports.enum(["completed", "blocked"]).describe(
+    "Outcome. 'completed' = acceptance criteria met and every configured capability tool passed; 'blocked' = the implementer could not finish."
+  ),
+  filesChanged: external_exports.array(external_exports.string()).describe(
+    "Files the implementer created or edited, as paths relative to the worktree root. An empty array means no file was changed."
+  ),
+  verification: external_exports.array(verificationEntrySchema).describe("Each capability tool the implementer ran and its result."),
+  notes: external_exports.string().describe(
+    "Free-form notes for the orchestrator or a later reviewer \u2014 assumptions, partial work, or, when blocked, exactly what stopped the implementer."
+  )
+});
+var reviewerEnvelopeSchema = external_exports.object({
+  role: external_exports.literal("reviewer").describe("Discriminant \u2014 the reviewer role."),
+  status: external_exports.enum(["passed", "failed"]).describe(
+    "Outcome. 'passed' = acceptance criteria met, code sound, every configured capability tool passed; 'failed' = an unrecoverable blocker."
+  ),
+  filesChanged: external_exports.array(external_exports.string()).describe(
+    "Files the reviewer edited during review, relative to the worktree root. An empty array means the reviewer changed nothing."
+  ),
+  verification: external_exports.array(verificationEntrySchema).describe("Each capability tool the reviewer ran and its result."),
+  notes: external_exports.string().describe(
+    "Free-form notes \u2014 what was fixed and why, or, when failed, the exact blocker and why it is unsafe to fix inline."
+  )
+});
+var conflictResolverEnvelopeSchema = external_exports.object({
+  role: external_exports.literal("conflict-resolver").describe("Discriminant \u2014 the conflict-resolver role."),
+  status: external_exports.enum(["resolved", "failed"]).describe(
+    "Outcome. 'resolved' = every conflict marker gone and every configured capability tool passed; 'failed' = a conflict that could not be resolved correctly."
+  ),
+  filesChanged: external_exports.array(external_exports.string()).describe(
+    "The conflicted files the resolver edited, relative to the worktree root."
+  ),
+  verification: external_exports.array(verificationEntrySchema).describe("Each capability tool the conflict-resolver ran and its result."),
+  notes: external_exports.string().describe(
+    "Free-form notes \u2014 how each conflict was reconciled, or, when failed, the exact conflict that could not be resolved safely."
+  )
+});
+var investigatorEnvelopeSchema = external_exports.object({
+  role: external_exports.literal("investigator").describe("Discriminant \u2014 the investigator role."),
+  relevantFiles: external_exports.array(external_exports.string()).describe(
+    "Paths, relative to the repository root, the implementer will likely need to read or change."
+  ),
+  patterns: external_exports.string().describe(
+    "Existing conventions in the affected areas the implementer must follow."
+  ),
+  risks: external_exports.string().describe(
+    "Edge cases, failure modes, affected callers, and invariants to preserve."
+  ),
+  approach: external_exports.string().describe("A suggested implementation approach \u2014 what to change and why."),
+  notes: external_exports.string().describe("Anything else that does not fit the fields above.")
+});
+var envelopeSchema = external_exports.discriminatedUnion("role", [
+  implementerEnvelopeSchema,
+  reviewerEnvelopeSchema,
+  conflictResolverEnvelopeSchema,
+  investigatorEnvelopeSchema
+]);
+var ENVELOPE_ROLES = [
+  "implementer",
+  "reviewer",
+  "conflict-resolver",
+  "investigator"
+];
+var validateEnvelopeInputSchema = external_exports.object({
+  text: external_exports.string().describe(
+    "The raw, verbatim text a subagent returned as its final message. The validator locates the ```orchestrate-envelope fenced block within it."
+  ),
+  role: external_exports.enum(ENVELOPE_ROLES).describe(
+    "The role the subagent was spawned as. The located envelope must declare this same role \u2014 a role mismatch is reported as an invalid envelope."
+  )
+});
+var validateEnvelopeOutputSchema = external_exports.object({
+  status: external_exports.enum(["valid", "invalid", "missing"]).describe(
+    "Outcome discriminant. 'valid' = a well-formed envelope matching the expected role was found; 'invalid' = an envelope was attempted but is truncated, malformed, or does not match the schema (a truncated envelope is ALWAYS reported invalid, never silently accepted); 'missing' = no orchestrate-envelope block was found at all."
+  ),
+  role: external_exports.enum(ENVELOPE_ROLES).describe("The role the envelope was validated against \u2014 echoes the input."),
+  envelope: envelopeSchema.optional().describe(
+    "The parsed, schema-conforming envelope. Present only when status='valid'."
+  ),
+  errorCode: external_exports.enum(["TRUNCATED_OR_MALFORMED", "SCHEMA_MISMATCH"]).optional().describe(
+    "Machine-readable reason an attempted envelope was rejected. Present when status='invalid'. 'TRUNCATED_OR_MALFORMED' = the fenced block could not be parsed as JSON (truncated mid-turn, or not JSON); 'SCHEMA_MISMATCH' = it parsed as JSON but does not match the role's envelope schema (a missing field, wrong role, or bad value)."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Human-readable description of why the envelope is invalid or missing. Present when status='invalid' or status='missing'."
+  )
+});
+var FENCE_TAG = "orchestrate-envelope";
+function extractEnvelopeBlocks(text) {
+  const lines = text.split("\n");
+  const blocks = [];
+  let inBlock = false;
+  let buffer = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!inBlock) {
+      if (trimmed === "```" + FENCE_TAG) {
+        inBlock = true;
+        buffer = [];
+      }
+    } else {
+      if (trimmed === "```") {
+        blocks.push(buffer.join("\n"));
+        inBlock = false;
+      } else {
+        buffer.push(line);
+      }
+    }
+  }
+  return blocks;
+}
+function hasUnclosedEnvelopeFence(text) {
+  const lines = text.split("\n");
+  let openCount = 0;
+  let inBlock = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!inBlock) {
+      if (trimmed === "```" + FENCE_TAG) {
+        inBlock = true;
+        openCount++;
+      }
+    } else if (trimmed === "```") {
+      inBlock = false;
+    }
+  }
+  return inBlock && openCount > 0;
+}
+function validateEnvelope(input) {
+  const { text, role } = input;
+  const blocks = extractEnvelopeBlocks(text);
+  const truncated = hasUnclosedEnvelopeFence(text);
+  if (blocks.length === 0 && !truncated) {
+    return {
+      status: "missing",
+      role,
+      errorMessage: `No \`\`\`${FENCE_TAG} block was found in the subagent's output. The subagent did not emit a result envelope.`
+    };
+  }
+  if (truncated) {
+    return {
+      status: "invalid",
+      role,
+      errorCode: "TRUNCATED_OR_MALFORMED",
+      errorMessage: `An opening \`\`\`${FENCE_TAG} fence was found with no closing fence \u2014 the subagent's turn was truncated mid-envelope. A truncated envelope is never accepted.`
+    };
+  }
+  const lastBlock = blocks[blocks.length - 1];
+  let parsed;
+  try {
+    parsed = JSON.parse(lastBlock);
+  } catch (err) {
+    return {
+      status: "invalid",
+      role,
+      errorCode: "TRUNCATED_OR_MALFORMED",
+      errorMessage: `The \`\`\`${FENCE_TAG} block does not contain valid JSON: ${err instanceof Error ? err.message : String(err)}. The envelope is truncated or malformed.`
+    };
+  }
+  const result = envelopeSchema.safeParse(parsed);
+  if (!result.success) {
+    const detail = result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+    return {
+      status: "invalid",
+      role,
+      errorCode: "SCHEMA_MISMATCH",
+      errorMessage: `The envelope does not match the expected schema: ${detail}.`
+    };
+  }
+  if (result.data.role !== role) {
+    return {
+      status: "invalid",
+      role,
+      errorCode: "SCHEMA_MISMATCH",
+      errorMessage: `The envelope declares role "${result.data.role}" but the subagent was spawned as "${role}".`
+    };
+  }
+  return {
+    status: "valid",
+    role,
+    envelope: result.data
+  };
+}
+
+// src/tools/recover-changed-files.ts
+var fs6 = __toESM(require("fs"));
+var recoverChangedFilesInputSchema = external_exports.object({
+  worktreePath: external_exports.string().describe(
+    "Absolute path to the slice worktree to inspect. The recovery treats this worktree as the source of truth for the changed-file set."
+  )
+});
+var recoverChangedFilesOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the changed-file set was recovered; 'error' = the worktree could not be inspected."
+  ),
+  changedFiles: external_exports.array(external_exports.string()).optional().describe(
+    "Every changed path in the worktree \u2014 tracked modifications, staged changes, AND untracked files (build artifacts included; no filter is applied). Each entry is a single real path relative to the worktree root; a rename emits both its source and destination path, never an 'old -> new' composite. Present when status='ok' (an empty array means a clean worktree)."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT", "PATH_NOT_FOUND", "GIT_ERROR"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'INVALID_INPUT' = the path would be parsed by git as an option flag; 'PATH_NOT_FOUND' = the worktree path does not exist on disk; 'GIT_ERROR' = git could not report status (e.g. not a git worktree)."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='error'."
+  )
+});
+async function recoverChangedFiles(input) {
+  const { worktreePath } = input;
+  const guardErr = optionInjectionError("worktreePath", worktreePath);
+  if (guardErr) {
+    return {
+      status: "error",
+      errorCode: "INVALID_INPUT",
+      errorMessage: guardErr
+    };
+  }
+  if (!fs6.existsSync(worktreePath)) {
+    return {
+      status: "error",
+      errorCode: "PATH_NOT_FOUND",
+      errorMessage: `Worktree path does not exist: ${worktreePath}`
+    };
+  }
+  let porcelain;
+  try {
+    const { stdout } = await gitExecFile(
+      ["status", "--porcelain", "-z"],
+      worktreePath
+    );
+    porcelain = stdout;
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "GIT_ERROR",
+      errorMessage: cleanGitError(err)
+    };
+  }
+  return {
+    status: "ok",
+    changedFiles: parsePorcelainZ(porcelain)
+  };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
@@ -23112,19 +23487,19 @@ var RENDER_TOOLS = [
   {
     name: "render_dashboard",
     title: "Render Run Dashboard",
-    description: "Reads .orchestrate/run-state.json and writes a standalone HTML dashboard showing the live run state: run id, status, wave progress, and a color-coded slice table. Returns only the artifact path \u2014 the HTML is written to disk, never returned in the response.",
+    description: "Reads run-state.json from the per-run directory .orchestrate/runs/<runId>/ and writes a standalone HTML dashboard into it showing the live run state: run id, status, wave progress, and a color-coded slice table. Requires a `runId`. Returns only the artifact path \u2014 the HTML is written to disk, never returned in the response.",
     run: renderDashboardArtifact
   },
   {
     name: "render_graph",
     title: "Render Dependency Graph",
-    description: "Reads .orchestrate/run-state.json and writes a standalone HTML dependency graph: waves as columns, slices as nodes, blockedBy edges as SVG lines. Layout is deterministic (x = wave index, y = slice index in wave). Returns only the artifact path.",
+    description: "Reads run-state.json from the per-run directory .orchestrate/runs/<runId>/ and writes a standalone HTML dependency graph into it: waves as columns, slices as nodes, blockedBy edges as SVG lines. Layout is deterministic (x = wave index, y = slice index in wave). Requires a `runId`. Returns only the artifact path.",
     run: renderGraphArtifact
   },
   {
     name: "render_report",
     title: "Render Run Report",
-    description: "Reads .orchestrate/run-state.json and writes a standalone HTML final report: run duration, outcome counts (passed/failed/skipped), the final pull request link, and a per-slice outcome table. Returns only the artifact path.",
+    description: "Reads run-state.json from the per-run directory .orchestrate/runs/<runId>/ and writes a standalone HTML final report into it: run duration, outcome counts (passed/failed/skipped), the final pull request link, and a per-slice outcome table. Requires a `runId`. Returns only the artifact path.",
     run: renderReportArtifact
   }
 ];
@@ -23170,7 +23545,7 @@ registerTool(
   "spawn_successor",
   {
     title: "Spawn Successor Session",
-    description: "Launches a fresh interactive Claude Code session that resumes an interrupted orchestration run from the .orchestrate/run-state.json checkpoint, then the predecessor exits. The successor opens in a new terminal window with Remote Control active and re-invokes /orchestrate \u2014 never print mode. The terminal fallback chain and claude flags are configured in .orchestrate/handoff.json; built-in defaults target a WSL2 environment. Returns a discriminated `status` of 'ok' or 'error'.",
+    description: "Launches a fresh interactive Claude Code session that resumes an interrupted orchestration run from its run-state.json checkpoint (under the per-run directory .orchestrate/runs/<runId>/), then the predecessor exits. The successor opens in a new terminal window with Remote Control active and re-invokes /orchestrate \u2014 never print mode \u2014 which re-discovers the active run. The terminal fallback chain and claude flags are configured in .orchestrate/handoff.json; built-in defaults target a WSL2 environment. Returns a discriminated `status` of 'ok' or 'error'.",
     inputSchema: spawnSuccessorInputSchema.shape,
     outputSchema: spawnSuccessorOutputSchema.shape
   },
@@ -23204,6 +23579,100 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleSearchStructural
+);
+var handlePartitionBacklog = async (input) => {
+  const result = partitionBacklog(input.issues);
+  const sliceCount = result.slices.length;
+  const parentNote = result.parentIssue ? ` Parent PRD is issue #${result.parentIssue.number}.` : " No parent PRD detected.";
+  const text = `Partitioned backlog into ${sliceCount} slice(s).${parentNote}`;
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "partition_backlog",
+  {
+    title: "Partition Backlog",
+    description: "Splits the ready-for-agent backlog into implementation slices and an optional parent PRD issue. The parent PRD is detected by two signals in order: (1) parent-field reference \u2014 if any issue names another backlog issue as its parent, that issue is the parent PRD; (2) PRD: title heuristic \u2014 if no explicit parent reference exists, any issue whose title starts with 'PRD:' (case-insensitive) is treated as the parent PRD. The detected parent PRD is excluded from slices and surfaced as parentIssue. If no parent is detected, parentIssue is null and all issues are returned as slices.",
+    inputSchema: partitionBacklogInputSchema.shape,
+    outputSchema: partitionBacklogOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handlePartitionBacklog
+);
+var handleFilterToOneParentPrd = async (input) => {
+  const filtered = filterToOneParentPrd(input.issues, input.prdNumber);
+  const text = `Filtered to ${filtered.length} issue(s) whose parent is #${input.prdNumber}.`;
+  return {
+    structuredContent: { issues: filtered },
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "filter_to_one_parent_prd",
+  {
+    title: "Filter Backlog to One Parent PRD",
+    description: "Narrows the full backlog to only the issues whose parent field equals prdNumber. The parent PRD issue itself is excluded from the result \u2014 only its child slices are returned, in input order. Use this before calling partition_backlog when the run is scoped to a single PRD (e.g. /orchestrate <PRD#>).",
+    inputSchema: filterToOneParentPrdInputSchema.shape,
+    outputSchema: filterToOneParentPrdOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleFilterToOneParentPrd
+);
+var handleValidateEnvelope = async (input) => {
+  const result = validateEnvelope(input);
+  let text;
+  if (result.status === "valid") {
+    text = `Valid ${result.role} envelope.`;
+  } else if (result.status === "invalid") {
+    text = `Invalid ${result.role} envelope [${result.errorCode}]: ${result.errorMessage}`;
+  } else {
+    text = `Missing ${result.role} envelope: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "validate_envelope",
+  {
+    title: "Validate Subagent Result Envelope",
+    description: "Validates a subagent's result envelope \u2014 the ```orchestrate-envelope fenced JSON block a subagent emits as its final message \u2014 against the defined schema for its role. Returns a discriminated `status`: 'valid' (a well-formed envelope matching the role, with the parsed `envelope`), 'invalid' (an envelope was attempted but is truncated, malformed, or off-schema \u2014 a truncated envelope is ALWAYS invalid, never silently accepted), or 'missing' (no envelope block was found). The orchestrator uses this instead of parsing subagent prose for status or changed files.",
+    inputSchema: validateEnvelopeInputSchema.shape,
+    outputSchema: validateEnvelopeOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleValidateEnvelope
+);
+var handleRecoverChangedFiles = async (input) => {
+  const result = await recoverChangedFiles(input);
+  let text;
+  if (result.status === "ok") {
+    text = `Recovered ${result.changedFiles.length} changed file(s) from the worktree.`;
+  } else {
+    text = `Changed-file recovery failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "recover_changed_files",
+  {
+    title: "Recover Changed Files From a Worktree",
+    description: "Recovers the changed-file set of a slice worktree by inspecting it directly with 'git status --porcelain -z' \u2014 the orchestrator's fallback for when a subagent's result envelope is missing or invalid and its `filesChanged` list cannot be trusted. Returns ALL changes (tracked, staged, and untracked alike \u2014 build artifacts NOT filtered); a rename emits both real paths, never an 'old -> new' composite. Discriminated `status` of 'ok' or 'error'.",
+    inputSchema: recoverChangedFilesInputSchema.shape,
+    outputSchema: recoverChangedFilesOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRecoverChangedFiles
 );
 async function main() {
   const transport = new StdioServerTransport();
