@@ -51,15 +51,18 @@ Check these before starting. If one is missing, report it and stop.
 - Branch protection does not block merges into `orchestrate/umbrella-*` or
   `orchestrate/slice-*` branches — the auto-merge needs them open.
 
-The target project should also have committed `.orchestrate/commands.json` and
-`.orchestrate/routing.json` (see the plugin's `templates/`). Without
+The target project's `.orchestrate/` configuration — `commands.json`,
+`routing.json`, and the optional `handoff.json` — may be **bootstrapped on the
+first run** by the `bootstrap_config` MCP tool (section 1, Fresh run, step 1),
+or committed ahead of time from the plugin's `templates/`. Without
 `commands.json` the capability tools return `not-configured`, which is
-tolerated. If the project's capability commands need installed dependencies,
+tolerated. When the project's capability commands need installed dependencies,
 `commands.json` must also set an `install` command — `create_worktree` runs it
 in every fresh worktree, which checks out only tracked files and so has no
-dependency directory of its own. Without `routing.json` the `resolve_routing`
-tool errors and the run falls back to the `-standard` variant of every role
-with no model override.
+dependency directory of its own; the bootstrapper sets `install` automatically
+for an npm project. Without `routing.json` the `resolve_routing` tool errors
+and the run falls back to the `-standard` variant of every role with no model
+override.
 An optional `.orchestrate/handoff.json` tunes the context-watchdog threshold
 and the successor launcher; without it, built-in defaults apply (see
 `references/context-handoff.md`). Installing the `ast-grep` CLI is optional —
@@ -106,6 +109,15 @@ whose `status` is `in-progress`.
 
 1. Resolve the run context:
    - Repository root: `git rev-parse --show-toplevel`.
+   - **Bootstrap the configuration if this is a first-ever run.** If the
+     repository has no `.orchestrate/` directory, call the `bootstrap_config`
+     MCP tool with the repository root as `repoPath` and this session's model
+     id as `model` (or an explicit `contextWindowTokens`). It detects the
+     project type, writes a project-appropriate `commands.json`,
+     `routing.json`, and `handoff.json`, creates `.orchestrate/runs/`, and adds
+     `.orchestrate/runs/` to the repository's `.gitignore`. Every step is
+     idempotent — an existing committed config is never overwritten — so this
+     is also a safe no-op on a repository already configured by hand.
    - Fetch so branch operations use current refs: `git fetch origin`.
    - Confirm the integration base: `git rev-parse --verify origin/development`.
    - Generate a `runId` from the current timestamp including seconds, e.g.
