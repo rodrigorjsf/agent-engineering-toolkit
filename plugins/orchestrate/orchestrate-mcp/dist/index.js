@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs7, exportName) {
+    function addFormats(ajv, list, fs8, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs7[f]);
+        ajv.addFormat(f, fs8[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -23084,8 +23084,8 @@ var verificationEntrySchema = external_exports.object({
 });
 var implementerEnvelopeSchema = external_exports.object({
   role: external_exports.literal("implementer").describe("Discriminant \u2014 the implementer role."),
-  status: external_exports.enum(["completed", "blocked"]).describe(
-    "Outcome. 'completed' = acceptance criteria met and every configured capability tool passed; 'blocked' = the implementer could not finish."
+  status: external_exports.enum(["completed", "incomplete", "blocked"]).describe(
+    "Outcome. 'completed' = acceptance criteria met and every configured capability tool passed; 'incomplete' = the implementer's graceful turn-budget self-report \u2014 it foresaw it could not finish within the remaining turns and stopped cleanly with the partial work recorded, rather than being cut off mid-sentence (a hard turn-limit cutoff instead leaves an unclosed fence and is reported 'invalid'); 'blocked' = the implementer hit an unrecoverable obstacle and could not finish. 'incomplete' and 'blocked' are both non-success outcomes but stay distinct: 'incomplete' is partial and resumable, 'blocked' is an obstacle that must be cleared first."
   ),
   filesChanged: external_exports.array(external_exports.string()).describe(
     "Files the implementer created or edited, as paths relative to the worktree root. An empty array means no file was changed."
@@ -23323,6 +23323,111 @@ async function recoverChangedFiles(input) {
     status: "ok",
     changedFiles: parsePorcelainZ(porcelain)
   };
+}
+
+// src/tools/verify-changeset.ts
+var fs7 = __toESM(require("fs"));
+var verifyChangesetInputSchema = external_exports.object({
+  worktreePath: external_exports.string().describe(
+    "Absolute path to the slice worktree to inspect. The verification treats this worktree as the source of truth for what was actually changed."
+  ),
+  declaredFiles: external_exports.array(external_exports.string()).describe(
+    "The changed-file set the implementer DECLARED in its result envelope (`filesChanged`), as paths relative to the worktree root. An empty array means the implementer claimed it changed nothing. Order and duplicates are ignored \u2014 the comparison is set-based."
+  )
+});
+var verifyChangesetOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the worktree was inspected and the comparison ran; 'error' = the worktree could not be inspected."
+  ),
+  match: external_exports.enum([
+    "matched",
+    "mismatch",
+    "clean",
+    "empty-but-declared",
+    "suspiciously-empty"
+  ]).optional().describe(
+    "The set-comparison verdict. Present when status='ok'. 'matched' = the declared set equals the worktree changeset; 'clean' = nothing was declared and the worktree is clean (a no-op slice); 'mismatch' = the declared set and the worktree changeset differ in at least one direction (see declaredButAbsent and presentButUndeclared); 'empty-but-declared' = files were declared but the worktree is entirely clean \u2014 the implementer's edits never landed on disk; 'suspiciously-empty' = nothing was declared but the worktree DOES have changes \u2014 the implementer under-reported its work. Only 'matched' and 'clean' mean the declared set can be trusted as-is."
+  ),
+  actualFiles: external_exports.array(external_exports.string()).optional().describe(
+    "Every changed path the worktree actually carries \u2014 tracked modifications, staged changes, and untracked files alike (build artifacts NOT filtered). A rename emits both its source and destination path, never an 'old -> new' composite. Present when status='ok' (an empty array means a clean worktree)."
+  ),
+  declaredButAbsent: external_exports.array(external_exports.string()).optional().describe(
+    "Files the implementer declared in `filesChanged` that are NOT in the worktree changeset \u2014 declared but never actually changed on disk. Present when status='ok'; empty when every declared file is real."
+  ),
+  presentButUndeclared: external_exports.array(external_exports.string()).optional().describe(
+    "Files the worktree actually changed that the implementer did NOT declare \u2014 undeclared collateral the orchestrator would otherwise miss when staging only the declared set. Present when status='ok'; empty when the implementer declared everything it touched."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT", "PATH_NOT_FOUND", "GIT_ERROR"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'INVALID_INPUT' = the path would be parsed by git as an option flag; 'PATH_NOT_FOUND' = the worktree path does not exist on disk; 'GIT_ERROR' = git could not report status (e.g. not a git worktree)."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='error'."
+  )
+});
+async function verifyChangeset(input) {
+  const { worktreePath, declaredFiles } = input;
+  const guardErr = optionInjectionError("worktreePath", worktreePath);
+  if (guardErr) {
+    return {
+      status: "error",
+      errorCode: "INVALID_INPUT",
+      errorMessage: guardErr
+    };
+  }
+  if (!fs7.existsSync(worktreePath)) {
+    return {
+      status: "error",
+      errorCode: "PATH_NOT_FOUND",
+      errorMessage: `Worktree path does not exist: ${worktreePath}`
+    };
+  }
+  let porcelain;
+  try {
+    const { stdout } = await gitExecFile(
+      ["status", "--porcelain", "-z"],
+      worktreePath
+    );
+    porcelain = stdout;
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "GIT_ERROR",
+      errorMessage: cleanGitError(err)
+    };
+  }
+  const actualFiles = parsePorcelainZ(porcelain);
+  const declaredSet = new Set(declaredFiles);
+  const actualSet = new Set(actualFiles);
+  const declaredButAbsent = [...declaredSet].filter((f) => !actualSet.has(f)).sort();
+  const presentButUndeclared = [...actualSet].filter((f) => !declaredSet.has(f)).sort();
+  const match = classifyMatch(
+    declaredSet.size,
+    actualSet.size,
+    declaredButAbsent.length,
+    presentButUndeclared.length
+  );
+  return {
+    status: "ok",
+    match,
+    actualFiles,
+    declaredButAbsent,
+    presentButUndeclared
+  };
+}
+function classifyMatch(declaredCount, actualCount, absentCount, undeclaredCount) {
+  if (declaredCount === 0 && actualCount === 0) {
+    return "clean";
+  }
+  if (declaredCount > 0 && actualCount === 0) {
+    return "empty-but-declared";
+  }
+  if (declaredCount === 0 && actualCount > 0) {
+    return "suspiciously-empty";
+  }
+  if (absentCount === 0 && undeclaredCount === 0) {
+    return "matched";
+  }
+  return "mismatch";
 }
 
 // src/index.ts
@@ -23673,6 +23778,32 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleRecoverChangedFiles
+);
+var handleVerifyChangeset = async (input) => {
+  const result = await verifyChangeset(input);
+  let text;
+  if (result.status === "ok") {
+    const counts = `${result.declaredButAbsent.length} declared-but-absent, ${result.presentButUndeclared.length} present-but-undeclared`;
+    text = `Changeset verification: ${result.match} (${counts}).`;
+  } else {
+    text = `Changeset verification failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "verify_changeset",
+  {
+    title: "Verify a Worktree Changeset Against the Declared File Set",
+    description: "Compares a slice worktree's ACTUAL changeset \u2014 inspected with 'git status --porcelain -z' \u2014 against the changed-file set the implementer DECLARED in its result envelope. The orchestrator calls this after every implementer returns, before trusting a 'completed' envelope. The comparison is a cheap set comparison, not a semantic scope check: order and duplicates are ignored, and the issue body is never parsed. Returns a `match` verdict \u2014 'matched', 'clean', 'mismatch', 'empty-but-declared' (edits never landed), or 'suspiciously-empty' (work under-reported) \u2014 plus the divergent paths in `declaredButAbsent` and `presentButUndeclared`. Discriminated `status` of 'ok' or 'error'.",
+    inputSchema: verifyChangesetInputSchema.shape,
+    outputSchema: verifyChangesetOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleVerifyChangeset
 );
 async function main() {
   const transport = new StdioServerTransport();

@@ -85,6 +85,13 @@ import {
   type RecoverChangedFilesInput,
   type RecoverChangedFilesOutput,
 } from "./tools/recover-changed-files.js";
+import {
+  verifyChangeset,
+  verifyChangesetInputSchema,
+  verifyChangesetOutputSchema,
+  type VerifyChangesetInput,
+  type VerifyChangesetOutput,
+} from "./tools/verify-changeset.js";
 
 const server = new McpServer({
   name: "orchestrate",
@@ -687,6 +694,52 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleRecoverChangedFiles as unknown as AnyToolHandler
+);
+
+// ─── verify_changeset ─────────────────────────────────────────────────────────
+
+const handleVerifyChangeset: ToolHandler<
+  VerifyChangesetInput,
+  VerifyChangesetOutput
+> = async (input) => {
+  const result = await verifyChangeset(input);
+  let text: string;
+  if (result.status === "ok") {
+    const counts =
+      `${result.declaredButAbsent!.length} declared-but-absent, ` +
+      `${result.presentButUndeclared!.length} present-but-undeclared`;
+    text = `Changeset verification: ${result.match} (${counts}).`;
+  } else {
+    text = `Changeset verification failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "verify_changeset",
+  {
+    title: "Verify a Worktree Changeset Against the Declared File Set",
+    description:
+      "Compares a slice worktree's ACTUAL changeset — inspected with " +
+      "'git status --porcelain -z' — against the changed-file set the " +
+      "implementer DECLARED in its result envelope. The orchestrator calls " +
+      "this after every implementer returns, before trusting a 'completed' " +
+      "envelope. The comparison is a cheap set comparison, not a semantic " +
+      "scope check: order and duplicates are ignored, and the issue body is " +
+      "never parsed. Returns a `match` verdict — 'matched', 'clean', " +
+      "'mismatch', 'empty-but-declared' (edits never landed), or " +
+      "'suspiciously-empty' (work under-reported) — plus the divergent paths " +
+      "in `declaredButAbsent` and `presentButUndeclared`. Discriminated " +
+      "`status` of 'ok' or 'error'.",
+    inputSchema: verifyChangesetInputSchema.shape,
+    outputSchema: verifyChangesetOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleVerifyChangeset as unknown as AnyToolHandler
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────

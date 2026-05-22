@@ -90,16 +90,32 @@ or missing envelope is treated as a FAILED slice.
 The envelope object has exactly these fields:
 
 - **role** — the string `"implementer"`.
-- **status** — `"completed"` (acceptance criteria met and all configured
-  capability tools pass) or `"blocked"` (you could not finish).
+- **status** — one of three values:
+  - `"completed"` — acceptance criteria met and all configured capability tools
+    pass.
+  - `"incomplete"` — the **graceful turn-budget self-report**. When you foresee
+    you cannot finish every acceptance criterion within your remaining turns,
+    stop *cleanly* on your own terms: emit a `"incomplete"` envelope that
+    records the partial work in `filesChanged` and explains in `notes` exactly
+    what is done, what is left, and how to resume. This is the right path when
+    the work is simply larger than the budget — it is recoverable and resumable.
+    It is distinct from `"blocked"`. Choosing `"incomplete"` is always better
+    than running out of turns mid-sentence: a hard turn-limit cutoff truncates
+    your envelope, which the orchestrator can only treat as an invalid (FAILED)
+    slice — the `"incomplete"` self-report is the loud, structured alternative.
+  - `"blocked"` — you hit an **unrecoverable obstacle** (a missing dependency, a
+    contradictory acceptance criterion, an environment failure) and could not
+    finish. Unlike `"incomplete"`, more turns would not have helped.
 - **filesChanged** — an array of the files you created or edited, as paths
-  relative to the worktree root (`[]` if you changed nothing).
+  relative to the worktree root (`[]` if you changed nothing). Report this
+  accurately even for `"incomplete"` or `"blocked"` — the orchestrator verifies
+  it against the worktree.
 - **verification** — an array of objects, one per capability tool you ran, each
   `{ "capability": "tests" | "typecheck" | "build" | "lint", "result":
   "passed" | "failed" | "not-configured" }`.
 - **notes** — a string: anything the orchestrator or a later reviewer must know
-  — assumptions you made, partial work, or, if `blocked`, exactly what stopped
-  you and what was tried.
+  — assumptions you made, partial work, or, if `incomplete` or `blocked`,
+  exactly what stopped you and what was tried.
 
 Example:
 

@@ -126,8 +126,26 @@ whose `status` is `in-progress`.
    a single parent issue number (`PRD #NNN` line) or `null`. Then assess its
    **complexity tier** — `trivial` (a small, localized change), `standard` (an
    ordinary feature or fix), or `complex` (broad, cross-cutting, or high-risk
-   work). Base the tier on the issue's scope, the number of files it likely
-   touches, and its risk. The tier drives routing in section 3.
+   work). The tier drives routing in section 3.
+
+   Weigh **two independent axes** when assessing the tier, and take the higher
+   of the two:
+
+   - **Conceptual difficulty** — how hard the change is to reason about: subtle
+     logic, non-obvious interactions, high risk if it goes wrong.
+   - **Fan-out** — the number of *independent targets* the slice touches: files,
+     modules, subagent definitions, config entries, or doc surfaces that each
+     need their own edit and their own verification. A slice can be
+     conceptually simple yet have large fan-out — e.g. applying the same small
+     change across many files, or updating a schema plus every definition,
+     skill section, and doc that references it.
+
+   A **wide-but-simple** slice — low conceptual difficulty but high fan-out — is
+   legitimately tiered **up** (e.g. `standard` → `complex`) purely to buy the
+   larger implementer turn budget and an investigation pass: many independent
+   edits plus a capability-tool re-run after each one consume turns regardless
+   of how easy any single edit is. Do not tier a slice down just because each
+   target is trivial; the count of targets is itself a cost.
 
    Once every issue is parsed, call the **`partition_backlog` MCP tool** to
    split the backlog into `slices` and `parentIssue`:
@@ -297,17 +315,50 @@ subagent's verbatim returned text and its `role`:
    instruction to verify with the capability tools using the worktree path as
    `repoPath`, and a reminder not to commit, push, or run git. Validate its
    returned text with `validate_envelope` (role `implementer`). On a `valid`
-   envelope, an envelope `status` of `blocked` means the slice has **FAILED**;
-   `completed` proceeds. An `invalid` or `missing` envelope also means the slice
-   has **FAILED**.
+   envelope, classify the envelope `status`:
+   - `completed` — proceed to the worktree scope check in step 4a.
+   - `incomplete` — the implementer's graceful turn-budget self-report: it
+     foresaw it could not finish within its remaining turns and stopped cleanly
+     with partial work recorded. The slice has **FAILED** — record a
+     `failureReason` that names the turn-limit cutoff explicitly (e.g.
+     "implementer reported `incomplete` — exhausted its turn budget; partial
+     work preserved in the worktree for resumption"). See *Failure handling*.
+   - `blocked` — the implementer hit an unrecoverable obstacle: the slice has
+     **FAILED**.
+
+   An `invalid` or `missing` envelope also means the slice has **FAILED** — a
+   hard turn-limit cutoff that truncates the envelope mid-emission lands here as
+   `invalid`, distinct from the graceful `incomplete` self-report above.
+4a. **Verify the changeset against the worktree.** After a `completed`
+   implementer envelope — and before trusting it — call the `verify_changeset`
+   MCP tool with the slice's `worktreePath` and the implementer envelope's
+   `filesChanged` as `declaredFiles`. It inspects the worktree directly with
+   `git status` and compares the declared file set against what actually
+   changed on disk:
+   - `match: "matched"` or `"clean"` — the declared set agrees with the
+     worktree; proceed to step 5.
+   - `match: "empty-but-declared"` — the implementer declared files but the
+     worktree is clean: its edits never landed. The slice has **FAILED**.
+   - `match: "suspiciously-empty"` — the implementer declared nothing but the
+     worktree HAS changes: the work was under-reported. The slice has
+     **FAILED**; record the `presentButUndeclared` paths in the `failureReason`.
+   - `match: "mismatch"` — the declared set and the worktree changeset diverge.
+     Trust the worktree: use the **union** of the implementer's declared
+     `filesChanged` and the tool's `actualFiles` as the changed-file set for the
+     reviewer and the commit (step 6), and note the divergence
+     (`declaredButAbsent` / `presentButUndeclared`) so the reviewer sees it.
+   - `status: "error"` — the worktree could not be inspected; the slice has
+     **FAILED**.
 5. **Run the reviewer.** Spawn the `orchestrate:reviewer-<effort>` subagent —
    `<effort>` and the `model` override from `routing.reviewer` — in the same
-   worktree. Its prompt must carry the issue, the worktree path, the implementer
-   envelope's `filesChanged` and `notes`, and the investigator's brief if one
-   was produced. Validate its returned text with `validate_envelope` (role
-   `reviewer`). On a `valid` envelope, an envelope `status` of `failed` means
-   the slice has **FAILED**; `passed` proceeds. An `invalid` or `missing`
-   envelope also means the slice has **FAILED**.
+   worktree. Its prompt must carry the issue, the worktree path, the
+   changed-file set agreed on by step 4a — the implementer envelope's
+   `filesChanged` when `verify_changeset` matched, the union of declared and
+   `actualFiles` on a `mismatch` — the implementer envelope's `notes`, and the
+   investigator's brief if one was produced. Validate its returned text with
+   `validate_envelope` (role `reviewer`). On a `valid` envelope, an envelope
+   `status` of `failed` means the slice has **FAILED**; `passed` proceeds. An
+   `invalid` or `missing` envelope also means the slice has **FAILED**.
 6. **Commit and push.** Stage only the files the subagents reported changing —
    the union of the `filesChanged` arrays from the validated implementer and
    reviewer envelopes. Never `git add -A`: the capability tools leave untracked
@@ -433,17 +484,32 @@ To hand off:
 
 A slice **FAILS** when `create_worktree` errors, a subagent's result envelope
 is invalid or missing (`validate_envelope` returns `invalid` or `missing`), a
-validated implementer envelope has `status: "blocked"`, a validated reviewer
-envelope has `status: "failed"`, the staged changeset is empty, or a merge
-conflict the `conflict-resolver` cannot fix. The orchestrator decides FAILURE
-**only** from the validated envelope and tool results — never from a subagent's
-prose. An invalid or missing envelope is always a FAILED slice; it is never
-treated as success.
+validated implementer envelope has `status: "blocked"` or `status: "incomplete"`,
+a validated reviewer envelope has `status: "failed"`, `verify_changeset` reports
+the implementer's declared file set does not match the worktree
+(`empty-but-declared` or `suspiciously-empty`, or a `status: "error"`), the
+staged changeset is empty, or a merge conflict the `conflict-resolver` cannot
+fix. The orchestrator decides FAILURE **only** from the validated envelope and
+tool results — never from a subagent's prose. An invalid or missing envelope is
+always a FAILED slice; it is never treated as success.
+
+The implementer envelope's `incomplete` status is a **distinct** failure flavor:
+it is the implementer's graceful turn-budget self-report — partial, resumable
+work — as opposed to `blocked` (an unrecoverable obstacle) or an `invalid`
+envelope (a hard turn-limit cutoff that truncated the envelope). All three FAIL
+the slice, but the `failureReason` must name the cause precisely so a developer
+can tell a resumable budget exhaustion apart from a genuine blocker. An
+`incomplete` slice's worktree holds usable partial work — preserve it (as every
+FAILED slice's worktree is preserved) so the slice can be resumed.
 
 On a FAILED slice:
 
 - Set its `state` to `failed` with a `failureReason`, checkpoint, and
-  transition the issue's tracker label:
+  transition the issue's tracker label. For a slice that failed because the
+  implementer reported `incomplete` — partial, resumable work — `needs-info`
+  better signals "resume me" than `needs-triage`:
+  `gh issue edit <N> --remove-label ready-for-agent --add-label needs-info`.
+  For every other failure cause, use `needs-triage`:
   `gh issue edit <N> --remove-label ready-for-agent --add-label needs-triage`.
 - Do **not** merge it. **Preserve its worktree** — leave it on disk for a
   developer to inspect. Do not call `remove_worktree`.

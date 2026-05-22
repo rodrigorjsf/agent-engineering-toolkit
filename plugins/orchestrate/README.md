@@ -16,7 +16,7 @@ The run checkpoints after every step, so an interrupted run resumes instead of r
 
 Given a repository with open issues labelled `ready-for-agent`, one `/orchestrate` invocation:
 
-1. **Reads the backlog** — every open `ready-for-agent` issue, with its **Blocked by** dependencies and an assessed complexity tier (`trivial`, `standard`, `complex`).
+1. **Reads the backlog** — every open `ready-for-agent` issue, with its **Blocked by** dependencies and an assessed complexity tier (`trivial`, `standard`, `complex`). The tier weighs two axes — conceptual difficulty and *fan-out* (the number of independent targets the slice touches) — so a wide-but-simple slice is tiered up purely for the larger turn budget and an investigation pass.
 2. **Plans dependency waves** — a topological sort so every issue's blockers resolve in an earlier wave; a dependency cycle is reported and stops the run cleanly.
 3. **Cuts an umbrella branch** from `development` — every slice's pull request merges into it, never directly into `development`.
 4. **Processes each slice** in its own isolated worktree — routed investigator (complex tier only), implementer, then reviewer; then commit, push, open a slice pull request, and squash-merge it into the umbrella branch.
@@ -54,8 +54,9 @@ The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing 
 | `run_tests` / `run_typecheck` / `run_build` / `run_lint` | Run the project's configured capability commands |
 | `plan_waves` | Topologically sort issues into dependency waves; detects cycles |
 | `resolve_routing` | Resolve the model and effort variant for each role from a complexity tier |
-| `validate_envelope` | Validate a subagent's result envelope against its role schema — distinguishes a valid, a truncated/invalid, and a missing envelope |
+| `validate_envelope` | Validate a subagent's result envelope against its role schema — distinguishes a valid, a truncated/invalid, and a missing envelope. The implementer status carries `completed`, `incomplete` (a graceful turn-budget self-report), and `blocked` |
 | `recover_changed_files` | Recover a worktree's changed-file set by inspecting it directly — the orchestrator's fallback when an envelope is missing or invalid |
+| `verify_changeset` | Compare a worktree's actual changeset against the file set an implementer declared — the post-implementer scope check before a `completed` envelope is trusted |
 | `render_dashboard` / `render_graph` / `render_report` | Render standalone HTML artifacts from the run state |
 | `spawn_successor` | Launch a fresh Claude Code session that resumes the run |
 | `search_structural` | Syntax-aware (ast-grep) code search, with a text-search fallback |
