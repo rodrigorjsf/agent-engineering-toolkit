@@ -314,12 +314,22 @@ subagent's verbatim returned text and its `role`:
 3. **Run the investigator (higher tiers only).** If `routing.investigator` is
    non-null, spawn the `orchestrate:investigator-<effort>` subagent — `<effort>`
    and the Agent `model` override both come from `routing.investigator`. Its
-   prompt carries the issue and the repository root. Validate its returned text
-   with `validate_envelope` (role `investigator`); a `valid` envelope is the
-   research brief to keep for the implementer. An `invalid` or `missing`
-   envelope is a failed investigation pass — the slice has **FAILED** (the
-   investigator is read-only, so no worktree fallback applies). If
-   `routing.investigator` is null, skip this step.
+   prompt must carry the issue number/title/body **and the slice's acceptance
+   criteria explicitly named as the hard scope boundary** — the canonical per-
+   slice scope established by the backlog partitioner. The investigator must
+   not propose work that falls outside those acceptance criteria. Validate its
+   returned text with `validate_envelope` (role `investigator`); on `valid`,
+   **diff the returned brief against the acceptance criteria before forwarding
+   it to the implementer**: inspect the brief's `relevantFiles`, `approach`,
+   and `notes` for any work that does not trace to at least one acceptance
+   criterion. If the brief includes work from a sibling or downstream slice —
+   files, approaches, or recommendations that the acceptance criteria do not
+   require — the brief is over-scoped: treat it as a failed investigation pass
+   (the slice has **FAILED**). A brief that is correctly scoped to the
+   acceptance criteria is forwarded to the implementer as the research brief.
+   An `invalid` or `missing` envelope is a failed investigation pass — the
+   slice has **FAILED** (the investigator is read-only, so no worktree fallback
+   applies). If `routing.investigator` is null, skip this step.
 4. **Run the implementer.** Spawn the `orchestrate:implementer-<effort>`
    subagent — `<effort>` and the `model` override from `routing.implementer`. Its
    prompt must carry the issue number/title/body, the worktree path (every
