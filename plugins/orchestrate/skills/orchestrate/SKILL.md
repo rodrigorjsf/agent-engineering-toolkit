@@ -136,6 +136,12 @@ is what `/orchestrate clean` (section 0) runs on demand.
    current run, or any run still `in-progress`, in the verdict map: omitting a
    run from the map tells `clean_runs` to leave it strictly intact.
 
+   As defense-in-depth, `clean_runs` independently enforces the same
+   `status === "completed" && finalPullRequest != null` gate by re-reading each
+   run's own `run-state.json` (per ADR-0012), so even a misbuilt verdict map can
+   never make it touch an unconcluded or `in-progress` run — such a run is
+   skipped with reason `run-not-completed` or `final-pr-missing`.
+
    **Collect the close-set before sweeping.** For every run whose verdict
    resolves to `merged`, you already hold its `run-state.json` open (you just
    read `finalPullRequest` from it). While it is open, **collect the `issue`

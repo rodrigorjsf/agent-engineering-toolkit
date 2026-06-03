@@ -186,7 +186,14 @@ when **both** conditions hold:
 The merge verdict is GitHub state, which the orchestrator resolves with
 `gh pr view <finalPullRequest> --json state,mergedAt` and passes as a per-run
 verdict map (`runId → merged | open | closed-unmerged | unknown`) to the
-`clean_runs` MCP tool, itself git + filesystem only. For a `merged` run, a
+`clean_runs` MCP tool, itself git + filesystem only. As defense-in-depth,
+`clean_runs` does **not** trust the verdict map alone: even for a `merged`
+verdict it **re-reads** the run's own `run-state.json` and refuses to act unless
+`status === "completed"` **and** `finalPullRequest != null` — a
+tool-deterministic gate independent of the orchestrator's verdict map (per
+ADR-0012). A `completed` run whose `finalPullRequest` is `null` (its final pull
+request was never opened, so the run never concluded) is left strictly intact
+and reported with reason `final-pr-missing`. For a `merged` run, a
 `passed` slice's branch is reclaimed **incrementally at squash-merge** — remote
 via `gh pr merge --squash --delete-branch`, local via `git branch -D` after
 worktree removal — so `clean_runs` (which removes the `passed`-slice worktrees,
