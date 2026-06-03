@@ -80,5 +80,6 @@ When something fails repeatedly, when User has to re-explain, or when a workarou
 
 - Agents fail silently on wrong paths. Always verify hardcoded paths.
 - Before creating a new project artifact, check if an existing one can be extended or merged.
+- npm broken in non-interactive bash (mise inactive); prepend real node bin dir before npm.
 
 
