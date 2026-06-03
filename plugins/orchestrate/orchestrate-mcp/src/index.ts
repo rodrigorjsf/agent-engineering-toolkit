@@ -113,10 +113,17 @@ import {
   type PushAndVerifyInput,
   type PushAndVerifyOutput,
 } from "./tools/push-and-verify.js";
+import {
+  validateRunState,
+  validateRunStateInputSchema,
+  validateRunStateOutputSchema,
+  type ValidateRunStateInput,
+  type ValidateRunStateOutput,
+} from "./tools/validate-run-state.js";
 
 const server = new McpServer({
   name: "orchestrate",
-  version: "0.12.0",
+  version: "0.13.0",
 });
 
 /**
@@ -914,6 +921,49 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handlePushAndVerify as unknown as AnyToolHandler
+);
+
+// ─── validate_run_state ───────────────────────────────────────────────────────
+
+const handleValidateRunState: ToolHandler<
+  ValidateRunStateInput,
+  ValidateRunStateOutput
+> = async (input) => {
+  const result = await validateRunState(input);
+  let text: string;
+  if (result.status === "valid") {
+    text = `Valid run-state for \`${input.runId}\`.`;
+  } else {
+    text = `Invalid run-state [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "validate_run_state",
+  {
+    title: "Validate Run-State Checkpoint",
+    description:
+      "Validates `.orchestrate/runs/<runId>/run-state.json` against the " +
+      "canonical run-state schema — the same schema the render tools validate " +
+      "against. It is the orchestrator's fast-fail guard: call it right after " +
+      "writing the first run-state checkpoint and on every resume read, so a " +
+      "mis-shaped checkpoint fails in seconds rather than after expensive " +
+      "subagent work. It specifically catches a `slices` value shaped as an " +
+      "ARRAY instead of a MAP keyed by issue-id string — the latent trap of " +
+      "passing the `partition_backlog` array straight through into run-state. " +
+      "Reads only; writes nothing. Returns a discriminated `status` of 'valid' " +
+      "or 'invalid' (with `RUN_ID_INVALID`, `RUN_STATE_NOT_FOUND`, or " +
+      "`RUN_STATE_INVALID`).",
+    inputSchema: validateRunStateInputSchema.shape,
+    outputSchema: validateRunStateOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleValidateRunState as unknown as AnyToolHandler
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────
