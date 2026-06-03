@@ -5,6 +5,7 @@ import { gitExecFile, optionInjectionError, cleanGitError } from "../git.js";
 import { isValidRunId } from "../run-dir.js";
 import {
   checkCrossRunMutationAllowed,
+  readRunState,
   type ParsedRunState,
 } from "../run-state-guard.js";
 import { removeWorktree } from "./worktree.js";
@@ -35,6 +36,22 @@ import { removeWorktree } from "./worktree.js";
 // Every removal is best-effort and independently reported: an already-absent
 // resource is success, not error, so the sweep is idempotent and one run's
 // failure never aborts the others.
+//
+// ─── reclaim_run — the one sanctioned status-gate exception ────────────────────
+//
+// `reclaimRun` (below) is the deliberate exception to the defense-in-depth
+// status gate. There is no `failed` run status — a crashed or abandoned run
+// stays `in-progress` forever, so a status gate could never permit reclaiming
+// it. `reclaimRun` therefore takes a REQUIRED single `runId`, reads its
+// run-state directly, and removes that one run's complete footprint (passed AND
+// failed worktrees, umbrella + slice branches, run dir) WITHOUT the status gate
+// — the one ADR-0012 exception. It is scoped, by construction, to that single
+// `runs/<runId>/` and its runId-embedding branches, so it can never touch
+// another run. Its only protection is a mandatory interactive confirmation that
+// lives in the skill, not this tool — `reclaimRun` is non-interactive execution.
+// `cleanMergedRun` and `reclaimRun` share the same removal core
+// (`removeRunFootprint`) so removal behavior is identical; only the gate (status
+// for clean, none for reclaim) and the reported reason differ.
 
 // ─── Schemas — z.object is the single source of truth; TS types via z.infer ───
 
@@ -86,6 +103,10 @@ export const runReasonSchema = z.enum([
   // ── removed / preserved ──
   "merged-and-clean",
   "merged-with-preserved-worktrees",
+  // The reclaim_run override's success reason: a single named run's footprint
+  // (passed AND failed worktrees, umbrella + slice branches, run dir) removed
+  // after the human confirmed the deletion set, bypassing the status gate.
+  "failed-run-reclaimed",
   // ── skipped ──
   "final-pr-open",
   "final-pr-closed-unmerged",
@@ -96,6 +117,9 @@ export const runReasonSchema = z.enum([
   "malformed-run-state",
   "missing-run-state",
   "invalid-run-id",
+  // reclaim_run only: a valid runId whose `runs/<runId>/` dir does not exist on
+  // disk — a structured skipped result, never a throw (idempotent re-reclaim).
+  "run-not-found",
 ]);
 
 /** A best-effort branch-deletion failure, scoped to local or remote. */
@@ -177,6 +201,59 @@ export const cleanRunsOutputSchema = z.object({
     ),
 });
 
+// ─── reclaim_run — the human-gated single-run override schemas ────────────────
+
+export const reclaimRunInputSchema = z.object({
+  runId: z
+    .string()
+    .describe(
+      "The single run id (its `.orchestrate/runs/<runId>/` directory name) to " +
+        "reclaim. REQUIRED — there is no sweep form. This is the human-gated " +
+        "reclaim path for a crashed or abandoned run that looks `in-progress` " +
+        "forever (there is no `failed` run status). It BYPASSES the " +
+        "`status === 'completed'` cross-run isolation gate by design (the one " +
+        "sanctioned exception in ADR-0012), and is scoped by construction to " +
+        "this single `runs/<runId>/` and the branches embedding that runId, so " +
+        "it can never touch another run. The mandatory interactive confirmation " +
+        "that authorizes this deletion lives in the skill, not this tool."
+    ),
+  repoPath: z
+    .string()
+    .optional()
+    .describe(
+      "Path to the git repository whose `.orchestrate/runs/<runId>/` is " +
+        "reclaimed. Defaults to the current working directory."
+    ),
+});
+
+export const reclaimRunOutputSchema = z.object({
+  status: z
+    .enum(["ok", "error"])
+    .describe(
+      "Outcome discriminant. 'ok' = the reclaim ran (the run may still have " +
+        "been a no-op — e.g. `run-not-found` — see the report); 'error' = the " +
+        "reclaim could not run (invalid input)."
+    ),
+  report: runReportSchema
+    .optional()
+    .describe(
+      "The single-run cleanup report. Present when status='ok'. NOT an array — " +
+        "reclaim_run acts on exactly one named run."
+    ),
+  errorCode: z
+    .enum(["INVALID_INPUT", "FS_ERROR"])
+    .optional()
+    .describe(
+      "Machine-readable failure category. Present when status='error'."
+    ),
+  errorMessage: z
+    .string()
+    .optional()
+    .describe(
+      "Cleaned, human-readable failure description. Present when status='error'."
+    ),
+});
+
 // ─── TS types — derived from the schemas (single source of truth) ─────────────
 
 export type RunVerdict = z.infer<typeof runVerdictSchema>;
@@ -184,6 +261,8 @@ export type CleanRunsInput = z.infer<typeof cleanRunsInputSchema>;
 export type CleanRunsOutput = z.infer<typeof cleanRunsOutputSchema>;
 export type RunReport = z.infer<typeof runReportSchema>;
 export type BranchError = z.infer<typeof branchErrorSchema>;
+export type ReclaimRunInput = z.infer<typeof reclaimRunInputSchema>;
+export type ReclaimRunOutput = z.infer<typeof reclaimRunOutputSchema>;
 
 // ─── Internal types ───────────────────────────────────────────────────────────
 
@@ -346,20 +425,37 @@ function skippedReport(
 }
 
 /**
- * Cleans one merged run: removes its `passed`-slice worktrees (and `failed`
- * ones too when `force`), deletes its umbrella and slice branches, and removes
- * the run directory unless a worktree was preserved (and not `force`).
+ * The shared removal core for both `clean_runs`' merged-run cleanup and the
+ * `reclaim_run` failed-run override. Given a parsed run-state it removes the
+ * run's slice worktrees, deletes its umbrella and slice branches, and removes
+ * the run directory — populating only the **mechanical** report fields
+ * (`removedWorktrees` / `preservedWorktrees` / `removedBranches` /
+ * `branchErrors` / `runDirRemoved`) and the `action`. The **reason** is the
+ * caller's to set: `cleanMergedRun` keys it to `merged-and-clean` /
+ * `merged-with-preserved-worktrees`, `reclaimRun` to `failed-run-reclaimed`.
+ *
+ * `removeFailedWorktrees` controls whether a `failed`-state slice's worktree is
+ * removed (true) or preserved on disk for inspection (false). `cleanMergedRun`
+ * passes the caller's `force`; `reclaimRun` passes `true` — the human already
+ * confirmed the deletion set, so passed AND failed worktrees both go. When a
+ * worktree is preserved (only possible with `removeFailedWorktrees: false`, or a
+ * genuine removal failure) the run directory is kept so its `run-state.json`
+ * survives, and the action is `preserved`; otherwise the run directory is
+ * removed and the action is `removed`.
  */
-async function cleanMergedRun(
+async function removeRunFootprint(
   runId: string,
   runDir: string,
   state: ParsedRunState,
   repoPath: string,
-  force: boolean
+  opts: { removeFailedWorktrees: boolean }
 ): Promise<RunReport> {
+  const removeFailedWorktrees = opts.removeFailedWorktrees;
   const report: RunReport = {
     runId,
     action: "removed",
+    // Mechanical placeholder — every caller overrides `reason` after this
+    // helper returns, keying it to the caller's own semantics.
     reason: "merged-and-clean",
     removedWorktrees: [],
     preservedWorktrees: [],
@@ -378,23 +474,23 @@ async function cleanMergedRun(
 
   // ── Step 1: remove worktrees ──
   // A `failed`-state slice keeps its worktree on disk for inspection unless
-  // `force`. Worktree removal must run before branch deletion: `git branch -D`
-  // refuses to delete a checked-out branch, so a still-present worktree would
-  // turn into a (correctly reported) branch error.
+  // `removeFailedWorktrees`. Worktree removal must run before branch deletion:
+  // `git branch -D` refuses to delete a checked-out branch, so a still-present
+  // worktree would turn into a (correctly reported) branch error.
   for (const slice of slices) {
     if (!slice.worktreePath) {
       continue;
     }
-    if (slice.state === "failed" && !force) {
+    if (slice.state === "failed" && !removeFailedWorktrees) {
       report.preservedWorktrees.push(slice.worktreePath);
       if (slice.sliceBranch) {
         preservedSliceBranches.add(slice.sliceBranch);
       }
       continue;
     }
-    // force:true — a slice worktree carries untracked build artifacts, so it
-    // is removed even when dirty. An already-absent worktree is success: the
-    // PATH_NOT_FOUND result is tolerated, not reported as an error.
+    // removeFailedWorktrees:true — a slice worktree carries untracked build
+    // artifacts, so it is removed even when dirty. An already-absent worktree is
+    // success: the PATH_NOT_FOUND result is tolerated, not reported as an error.
     const removed = await removeWorktree({
       worktreePath: slice.worktreePath,
       repoPath,
@@ -431,11 +527,10 @@ async function cleanMergedRun(
   // ── Step 3: remove the run directory ──
   // Keep the run directory whenever a worktree was preserved — the preserved
   // worktree's run-state.json must survive for the inspecting developer.
-  // Remove it fully only when nothing was preserved or `force`.
+  // Remove it fully only when nothing was preserved.
   const anyPreserved = report.preservedWorktrees.length > 0;
-  if (anyPreserved && !force) {
+  if (anyPreserved) {
     report.action = "preserved";
-    report.reason = "merged-with-preserved-worktrees";
     report.runDirRemoved = false;
   } else {
     try {
@@ -447,8 +542,31 @@ async function cleanMergedRun(
       report.runDirRemoved = false;
     }
     report.action = report.runDirRemoved ? "removed" : "preserved";
-    report.reason = "merged-and-clean";
   }
+  return report;
+}
+
+/**
+ * Cleans one merged run: removes its `passed`-slice worktrees (and `failed`
+ * ones too when `force`), deletes its umbrella and slice branches, and removes
+ * the run directory unless a worktree was preserved (and not `force`).
+ */
+async function cleanMergedRun(
+  runId: string,
+  runDir: string,
+  state: ParsedRunState,
+  repoPath: string,
+  force: boolean
+): Promise<RunReport> {
+  const report = await removeRunFootprint(runId, runDir, state, repoPath, {
+    removeFailedWorktrees: force,
+  });
+  // Key the reason to clean_runs' merged-run semantics: a preserved worktree
+  // (only possible without force) means a partial clean; otherwise a full one.
+  report.reason =
+    report.action === "preserved"
+      ? "merged-with-preserved-worktrees"
+      : "merged-and-clean";
   return report;
 }
 
@@ -567,4 +685,96 @@ export async function cleanRuns(
   }
 
   return { status: "ok", runs };
+}
+
+// ─── reclaim_run — the human-gated single-run override ────────────────────────
+
+/**
+ * Reclaims one named run, removing its complete footprint — ALL worktrees
+ * (passed AND failed), the umbrella branch and every slice branch (local and
+ * remote), and the run directory.
+ *
+ * This is the one sanctioned exception to the cross-run isolation gate
+ * (ADR-0012): there is no `failed` run status, so a crashed or abandoned run
+ * stays `in-progress` forever, indistinguishable from a live run — a status gate
+ * could never permit its reclamation. `reclaimRun` therefore reads the run-state
+ * with `readRunState` directly and **deliberately does NOT pass through
+ * `checkCrossRunMutationAllowed` and does NOT gate on `status`**. It stays
+ * scoped, by construction, to the single `runs/<runId>/` and that runId's
+ * branches, so it can never touch another run. The human gate — the interactive
+ * confirmation, the deletion-set preview, and the `updatedAt` staleness advisory
+ * — lives entirely in the skill; this tool is non-interactive execution only.
+ *
+ * Never throws — every failure mode is a structured result. A valid runId with
+ * no `runs/<runId>/` directory is reason `run-not-found` (so an idempotent
+ * re-reclaim of an already-removed run is a clean no-op, not an error).
+ */
+export async function reclaimRun(
+  input: ReclaimRunInput
+): Promise<ReclaimRunOutput> {
+  const repoPath = input.repoPath ?? process.cwd();
+
+  // Option-injection guard: reject a repoPath git would parse as a flag.
+  const repoGuardErr = optionInjectionError("repoPath", repoPath);
+  if (repoGuardErr) {
+    return {
+      status: "error",
+      errorCode: "INVALID_INPUT",
+      errorMessage: repoGuardErr,
+    };
+  }
+
+  // runId guards: reject an injection-shaped or otherwise malformed runId before
+  // it ever flows into a path join — a structured result, never a throw.
+  const runIdGuardErr = optionInjectionError("runId", input.runId);
+  if (runIdGuardErr) {
+    return {
+      status: "ok",
+      report: skippedReport(input.runId, "invalid-run-id"),
+    };
+  }
+  if (!isValidRunId(input.runId)) {
+    return {
+      status: "ok",
+      report: skippedReport(input.runId, "invalid-run-id"),
+    };
+  }
+
+  const runDir = path.join(repoPath, ".orchestrate", "runs", input.runId);
+
+  // A valid runId whose run directory does not exist on disk: a clean no-op,
+  // reported as `run-not-found`. This is the idempotent re-reclaim case — a
+  // second reclaim of an already-removed run lands here.
+  if (!fs.existsSync(runDir)) {
+    return {
+      status: "ok",
+      report: skippedReport(input.runId, "run-not-found"),
+    };
+  }
+
+  // Read the run-state directly — NO status gate. A missing/malformed run-state
+  // is reported with the shared keyed reason, but the footprint is still NOT
+  // removed (there are no branch/worktree names to act on); a developer can
+  // remove the orphan dir manually.
+  const runStatePath = path.join(runDir, "run-state.json");
+  const stateResult = readRunState(runStatePath);
+  if (!stateResult.ok) {
+    return {
+      status: "ok",
+      report: skippedReport(input.runId, stateResult.reason),
+    };
+  }
+
+  // Remove the run's full footprint — passed AND failed worktrees both go, since
+  // the human already confirmed the deletion set. The mechanical fields and
+  // action come from the shared helper; key the reason to reclaim semantics.
+  const report = await removeRunFootprint(
+    input.runId,
+    runDir,
+    stateResult.state,
+    repoPath,
+    { removeFailedWorktrees: true }
+  );
+  report.reason = "failed-run-reclaimed";
+  return { status: "ok", report };
 }

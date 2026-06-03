@@ -150,7 +150,7 @@ The branch every umbrella branch is cut from and every run's final pull request 
 _Avoid_: main, master, trunk (the integration base is `development`, distinct from any release branch)
 
 **Run cleanup**:
-Removal of a concluded run's run directory, worktrees, and umbrella/slice branches — gated on that run's final integration pull request having been merged into the **Integration base**.
+Removal of a concluded run's run directory, worktrees, and umbrella/slice branches — gated on that run's final integration pull request having been merged into the **Integration base**. Automatic start-of-run sweeps and `/orchestrate clean` (including `--force`) are **status-gated** — they never touch an `in-progress` run. `/orchestrate clean --failed <runId>` is the sanctioned **human-gated single-run override** that bypasses the status gate for one named crashed/`in-progress`-looking run (via the `reclaim_run` MCP tool), scoped by construction to that run and protected only by a mandatory interactive confirmation.
 _Avoid_: purge, garbage collection, prune
 
 **Backlog partitioner**:
@@ -229,7 +229,7 @@ _Avoid_: scope check, brief filter (the guard is a positive constraint on what t
 - An **Orchestration run** owns exactly one **Run partition** and writes its ephemeral state to exactly one **Run directory**.
 - Sibling **Orchestration runs** in the same repository must own disjoint **Run partitions** — one parent PRD's children each.
 - A **Driver session** executes exactly one **Orchestration run**; the context-watchdog binds a run by matching the **Driver session** identity recorded in run-state.
-- **Run cleanup** acts on an **Orchestration run** only after its final pull request has merged into the **Integration base**.
+- **Run cleanup** acts on an **Orchestration run** only after its final pull request has merged into the **Integration base** — except the human-gated `/orchestrate clean --failed <runId>` override, which reclaims one crashed run by bypassing that status gate under interactive confirmation.
 - Every orchestrate subagent returns exactly one **Result envelope**; the **Envelope validator** classifies it, and the orchestrator acts only on that classification — never on subagent prose.
 - The **Worktree fallback** runs only when the **Envelope validator** reports a worker subagent's **Result envelope** `invalid` or `missing` — it never substitutes for a `valid` envelope.
 - The **Changeset scope check** runs after every implementer returns a `valid` `completed` envelope — it cross-checks the declared `filesChanged` against the worktree before the orchestrator trusts the result; the **Worktree fallback** instead runs only when the envelope itself was `invalid` or `missing`.

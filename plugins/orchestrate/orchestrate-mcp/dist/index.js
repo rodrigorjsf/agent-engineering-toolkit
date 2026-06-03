@@ -23478,6 +23478,10 @@ var runReasonSchema = external_exports.enum([
   // ── removed / preserved ──
   "merged-and-clean",
   "merged-with-preserved-worktrees",
+  // The reclaim_run override's success reason: a single named run's footprint
+  // (passed AND failed worktrees, umbrella + slice branches, run dir) removed
+  // after the human confirmed the deletion set, bypassing the status gate.
+  "failed-run-reclaimed",
   // ── skipped ──
   "final-pr-open",
   "final-pr-closed-unmerged",
@@ -23487,7 +23491,10 @@ var runReasonSchema = external_exports.enum([
   "final-pr-missing",
   "malformed-run-state",
   "missing-run-state",
-  "invalid-run-id"
+  "invalid-run-id",
+  // reclaim_run only: a valid runId whose `runs/<runId>/` dir does not exist on
+  // disk — a structured skipped result, never a throw (idempotent re-reclaim).
+  "run-not-found"
 ]);
 var branchErrorSchema = external_exports.object({
   branch: external_exports.string().describe("The branch whose deletion failed."),
@@ -23522,6 +23529,28 @@ var cleanRunsOutputSchema = external_exports.object({
   ),
   runs: external_exports.array(runReportSchema).describe(
     "One report per run directory found under `.orchestrate/runs/`. Empty when no runs directory exists or it holds no run directories."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT", "FS_ERROR"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='error'."
+  )
+});
+var reclaimRunInputSchema = external_exports.object({
+  runId: external_exports.string().describe(
+    "The single run id (its `.orchestrate/runs/<runId>/` directory name) to reclaim. REQUIRED \u2014 there is no sweep form. This is the human-gated reclaim path for a crashed or abandoned run that looks `in-progress` forever (there is no `failed` run status). It BYPASSES the `status === 'completed'` cross-run isolation gate by design (the one sanctioned exception in ADR-0012), and is scoped by construction to this single `runs/<runId>/` and the branches embedding that runId, so it can never touch another run. The mandatory interactive confirmation that authorizes this deletion lives in the skill, not this tool."
+  ),
+  repoPath: external_exports.string().optional().describe(
+    "Path to the git repository whose `.orchestrate/runs/<runId>/` is reclaimed. Defaults to the current working directory."
+  )
+});
+var reclaimRunOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the reclaim ran (the run may still have been a no-op \u2014 e.g. `run-not-found` \u2014 see the report); 'error' = the reclaim could not run (invalid input)."
+  ),
+  report: runReportSchema.optional().describe(
+    "The single-run cleanup report. Present when status='ok'. NOT an array \u2014 reclaim_run acts on exactly one named run."
   ),
   errorCode: external_exports.enum(["INVALID_INPUT", "FS_ERROR"]).optional().describe(
     "Machine-readable failure category. Present when status='error'."
@@ -23620,10 +23649,13 @@ function skippedReport(runId, reason) {
     runDirRemoved: false
   };
 }
-async function cleanMergedRun(runId, runDir, state, repoPath, force) {
+async function removeRunFootprint(runId, runDir, state, repoPath, opts) {
+  const removeFailedWorktrees = opts.removeFailedWorktrees;
   const report = {
     runId,
     action: "removed",
+    // Mechanical placeholder — every caller overrides `reason` after this
+    // helper returns, keying it to the caller's own semantics.
     reason: "merged-and-clean",
     removedWorktrees: [],
     preservedWorktrees: [],
@@ -23637,7 +23669,7 @@ async function cleanMergedRun(runId, runDir, state, repoPath, force) {
     if (!slice.worktreePath) {
       continue;
     }
-    if (slice.state === "failed" && !force) {
+    if (slice.state === "failed" && !removeFailedWorktrees) {
       report.preservedWorktrees.push(slice.worktreePath);
       if (slice.sliceBranch) {
         preservedSliceBranches.add(slice.sliceBranch);
@@ -23671,9 +23703,8 @@ async function cleanMergedRun(runId, runDir, state, repoPath, force) {
     await deleteBranch(branch, repoPath, report);
   }
   const anyPreserved = report.preservedWorktrees.length > 0;
-  if (anyPreserved && !force) {
+  if (anyPreserved) {
     report.action = "preserved";
-    report.reason = "merged-with-preserved-worktrees";
     report.runDirRemoved = false;
   } else {
     try {
@@ -23683,8 +23714,14 @@ async function cleanMergedRun(runId, runDir, state, repoPath, force) {
       report.runDirRemoved = false;
     }
     report.action = report.runDirRemoved ? "removed" : "preserved";
-    report.reason = "merged-and-clean";
   }
+  return report;
+}
+async function cleanMergedRun(runId, runDir, state, repoPath, force) {
+  const report = await removeRunFootprint(runId, runDir, state, repoPath, {
+    removeFailedWorktrees: force
+  });
+  report.reason = report.action === "preserved" ? "merged-with-preserved-worktrees" : "merged-and-clean";
   return report;
 }
 async function cleanRuns(input) {
@@ -23758,6 +23795,54 @@ async function cleanRuns(input) {
     }
   }
   return { status: "ok", runs };
+}
+async function reclaimRun(input) {
+  const repoPath = input.repoPath ?? process.cwd();
+  const repoGuardErr = optionInjectionError("repoPath", repoPath);
+  if (repoGuardErr) {
+    return {
+      status: "error",
+      errorCode: "INVALID_INPUT",
+      errorMessage: repoGuardErr
+    };
+  }
+  const runIdGuardErr = optionInjectionError("runId", input.runId);
+  if (runIdGuardErr) {
+    return {
+      status: "ok",
+      report: skippedReport(input.runId, "invalid-run-id")
+    };
+  }
+  if (!isValidRunId(input.runId)) {
+    return {
+      status: "ok",
+      report: skippedReport(input.runId, "invalid-run-id")
+    };
+  }
+  const runDir = path7.join(repoPath, ".orchestrate", "runs", input.runId);
+  if (!fs8.existsSync(runDir)) {
+    return {
+      status: "ok",
+      report: skippedReport(input.runId, "run-not-found")
+    };
+  }
+  const runStatePath = path7.join(runDir, "run-state.json");
+  const stateResult = readRunState(runStatePath);
+  if (!stateResult.ok) {
+    return {
+      status: "ok",
+      report: skippedReport(input.runId, stateResult.reason)
+    };
+  }
+  const report = await removeRunFootprint(
+    input.runId,
+    runDir,
+    stateResult.state,
+    repoPath,
+    { removeFailedWorktrees: true }
+  );
+  report.reason = "failed-run-reclaimed";
+  return { status: "ok", report };
 }
 
 // src/tools/verify-changeset.ts
@@ -24824,6 +24909,24 @@ var handleCleanRuns = async (input) => {
     content: [{ type: "text", text }]
   };
 };
+var handleReclaimRun = async (input) => {
+  const result = await reclaimRun(input);
+  let text;
+  if (result.status === "ok") {
+    const r = result.report;
+    if (r.reason === "failed-run-reclaimed") {
+      text = `Reclaimed run ${r.runId}: removed ${r.removedWorktrees.length} worktree(s), ${r.removedBranches.length} branch(es); run dir removed: ${r.runDirRemoved}.`;
+    } else {
+      text = `Run ${r.runId} not reclaimed (${r.reason}); nothing removed.`;
+    }
+  } else {
+    text = `Run reclaim failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
 var handleVerifyChangeset = async (input) => {
   const result = await verifyChangeset(input);
   let text;
@@ -24869,6 +24972,18 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleCleanRuns
+);
+registerTool(
+  "reclaim_run",
+  {
+    title: "Reclaim a Single Crashed or Abandoned Run",
+    description: "Removes the complete on-disk and git footprint of ONE named run \u2014 all its worktrees (passed AND failed), its umbrella branch and every slice branch (local and remote), and its run directory. Takes a REQUIRED single `runId`. Unlike `clean_runs`, this tool BYPASSES the `status === 'completed'` cross-run isolation gate by design: it is the one sanctioned exception in ADR-0012, the human-gated reclaim path for a crashed or abandoned run that looks `in-progress` forever (there is no `failed` run status). It is scoped by construction to that single `.orchestrate/runs/<runId>/` and the branches embedding that runId, so it can never touch any other run. The mandatory interactive confirmation that authorizes the deletion lives in the SKILL, not here \u2014 this tool is non-interactive execution only. A valid runId with no run directory on disk is the clean `run-not-found` no-op (so a re-reclaim is idempotent). Every removal is best-effort. Never throws.",
+    inputSchema: reclaimRunInputSchema.shape,
+    outputSchema: reclaimRunOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleReclaimRun
 );
 registerTool(
   "verify_changeset",
