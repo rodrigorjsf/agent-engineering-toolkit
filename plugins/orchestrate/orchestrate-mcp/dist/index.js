@@ -21970,6 +21970,9 @@ var routingConfigSchema = external_exports.object({
   complex: tierRoutingSchema,
   intraWaveConcurrency: external_exports.enum(["parallel", "sequential"]).optional().default("parallel").describe(
     "Run-wide policy: how to process the independent slices within one wave. 'parallel' (default) spawns all processable slices at once and integrates them sequentially. 'sequential' processes slices one at a time in issue-id ascending order, refreshing the umbrella base between each so slice N branches from base+slice1..N-1 \u2014 guaranteed conflict-free, at the cost of serializing the wave. Optional; the three tier blocks remain required."
+  ),
+  continuationBudget: external_exports.number().int().min(0).default(2).describe(
+    "How many times the orchestrator may re-spawn the implementer in the same worktree after an 'incomplete' envelope (re-spawns BEYOND the initial run). 0 disables continuation (incomplete FAILs immediately, the legacy behavior). Defaults to 2."
   )
 });
 var resolveRoutingInputSchema = external_exports.object({
@@ -21993,6 +21996,9 @@ var resolveRoutingOutputSchema = external_exports.object({
   ),
   errorMessage: external_exports.string().optional().describe(
     "Cleaned, human-readable failure description. Present when status='error'."
+  ),
+  continuationBudget: external_exports.number().int().min(0).optional().describe(
+    "The resolved continuation budget for this run \u2014 how many implementer re-spawns are allowed after an 'incomplete' envelope. Present when status='ok'."
   )
 });
 function resolveRouting(tier, config2) {
@@ -22039,7 +22045,8 @@ function resolveRoutingFromConfig(input) {
   return {
     status: "ok",
     tier: input.tier,
-    routing: resolveRouting(input.tier, config2.data)
+    routing: resolveRouting(input.tier, config2.data),
+    continuationBudget: config2.data.continuationBudget
   };
 }
 
@@ -23194,6 +23201,9 @@ var implementerEnvelopeSchema = external_exports.object({
   ),
   rootCause: rootCauseSchema.optional().describe(
     "Root-cause analysis for a non-success outcome. REQUIRED when status='blocked' (label it verified|hypothesis and cite evidence when verified); optional for 'incomplete' (cause is definitionally turn-budget); omit for 'completed'."
+  ),
+  remainingWork: external_exports.string().optional().describe(
+    "Present and non-empty ONLY when status='incomplete'. The handoff note the orchestrator forwards to the continuation implementer: what is done, what is left, and how to resume in the same worktree. Required for an 'incomplete' envelope; absent or empty for 'completed'/'blocked'."
   )
 });
 var reviewerEnvelopeSchema = external_exports.object({
@@ -23244,7 +23254,15 @@ var envelopeSchema = external_exports.discriminatedUnion("role", [
   reviewerEnvelopeSchema,
   conflictResolverEnvelopeSchema,
   investigatorEnvelopeSchema
-]);
+]).superRefine((data, ctx) => {
+  if (data.role === "implementer" && data.status === "incomplete" && (data.remainingWork === void 0 || data.remainingWork.trim() === "")) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["remainingWork"],
+      message: "An 'incomplete' implementer envelope must carry a non-empty `remainingWork` handoff: what is done, what is left, and how to resume in the same worktree."
+    });
+  }
+});
 var ENVELOPE_ROLES = [
   "implementer",
   "reviewer",
@@ -24108,7 +24126,8 @@ var DEFAULT_ROUTING_CONFIG = {
     reviewer: { model: "opus", effort: "deep" },
     "conflict-resolver": { model: "opus", effort: "deep" }
   },
-  intraWaveConcurrency: "parallel"
+  intraWaveConcurrency: "parallel",
+  continuationBudget: 2
 };
 var RUNS_GITIGNORE_LINE = ".orchestrate/runs/";
 var bootstrapConfigInputSchema = external_exports.object({
@@ -24774,7 +24793,7 @@ var handleResolveRouting = async (input) => {
   if (result.status === "ok") {
     const r = result.routing;
     const inv = r.investigator ? `investigator ${r.investigator.effort}` : "no investigator";
-    text = `Routing for tier '${result.tier}': ${inv}, implementer ${r.implementer.effort}/${r.implementer.model}, reviewer ${r.reviewer.effort}/${r.reviewer.model}.`;
+    text = `Routing for tier '${result.tier}': ${inv}, implementer ${r.implementer.effort}/${r.implementer.model}, reviewer ${r.reviewer.effort}/${r.reviewer.model}, continuation budget ${result.continuationBudget}.`;
   } else {
     text = `Routing resolution failed [${result.errorCode}]: ${result.errorMessage}`;
   }
@@ -24787,7 +24806,7 @@ registerTool(
   "resolve_routing",
   {
     title: "Resolve Complexity Routing",
-    description: "Resolves which model and effort variant to spawn for each role \u2014 investigator, implementer, reviewer, conflict-resolver \u2014 given an issue's assessed complexity tier. Reads the tier-to-role mapping from .orchestrate/routing.json. A null investigator means that tier skips the investigation pass. Returns a discriminated `status` of 'ok' or 'error' (routing.json missing or malformed).",
+    description: "Resolves which model and effort variant to spawn for each role \u2014 investigator, implementer, reviewer, conflict-resolver \u2014 given an issue's assessed complexity tier. Reads the tier-to-role mapping from .orchestrate/routing.json. A null investigator means that tier skips the investigation pass. Also echoes the resolved run-wide `continuationBudget` \u2014 how many times the orchestrator may re-spawn the implementer in the same worktree after an 'incomplete' envelope (default 2). Returns a discriminated `status` of 'ok' or 'error' (routing.json missing or malformed).",
     inputSchema: resolveRoutingInputSchema.shape,
     outputSchema: resolveRoutingOutputSchema.shape
   },
@@ -24953,7 +24972,7 @@ registerTool(
   "validate_envelope",
   {
     title: "Validate Subagent Result Envelope",
-    description: "Validates a subagent's result envelope \u2014 the ```orchestrate-envelope fenced JSON block a subagent emits as its final message \u2014 against the defined schema for its role. Returns a discriminated `status`: 'valid' (a well-formed envelope matching the role, with the parsed `envelope`), 'invalid' (an envelope was attempted but is truncated, malformed, or off-schema \u2014 a truncated envelope is ALWAYS invalid, never silently accepted), or 'missing' (no envelope block was found). A failure outcome (implementer 'blocked', reviewer 'failed') must also carry a labelled `rootCause` (verified|hypothesis) or it is reported invalid. The orchestrator uses this instead of parsing subagent prose for status or changed files.",
+    description: "Validates a subagent's result envelope \u2014 the ```orchestrate-envelope fenced JSON block a subagent emits as its final message \u2014 against the defined schema for its role. Returns a discriminated `status`: 'valid' (a well-formed envelope matching the role, with the parsed `envelope`), 'invalid' (an envelope was attempted but is truncated, malformed, or off-schema \u2014 a truncated envelope is ALWAYS invalid, never silently accepted), or 'missing' (no envelope block was found). A failure outcome (implementer 'blocked', reviewer 'failed') must also carry a labelled `rootCause` (verified|hypothesis) or it is reported invalid. An implementer 'incomplete' envelope must carry a non-empty `remainingWork` handoff (the note the orchestrator forwards to the continuation in the same worktree) or it is reported invalid. The orchestrator uses this instead of parsing subagent prose for status or changed files.",
     inputSchema: validateEnvelopeInputSchema.shape,
     outputSchema: validateEnvelopeOutputSchema.shape
   },

@@ -742,12 +742,50 @@ subagent's verbatim returned text and its `role`:
    - `completed` — proceed to the worktree scope check in step 4a.
    - `incomplete` — the implementer's graceful turn-budget self-report: it
      foresaw it could not finish within its remaining turns and stopped cleanly
-     with partial work recorded. The slice has **FAILED** — record a
-     `failureReason` that names the turn-limit cutoff explicitly (e.g.
-     "implementer reported `incomplete` — exhausted its turn budget; partial
-     work preserved in the worktree for resumption"). See *Failure handling*.
+     with partial work recorded **and a `remainingWork` handoff**. Do **not**
+     fail the slice immediately. Instead run the **bounded continue-in-place
+     loop** below: re-spawn the implementer in the *same* worktree carrying the
+     `remainingWork`, until it returns `completed` or the continuation budget is
+     exhausted. The slice FAILs from `incomplete` only when the budget runs out
+     or the no-progress guard trips — see the loop and *Failure handling*.
    - `blocked` — the implementer hit an unrecoverable obstacle: the slice has
      **FAILED**.
+
+   **Continue-in-place loop (on a `valid` `incomplete` envelope):**
+   - Read `budget = continuationBudget` from the step-2 `resolve_routing` result
+     (the resolved run-wide budget, default `2`; `0` disables continuation —
+     legacy immediate-FAIL). When `resolve_routing` returned `CONFIG_NOT_FOUND`
+     (no routing configured), there is no budget — use **0**.
+   - Initialize an in-session `continuationsUsed = 0` and capture a
+     **content-level fingerprint** of the worktree's uncommitted state: a hash
+     of `git -C <worktreePath> diff HEAD` concatenated with the contents of the
+     untracked files listed by
+     `git -C <worktreePath> ls-files --others --exclude-standard`. A filename-set
+     comparison is insufficient — the same file may be rewritten with real
+     progress or returned byte-identical.
+   - While `continuationsUsed < budget`: re-spawn `orchestrate:implementer-<effort>`
+     in the **same** worktree (same routing/model/effort) with a continuation
+     prompt = the issue, the worktree path, the PRIOR envelope's `remainingWork`,
+     the standard verify/no-git reminders, and an explicit "partial work is
+     already in the worktree — continue it, do not restart." Validate the
+     returned text with `validate_envelope` (role `implementer`).
+     - `completed` — proceed to the worktree scope check in step 4a. Loop done.
+     - `blocked`, or an `invalid`/`missing` envelope — the slice has **FAILED**
+       (record the precise cause). Loop done.
+     - `incomplete` again — recompute the fingerprint. If it **equals** the
+       prior fingerprint, the **no-progress guard trips**: the slice FAILs, its
+       `failureReason` names the no-progress stall, label `needs-triage`.
+       Otherwise increment `continuationsUsed`, update the stored fingerprint and
+       `remainingWork`, and loop.
+   - When `continuationsUsed === budget` and the last envelope is still
+     `incomplete`: the slice FAILs with a budget-exhausted `failureReason`
+     ("implementer reported `incomplete` after exhausting the continuation budget
+     of N; partial work preserved in the worktree for resumption"), label
+     `needs-info` (resumable).
+   - The counter and fingerprint are **loop-local** — nothing is persisted to
+     `run-state.json`. A mid-continuation context handoff/resume discards the
+     in-progress slice and rebuilds its worktree (§1), restarting the slice
+     clean; this is intentional.
 
    An `invalid` or `missing` envelope also means the slice has **FAILED** — a
    hard turn-limit cutoff that truncates the envelope mid-emission lands here as
@@ -1045,8 +1083,11 @@ To hand off:
 
 A slice **FAILS** when `create_worktree` errors, a subagent's result envelope
 is invalid or missing (`validate_envelope` returns `invalid` or `missing`), a
-validated implementer envelope has `status: "blocked"` or `status: "incomplete"`,
-a validated reviewer envelope has `status: "failed"`, `verify_changeset` reports
+validated implementer envelope has `status: "blocked"` — or `status: "incomplete"`
+**after** the continue-in-place loop exhausts the continuation budget or trips
+the no-progress guard (a single `incomplete` no longer FAILs immediately; see
+§3 step 4) — a validated reviewer envelope has `status: "failed"`,
+`verify_changeset` reports
 the implementer's declared file set does not match the worktree
 (`empty-but-declared` or `suspiciously-empty`, or a `status: "error"`), the
 staged changeset is empty, or a merge conflict the `conflict-resolver` cannot
@@ -1054,12 +1095,27 @@ fix. The orchestrator decides FAILURE **only** from the validated envelope and
 tool results — never from a subagent's prose. An invalid or missing envelope is
 always a FAILED slice; it is never treated as success.
 
-The implementer envelope's `incomplete` status is a **distinct** failure flavor:
-it is the implementer's graceful turn-budget self-report — partial, resumable
-work — as opposed to `blocked` (an unrecoverable obstacle) or an `invalid`
-envelope (a hard turn-limit cutoff that truncated the envelope). All three FAIL
-the slice, but the `failureReason` must name the cause precisely so a developer
-can tell a resumable budget exhaustion apart from a genuine blocker. An
+The implementer envelope's `incomplete` status is the implementer's graceful
+turn-budget self-report — partial, resumable work, carrying a `remainingWork`
+handoff — as opposed to `blocked` (an unrecoverable obstacle) or an `invalid`
+envelope (a hard turn-limit cutoff that truncated the envelope). Unlike `blocked`
+and `invalid`, a single `incomplete` does **not** FAIL the slice: it drives the
+bounded continue-in-place loop (§3 step 4), where the orchestrator re-spawns the
+implementer in the same preserved worktree with the `remainingWork` until it
+returns `completed` or the loop terminates. An `incomplete` slice FAILs **only**
+when one of two terminal causes is reached:
+
+- **Budget exhausted** (resumable) — `continuationsUsed === continuationBudget`
+  and the last envelope is still `incomplete`. The `failureReason` names the
+  budget exhaustion ("implementer reported `incomplete` after exhausting the
+  continuation budget of N; partial work preserved in the worktree for
+  resumption"); label `needs-info`.
+- **No progress** — a continuation returned `incomplete` whose worktree
+  content-fingerprint equals the prior one (the re-spawn changed nothing). The
+  `failureReason` names the no-progress stall; label `needs-triage`.
+
+In both terminal cases the `failureReason` must name the cause precisely so a
+developer can tell a resumable budget exhaustion apart from a genuine stall. An
 `incomplete` slice's worktree holds usable partial work — preserve it (as every
 FAILED slice's worktree is preserved) so the slice can be resumed.
 
@@ -1072,10 +1128,11 @@ On a FAILED slice:
   so a developer reads the subagent's own labelled diagnosis.
 - Set its `state` to `failed` with a `failureReason`, checkpoint, and
   transition the issue's tracker label. For a slice that failed because the
-  implementer reported `incomplete` — partial, resumable work — `needs-info`
-  better signals "resume me" than `needs-triage`:
+  continue-in-place loop **exhausted the continuation budget** — partial,
+  resumable work — `needs-info` better signals "resume me" than `needs-triage`:
   `gh issue edit <N> --remove-label ready-for-agent --add-label needs-info`.
-  For every other failure cause, use `needs-triage`:
+  For the **no-progress** terminal cause (a continuation that changed nothing)
+  and every other failure cause, use `needs-triage`:
   `gh issue edit <N> --remove-label ready-for-agent --add-label needs-triage`.
 - Do **not** merge it. **Preserve its worktree** — leave it on disk for a
   developer to inspect. Do not call `remove_worktree`.

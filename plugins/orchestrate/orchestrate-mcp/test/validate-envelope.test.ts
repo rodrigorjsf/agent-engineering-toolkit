@@ -121,12 +121,16 @@ describe("validateEnvelope — valid envelopes", () => {
   it("accepts an implementer envelope with status='incomplete'", () => {
     // 'incomplete' is the implementer's graceful turn-budget self-report —
     // distinct from 'completed' (done) and 'blocked' (unrecoverable obstacle).
+    // An 'incomplete' envelope must carry a non-empty `remainingWork` handoff.
     const env = {
       ...implementerEnvelope(),
       status: "incomplete" as const,
       notes:
         "Foresaw the remaining acceptance criteria would not fit the turn " +
         "budget; reporting incomplete with the partial work above.",
+      remainingWork:
+        "Done: schema + validator. Left: the SKILL.md prose. Resume in the " +
+        "same worktree by editing SKILL.md §3 step 4.",
     };
     const r = validateEnvelope({ text: fenced(env), role: "implementer" });
 
@@ -204,10 +208,12 @@ describe("validateEnvelope — rootCause on failure outcomes", () => {
 
   it("accepts an implementer 'incomplete' envelope without rootCause", () => {
     // 'incomplete' is the turn-budget self-report — rootCause is optional there.
+    // It still requires a `remainingWork` handoff (see the #234 suite below).
     const env = {
       ...implementerEnvelope(),
       status: "incomplete" as const,
       notes: "Ran out of budget; partial work recorded.",
+      remainingWork: "Resume the remaining acceptance criteria in this worktree.",
     };
     const r = validateEnvelope({ text: fenced(env), role: "implementer" });
 
@@ -223,6 +229,63 @@ describe("validateEnvelope — rootCause on failure outcomes", () => {
 
     expect(r.status).toBe("valid");
     expect(r.envelope).toEqual(implementerEnvelope());
+  });
+});
+
+// ─── remainingWork handoff on 'incomplete' (#234) ─────────────────────────────
+
+describe("validateEnvelope — remainingWork on incomplete envelopes", () => {
+  it("accepts an implementer 'incomplete' envelope carrying a non-empty remainingWork", () => {
+    const env = {
+      ...implementerEnvelope(),
+      status: "incomplete" as const,
+      notes: "Partial work recorded; see remainingWork for the handoff.",
+      remainingWork:
+        "Done: schema field + validator. Left: the index.ts describe text. " +
+        "Resume in the same worktree.",
+    };
+    const r = validateEnvelope({ text: fenced(env), role: "implementer" });
+
+    expect(r.status).toBe("valid");
+    expect(r.envelope).toEqual(env);
+    expect(r.errorCode).toBeUndefined();
+  });
+
+  it("rejects an implementer 'incomplete' envelope that omits remainingWork", () => {
+    const env = {
+      ...implementerEnvelope(),
+      status: "incomplete" as const,
+      notes: "Ran out of budget but forgot the handoff.",
+    };
+    const r = validateEnvelope({ text: fenced(env), role: "implementer" });
+
+    expect(r.status).toBe("invalid");
+    expect(r.errorCode).toBe("SCHEMA_MISMATCH");
+    expect(r.envelope).toBeUndefined();
+  });
+
+  it("rejects an implementer 'incomplete' envelope with whitespace-only remainingWork", () => {
+    const env = {
+      ...implementerEnvelope(),
+      status: "incomplete" as const,
+      notes: "Handoff present but empty after trimming.",
+      remainingWork: "   \n\t ",
+    };
+    const r = validateEnvelope({ text: fenced(env), role: "implementer" });
+
+    expect(r.status).toBe("invalid");
+    expect(r.errorCode).toBe("SCHEMA_MISMATCH");
+    expect(r.envelope).toBeUndefined();
+  });
+
+  it("accepts a 'completed' implementer envelope WITHOUT remainingWork (field optional for non-incomplete)", () => {
+    const r = validateEnvelope({
+      text: fenced(implementerEnvelope()),
+      role: "implementer",
+    });
+
+    expect(r.status).toBe("valid");
+    expect(r.errorCode).toBeUndefined();
   });
 });
 

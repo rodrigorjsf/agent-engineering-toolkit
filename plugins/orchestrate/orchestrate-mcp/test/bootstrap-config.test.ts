@@ -84,6 +84,14 @@ describe("bootstrapConfig — fresh run", () => {
       (readConfig(dir, "routing.json") as { intraWaveConcurrency?: string })
         .intraWaveConcurrency
     ).toBe("parallel");
+
+    // The written routing.json carries the run-wide continuationBudget knob
+    // (#234) — proves DEFAULT_ROUTING_CONFIG stays in parity with the key the
+    // schema and templates/routing.json now declare.
+    expect(
+      (readConfig(dir, "routing.json") as { continuationBudget?: number })
+        .continuationBudget
+    ).toBe(2);
   });
 
   it("writes JSON with 2-space indent and a trailing newline", () => {

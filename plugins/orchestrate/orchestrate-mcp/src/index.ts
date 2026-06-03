@@ -455,7 +455,8 @@ const handleResolveRouting: ToolHandler<
     text =
       `Routing for tier '${result.tier}': ${inv}, ` +
       `implementer ${r.implementer.effort}/${r.implementer.model}, ` +
-      `reviewer ${r.reviewer.effort}/${r.reviewer.model}.`;
+      `reviewer ${r.reviewer.effort}/${r.reviewer.model}, ` +
+      `continuation budget ${result.continuationBudget}.`;
   } else {
     text = `Routing resolution failed [${result.errorCode}]: ${result.errorMessage}`;
   }
@@ -474,7 +475,10 @@ registerTool(
       "investigator, implementer, reviewer, conflict-resolver — given an " +
       "issue's assessed complexity tier. Reads the tier-to-role mapping from " +
       ".orchestrate/routing.json. A null investigator means that tier skips " +
-      "the investigation pass. Returns a discriminated `status` of 'ok' or " +
+      "the investigation pass. Also echoes the resolved run-wide " +
+      "`continuationBudget` — how many times the orchestrator may re-spawn the " +
+      "implementer in the same worktree after an 'incomplete' envelope " +
+      "(default 2). Returns a discriminated `status` of 'ok' or " +
       "'error' (routing.json missing or malformed).",
     inputSchema: resolveRoutingInputSchema.shape,
     outputSchema: resolveRoutingOutputSchema.shape,
@@ -752,7 +756,10 @@ registerTool(
       "off-schema — a truncated envelope is ALWAYS invalid, never silently " +
       "accepted), or 'missing' (no envelope block was found). A failure outcome " +
       "(implementer 'blocked', reviewer 'failed') must also carry a labelled " +
-      "`rootCause` (verified|hypothesis) or it is reported invalid. The " +
+      "`rootCause` (verified|hypothesis) or it is reported invalid. An " +
+      "implementer 'incomplete' envelope must carry a non-empty `remainingWork` " +
+      "handoff (the note the orchestrator forwards to the continuation in the " +
+      "same worktree) or it is reported invalid. The " +
       "orchestrator uses this instead of parsing subagent prose for status or " +
       "changed files.",
     inputSchema: validateEnvelopeInputSchema.shape,

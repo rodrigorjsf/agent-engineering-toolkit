@@ -17,5 +17,6 @@
     "reviewer": { "model": "opus", "effort": "deep" },
     "conflict-resolver": { "model": "opus", "effort": "deep" }
   },
-  "intraWaveConcurrency": "parallel"
+  "intraWaveConcurrency": "parallel",
+  "continuationBudget": 2
 }
