@@ -550,13 +550,26 @@ subagent's verbatim returned text and its `role`:
    ```
 
    If `git -C <worktree-path> diff --cached --quiet` exits 0, nothing changed —
-   the slice has **FAILED**. Otherwise commit and push (two `-m` flags keep a
-   newline out of the shell argument):
+   the slice has **FAILED**. Otherwise commit (local; two `-m` flags keep a
+   newline out of the shell argument), then push **with the `push_and_verify`
+   MCP tool** — not a raw `git push`:
 
    ```
    git -C <worktree-path> commit -m "<type>(<scope>): <issue title>" -m "Closes #<N>"
-   git -C <worktree-path> push -u origin orchestrate/slice-<N>
    ```
+
+   Call the **`push_and_verify` MCP tool** with `repoPath` = the slice
+   `worktreePath`, `branch` = `orchestrate/slice-<N>`, `remote` = `origin`,
+   `setUpstream: true`. On `status: "ok"` proceed to step 7. On
+   `status: "error"` (any `errorCode` — `PUSH_FAILED`,
+   `BRANCH_NOT_ON_REMOTE`, `INVALID_INPUT`, `GIT_ERROR`) the slice has
+   **FAILED**, the same wiring as every other MCP-tool error in this section.
+
+   `push_and_verify` gates step 7's `gh pr create`: it pushes the branch and
+   then confirms via SHA-matched `git ls-remote` that it actually landed on the
+   remote. A `git push` that exits 0 but never lands is exactly the
+   confusing-`gh pr create`-error site #230 reports — verifying the branch is on
+   the remote *before* opening the PR removes that silent-failure mode.
 
 7. **Open the slice pull request.**
 
@@ -745,6 +758,17 @@ summary when the run completes.
 The orchestrator does not close issues. The `Closes #N` trailers on the slice
 commits close them when a developer merges the final umbrella pull request into
 `development`.
+
+**`gh`-op resilience (prose, not a tool).** Wrap every `gh` operation —
+`gh pr create`, `gh pr merge`, `gh pr view`, `gh issue edit`, `gh issue
+comment` — in a bounded retry that **distinguishes transient failures (network
+timeout, 5xx, DNS) — retry with backoff — from permanent failures (auth,
+validation, not-found) — fail immediately**. This is orchestrator prose rather
+than an MCP tool **because the MCP layer never shells `gh`** (the no-`gh`
+invariant): forge-op resilience is the orchestrator's responsibility. The
+`push_and_verify` MCP tool covers the git-push half of the same #230 failure
+mode (an exit-0 push that never lands); this note covers the `gh`-op half —
+together they close #230.
 
 ## Checkpointing
 

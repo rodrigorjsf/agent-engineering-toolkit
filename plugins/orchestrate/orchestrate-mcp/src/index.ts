@@ -106,6 +106,13 @@ import {
   type BootstrapConfigInput,
   type BootstrapConfigOutput,
 } from "./tools/bootstrap-config.js";
+import {
+  pushAndVerify,
+  pushAndVerifyInputSchema,
+  pushAndVerifyOutputSchema,
+  type PushAndVerifyInput,
+  type PushAndVerifyOutput,
+} from "./tools/push-and-verify.js";
 
 const server = new McpServer({
   name: "orchestrate",
@@ -860,6 +867,46 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleBootstrapConfig as unknown as AnyToolHandler
+);
+
+// ─── push_and_verify ──────────────────────────────────────────────────────────
+
+const handlePushAndVerify: ToolHandler<
+  PushAndVerifyInput,
+  PushAndVerifyOutput
+> = async (input) => {
+  const result = await pushAndVerify(input);
+  let text: string;
+  if (result.status === "ok") {
+    text = `Pushed ${result.branch} to ${result.remote} and confirmed landed at ${result.sha} (${result.attempts} verify attempt(s)).`;
+  } else {
+    text = `push_and_verify failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "push_and_verify",
+  {
+    title: "Push a Branch and Verify It Landed",
+    description:
+      "Pushes `branch` to `remote`, then confirms via 'git ls-remote --heads' " +
+      "that the remote ref matches the local tip SHA — a presence-only check is " +
+      "insufficient, because a stale ref left from a prior push would pass it. " +
+      "Uses bounded exponential backoff for both the push retry and the landing " +
+      "poll, and fails loud with `BRANCH_NOT_ON_REMOTE` when a successful-exit " +
+      "push never lands at the expected SHA (the silent-failure mode). Git-only " +
+      "— it never shells `gh`; the orchestrator owns forge operations. Returns a " +
+      "discriminated `status` of 'ok' or 'error' and never throws.",
+    inputSchema: pushAndVerifyInputSchema.shape,
+    outputSchema: pushAndVerifyOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handlePushAndVerify as unknown as AnyToolHandler
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────
