@@ -76,6 +76,14 @@ describe("bootstrapConfig — fresh run", () => {
     expect(() =>
       handoffConfigSchema.parse(readConfig(dir, "handoff.json"))
     ).not.toThrow();
+
+    // The written routing.json carries the run-wide intraWaveConcurrency knob
+    // (#231-P2.3) — proves DEFAULT_ROUTING_CONFIG stays in parity with the key
+    // the schema and templates/routing.json now declare.
+    expect(
+      (readConfig(dir, "routing.json") as { intraWaveConcurrency?: string })
+        .intraWaveConcurrency
+    ).toBe("parallel");
   });
 
   it("writes JSON with 2-space indent and a trailing newline", () => {

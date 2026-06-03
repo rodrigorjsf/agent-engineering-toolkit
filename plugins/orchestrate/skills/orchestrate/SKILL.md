@@ -170,8 +170,9 @@ Every run keeps its ephemeral state in a **per-run directory**,
 `.orchestrate/runs/<runId>/`, holding that run's `run-state.json`,
 `context-flag.json`, and rendered HTML artifacts. The committed config files
 (`commands.json`, `routing.json`, `handoff.json`) stay flat at the
-`.orchestrate/` top level. The run directory's schema and rationale are in
-`references/run-state.md`.
+`.orchestrate/` top level. `routing.json` carries both per-tier subagent routing
+and run-wide run policy (the optional `intraWaveConcurrency` knob — see section
+2). The run directory's schema and rationale are in `references/run-state.md`.
 
 **Read the invocation argument.** `/orchestrate` accepts an optional parent-PRD
 issue number — `/orchestrate <PRD#>` scopes this run to that PRD's children
@@ -276,8 +277,10 @@ prefixes are the only match keys. Then act on the count of matches:
      MCP tool with the repository root as `repoPath` and this session's model
      id as `model` (or an explicit `contextWindowTokens`). It detects the
      project type, writes a project-appropriate `commands.json`,
-     `routing.json`, and `handoff.json`, creates `.orchestrate/runs/`, and adds
-     `.orchestrate/runs/` to the repository's `.gitignore`. Every step is
+     `routing.json` (per-tier routing plus the run-wide `intraWaveConcurrency`
+     policy, defaulting to `parallel`), and `handoff.json`, creates
+     `.orchestrate/runs/`, and adds `.orchestrate/runs/` to the repository's
+     `.gitignore`. Every step is
      idempotent — an existing committed config is never overwritten — so this
      is also a safe no-op on a repository already configured by hand.
    - Fetch so branch operations use current refs: `git fetch origin`.
@@ -401,6 +404,16 @@ prefixes are the only match keys. Then act on the count of matches:
 
 ## 2. The wave loop
 
+**Read the run-wide concurrency policy once, before any slice spawns.** Read
+`.orchestrate/routing.json` and take its optional top-level
+`intraWaveConcurrency` key — `"parallel" | "sequential"`, **absent ⇒
+`parallel`** (apply the default here, in the orchestrator; do **not** route this
+through `resolve_routing`, which is per-tier and returns only `tier` + per-tier
+`routing`, never the whole config). This is a single run-wide decision that
+selects how each wave processes its slices, and it does not change between waves.
+`routing.json` thus carries both per-tier subagent routing **and** this run-wide
+run policy.
+
 Process waves in order, starting at index `completedWaves`. For each wave:
 
 1. **Refresh the umbrella base.** Before creating this wave's worktrees,
@@ -447,14 +460,43 @@ Process waves in order, starting at index `completedWaves`. For each wave:
      naming the external blocker issue (e.g. "blocked by #<id>, an issue
      outside this run's partition that is still open"), checkpoint, and do not
      process it. Never silently assume an out-of-partition blocker is done.
-3. **Process the slices.** Run section 3 for every processable slice. Slices in
-   a wave are independent, so parallelize: when several slices are at the same
-   subagent stage (investigation, implementation, review), spawn those
-   subagents by issuing all the Agent tool calls **in a single message**. Each
-   slice has its own worktree, so they never collide.
-4. **Integrate sequentially.** The commit, pull-request, and merge steps
-   (section 3, steps 6–9) run **one slice at a time** — merges into the
-   umbrella branch must not race each other. After each slice finishes
+3. **Process the slices.** Branch on the `intraWaveConcurrency` policy read at
+   the top of this section:
+
+   - **`parallel` (the default).** Run section 3 for every processable slice.
+     Slices in a wave are independent, so parallelize: when several slices are
+     at the same subagent stage (investigation, implementation, review), spawn
+     those subagents by issuing all the Agent tool calls **in a single
+     message**. Each slice has its own worktree, so they never collide. Then
+     integrate them sequentially — step 4 below.
+
+   - **`sequential`.** Process the wave's processable slices **one at a time, in
+     issue-id ascending order** — steps 3 and 4 below fuse into a per-slice
+     serial loop. This imposes a deterministic order on slices the DAG says are
+     independent, deciding who "wins" a shared-file region; in exchange every
+     slice branches from an already-integrated base, so it is conflict-free
+     without the conflict-resolver. For each slice, in ascending issue-id order:
+
+     1. **Refresh the umbrella base** by re-running this section's step 1 fetch
+        (`git fetch origin orchestrate/umbrella-<runId>:orchestrate/umbrella-<runId>`)
+        so this slice branches from `base + slice1..N-1` — the integrated state
+        of every earlier slice in this wave, not just the prior waves'.
+     2. **Process it** — run section 3 (all stages) for this one slice.
+     3. **Integrate it** — run section 3 steps 6–9 (commit, pull request, merge)
+        for this one slice; merges into the umbrella must not race, and here
+        they cannot, because only one slice is in flight.
+     4. **Check for the context-handoff signal** — exactly as the `parallel`
+        path does in step 4: if `.orchestrate/runs/<runId>/context-flag.json`
+        exists, finish writing `run-state.json` for the slice just integrated,
+        then go to section 4 (Context handoff) rather than starting the next
+        slice.
+
+     After the loop drains the wave's processable slices, continue at step 5.
+
+4. **Integrate sequentially** (the `parallel` path; the `sequential` path
+   already integrated each slice inline in step 3). The commit, pull-request,
+   and merge steps (section 3, steps 6–9) run **one slice at a time** — merges
+   into the umbrella branch must not race each other. After each slice finishes
    integrating, check for `.orchestrate/runs/<runId>/context-flag.json`: if it
    exists, the context-watchdog has signalled that this session's context is
    filling. Do not start the next slice — finish writing `run-state.json` for
