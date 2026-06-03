@@ -42,6 +42,14 @@ export type CapabilityVerb = (typeof CAPABILITY_VERBS)[number];
  * worktree is created (a fresh worktree has no installed dependencies) so the
  * four capability commands above have what they need. It is optional: a
  * project whose capability commands need no install simply omits it.
+ *
+ * `knownFailures` is a non-capability annotation key — like `install`, it is
+ * NOT one of the four capability verbs and is never executed. It is an optional
+ * list of substring/regex patterns matched against the captured output of a
+ * failing capability command to annotate which baseline-failure patterns
+ * appeared (`matched`) and which configured patterns did not (`unmatched`). It
+ * is a best-effort L1 hint for the orchestrator, never a "zero new failures"
+ * guarantee.
  */
 export const commandsConfigSchema = z.object({
   tests: z.array(z.string().min(1)).optional(),
@@ -49,6 +57,7 @@ export const commandsConfigSchema = z.object({
   build: z.array(z.string().min(1)).optional(),
   lint: z.array(z.string().min(1)).optional(),
   install: z.array(z.string().min(1)).optional(),
+  knownFailures: z.array(z.string().min(1)).optional(),
 });
 
 export const runCommandInputSchema = z.object({
@@ -119,6 +128,22 @@ export const runCommandOutputSchema = z.object({
       "True when `stdout` or `stderr` was truncated to fit the size cap. " +
         "Present whenever `stdout`/`stderr` are present."
     ),
+  knownFailureMatches: z
+    .object({
+      matched: z.array(z.string()),
+      unmatched: z.array(z.string()),
+    })
+    .optional()
+    .describe(
+      "Baseline-failure annotation, present only when the command exited " +
+        "non-zero AND `knownFailures` is configured in commands.json. " +
+        "`matched` = the configured patterns that appeared in the captured " +
+        "output; `unmatched` = the configured patterns that did NOT appear. " +
+        "This is a best-effort L1 hint, NOT a guarantee of 'zero new " +
+        "failures': run_tests returns capped exit-code output, not a " +
+        "structured test-result list, so an unmatched failure indicator in " +
+        "the output still warrants a spot-check by the orchestrator."
+    ),
   durationMs: z
     .number()
     .optional()
@@ -188,6 +213,46 @@ function capOutput(s: string): { text: string; truncated: boolean } {
     text: `[... output truncated — showing the last ${MAX_OUTPUT_CHARS} characters ...]\n${tail}`,
     truncated: true,
   };
+}
+
+/**
+ * Annotates which configured `knownFailures` patterns appear in a failing
+ * command's captured output. Best-effort L1 baseline-vs-regression hint — NOT a
+ * "zero new failures" guarantee.
+ *
+ * Matching runs against the UNTRUNCATED combined output (`rawStdout + "\n" +
+ * rawStderr`), not the capped text returned in the result: a failure indicator
+ * can live in the dropped head of oversized output. Each pattern is compiled as
+ * a RegExp; an invalid pattern (e.g. a stray paren) is matched literally via
+ * `includes` rather than escalating to an error — this honors the module's
+ * "never throw — every failure mode is a structured result" philosophy.
+ *
+ * Returns `undefined` when no patterns are configured, so the output field is
+ * omitted entirely.
+ */
+function annotateKnownFailures(
+  patterns: string[] | undefined,
+  rawStdout: string,
+  rawStderr: string
+): { matched: string[]; unmatched: string[] } | undefined {
+  if (!patterns || patterns.length === 0) {
+    return undefined;
+  }
+  const rawCombined = `${rawStdout}\n${rawStderr}`;
+  const matched: string[] = [];
+  const unmatched: string[] = [];
+  for (const pattern of patterns) {
+    let present: boolean;
+    try {
+      present = new RegExp(pattern).test(rawCombined);
+    } catch {
+      // Invalid regex (e.g. a stray paren) — fall back to a literal substring
+      // match instead of throwing or surfacing CONFIG_INVALID.
+      present = rawCombined.includes(pattern);
+    }
+    (present ? matched : unmatched).push(pattern);
+  }
+  return { matched, unmatched };
 }
 
 /** Outcome of a single `execFile` invocation, classified for the caller. */
@@ -435,6 +500,17 @@ export async function runConfiguredCommand(
 
   const out = capOutput(exec.stdout);
   const errOut = capOutput(exec.stderr);
+  // Annotate known baseline failures on the FAILED branch only, matching
+  // against the UNTRUNCATED output (a failure indicator can sit in the dropped
+  // head of oversized output). On 'passed' the field stays absent.
+  const knownFailureMatches =
+    exec.exitCode === 0
+      ? undefined
+      : annotateKnownFailures(
+          loaded.config.knownFailures,
+          exec.stdout,
+          exec.stderr
+        );
   return {
     status: exec.exitCode === 0 ? "passed" : "failed",
     capability: verb,
@@ -443,6 +519,7 @@ export async function runConfiguredCommand(
     stdout: out.text,
     stderr: errOut.text,
     truncated: out.truncated || errOut.truncated,
+    ...(knownFailureMatches ? { knownFailureMatches } : {}),
     durationMs: exec.durationMs,
   };
 }

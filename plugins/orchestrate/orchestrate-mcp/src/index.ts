@@ -309,7 +309,11 @@ for (const tool of RUN_TOOLS) {
         `from that file — this tool never accepts a command string from the ` +
         `caller. Returns a discriminated status: 'passed' (exit 0), 'failed' ` +
         `(non-zero exit), 'not-configured' (no "${tool.verb}" command set), ` +
-        `or 'error' (invalid config, timeout, or spawn failure).`,
+        `or 'error' (invalid config, timeout, or spawn failure). When the ` +
+        `command exits non-zero and the project's commands.json sets a ` +
+        `"knownFailures" pattern list, the result also carries ` +
+        `knownFailureMatches.matched / .unmatched — a best-effort ` +
+        `baseline-failure hint, not a zero-new-failures guarantee.`,
       inputSchema: runCommandInputSchema.shape,
       outputSchema: runCommandOutputSchema.shape,
     },

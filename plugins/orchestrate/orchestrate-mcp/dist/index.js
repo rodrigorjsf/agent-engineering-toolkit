@@ -21200,7 +21200,8 @@ var commandsConfigSchema = external_exports.object({
   typecheck: external_exports.array(external_exports.string().min(1)).optional(),
   build: external_exports.array(external_exports.string().min(1)).optional(),
   lint: external_exports.array(external_exports.string().min(1)).optional(),
-  install: external_exports.array(external_exports.string().min(1)).optional()
+  install: external_exports.array(external_exports.string().min(1)).optional(),
+  knownFailures: external_exports.array(external_exports.string().min(1)).optional()
 });
 var runCommandInputSchema = external_exports.object({
   repoPath: external_exports.string().optional().describe(
@@ -21226,6 +21227,12 @@ var runCommandOutputSchema = external_exports.object({
   ),
   truncated: external_exports.boolean().optional().describe(
     "True when `stdout` or `stderr` was truncated to fit the size cap. Present whenever `stdout`/`stderr` are present."
+  ),
+  knownFailureMatches: external_exports.object({
+    matched: external_exports.array(external_exports.string()),
+    unmatched: external_exports.array(external_exports.string())
+  }).optional().describe(
+    "Baseline-failure annotation, present only when the command exited non-zero AND `knownFailures` is configured in commands.json. `matched` = the configured patterns that appeared in the captured output; `unmatched` = the configured patterns that did NOT appear. This is a best-effort L1 hint, NOT a guarantee of 'zero new failures': run_tests returns capped exit-code output, not a structured test-result list, so an unmatched failure indicator in the output still warrants a spot-check by the orchestrator."
   ),
   durationMs: external_exports.number().optional().describe(
     "Wall-clock duration of the command in milliseconds. Present whenever a command was actually executed \u2014 status 'passed' or 'failed', or a 'TIMEOUT' / 'EXEC_ERROR' error. Absent for config-level failures."
@@ -21254,6 +21261,25 @@ function capOutput(s) {
 ${tail}`,
     truncated: true
   };
+}
+function annotateKnownFailures(patterns, rawStdout, rawStderr) {
+  if (!patterns || patterns.length === 0) {
+    return void 0;
+  }
+  const rawCombined = `${rawStdout}
+${rawStderr}`;
+  const matched = [];
+  const unmatched = [];
+  for (const pattern of patterns) {
+    let present;
+    try {
+      present = new RegExp(pattern).test(rawCombined);
+    } catch {
+      present = rawCombined.includes(pattern);
+    }
+    (present ? matched : unmatched).push(pattern);
+  }
+  return { matched, unmatched };
 }
 async function execCommand(argv, cwd, timeoutMs) {
   const start = Date.now();
@@ -21401,6 +21427,11 @@ async function runConfiguredCommand(verb, input, opts = {}) {
   }
   const out = capOutput(exec.stdout);
   const errOut = capOutput(exec.stderr);
+  const knownFailureMatches = exec.exitCode === 0 ? void 0 : annotateKnownFailures(
+    loaded.config.knownFailures,
+    exec.stdout,
+    exec.stderr
+  );
   return {
     status: exec.exitCode === 0 ? "passed" : "failed",
     capability: verb,
@@ -21409,6 +21440,7 @@ async function runConfiguredCommand(verb, input, opts = {}) {
     stdout: out.text,
     stderr: errOut.text,
     truncated: out.truncated || errOut.truncated,
+    ...knownFailureMatches ? { knownFailureMatches } : {},
     durationMs: exec.durationMs
   };
 }
@@ -24444,7 +24476,7 @@ for (const tool of RUN_TOOLS) {
     tool.name,
     {
       title: tool.title,
-      description: `Runs the project's "${tool.verb}" command exactly as configured in .orchestrate/commands.json. The command is a fixed argv array read from that file \u2014 this tool never accepts a command string from the caller. Returns a discriminated status: 'passed' (exit 0), 'failed' (non-zero exit), 'not-configured' (no "${tool.verb}" command set), or 'error' (invalid config, timeout, or spawn failure).`,
+      description: `Runs the project's "${tool.verb}" command exactly as configured in .orchestrate/commands.json. The command is a fixed argv array read from that file \u2014 this tool never accepts a command string from the caller. Returns a discriminated status: 'passed' (exit 0), 'failed' (non-zero exit), 'not-configured' (no "${tool.verb}" command set), or 'error' (invalid config, timeout, or spawn failure). When the command exits non-zero and the project's commands.json sets a "knownFailures" pattern list, the result also carries knownFailureMatches.matched / .unmatched \u2014 a best-effort baseline-failure hint, not a zero-new-failures guarantee.`,
       inputSchema: runCommandInputSchema.shape,
       outputSchema: runCommandOutputSchema.shape
     },
