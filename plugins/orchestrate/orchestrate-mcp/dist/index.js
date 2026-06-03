@@ -23096,6 +23096,15 @@ var verificationEntrySchema = external_exports.object({
     "Outcome of that run. 'not-configured' means the verb has no command set."
   )
 });
+var rootCauseSchema = external_exports.object({
+  status: external_exports.enum(["verified", "hypothesis"]).describe(
+    "Epistemic label for the root-cause analysis. 'verified' = confirmed empirically by a command and its output (cite it in `evidence`); 'hypothesis' = an unproven inference the subagent could not confirm within its turn. The subagent must consciously pick one \u2014 never present a guess as a fact."
+  ),
+  claim: external_exports.string().describe("The root-cause statement itself \u2014 what actually went wrong."),
+  evidence: external_exports.string().optional().describe(
+    "The command run and the relevant output that proves the claim. Required in spirit when status='verified'; omit for a 'hypothesis'."
+  )
+});
 var implementerEnvelopeSchema = external_exports.object({
   role: external_exports.literal("implementer").describe("Discriminant \u2014 the implementer role."),
   status: external_exports.enum(["completed", "incomplete", "blocked"]).describe(
@@ -23107,6 +23116,9 @@ var implementerEnvelopeSchema = external_exports.object({
   verification: external_exports.array(verificationEntrySchema).describe("Each capability tool the implementer ran and its result."),
   notes: external_exports.string().describe(
     "Free-form notes for the orchestrator or a later reviewer \u2014 assumptions, partial work, or, when blocked, exactly what stopped the implementer."
+  ),
+  rootCause: rootCauseSchema.optional().describe(
+    "Root-cause analysis for a non-success outcome. REQUIRED when status='blocked' (label it verified|hypothesis and cite evidence when verified); optional for 'incomplete' (cause is definitionally turn-budget); omit for 'completed'."
   )
 });
 var reviewerEnvelopeSchema = external_exports.object({
@@ -23120,6 +23132,9 @@ var reviewerEnvelopeSchema = external_exports.object({
   verification: external_exports.array(verificationEntrySchema).describe("Each capability tool the reviewer ran and its result."),
   notes: external_exports.string().describe(
     "Free-form notes \u2014 what was fixed and why, or, when failed, the exact blocker and why it is unsafe to fix inline."
+  ),
+  rootCause: rootCauseSchema.optional().describe(
+    "Root-cause analysis for a non-success outcome. REQUIRED when status='failed' (label it verified|hypothesis and cite evidence when verified); omit for 'passed'."
   )
 });
 var conflictResolverEnvelopeSchema = external_exports.object({
@@ -23272,6 +23287,16 @@ function validateEnvelope(input) {
       role,
       errorCode: "SCHEMA_MISMATCH",
       errorMessage: `The envelope declares role "${result.data.role}" but the subagent was spawned as "${role}".`
+    };
+  }
+  const env = result.data;
+  const requiresRootCause = env.role === "implementer" && env.status === "blocked" || env.role === "reviewer" && env.status === "failed";
+  if (requiresRootCause && env.rootCause === void 0) {
+    return {
+      status: "invalid",
+      role,
+      errorCode: "SCHEMA_MISMATCH",
+      errorMessage: `A ${env.role} envelope with status "${env.status}" must include a rootCause object ({ status: "verified" | "hypothesis", claim, evidence? }). The subagent did not declare a root cause for the failure.`
     };
   }
   return {
@@ -24629,7 +24654,7 @@ registerTool(
   "validate_envelope",
   {
     title: "Validate Subagent Result Envelope",
-    description: "Validates a subagent's result envelope \u2014 the ```orchestrate-envelope fenced JSON block a subagent emits as its final message \u2014 against the defined schema for its role. Returns a discriminated `status`: 'valid' (a well-formed envelope matching the role, with the parsed `envelope`), 'invalid' (an envelope was attempted but is truncated, malformed, or off-schema \u2014 a truncated envelope is ALWAYS invalid, never silently accepted), or 'missing' (no envelope block was found). The orchestrator uses this instead of parsing subagent prose for status or changed files.",
+    description: "Validates a subagent's result envelope \u2014 the ```orchestrate-envelope fenced JSON block a subagent emits as its final message \u2014 against the defined schema for its role. Returns a discriminated `status`: 'valid' (a well-formed envelope matching the role, with the parsed `envelope`), 'invalid' (an envelope was attempted but is truncated, malformed, or off-schema \u2014 a truncated envelope is ALWAYS invalid, never silently accepted), or 'missing' (no envelope block was found). A failure outcome (implementer 'blocked', reviewer 'failed') must also carry a labelled `rootCause` (verified|hypothesis) or it is reported invalid. The orchestrator uses this instead of parsing subagent prose for status or changed files.",
     inputSchema: validateEnvelopeInputSchema.shape,
     outputSchema: validateEnvelopeOutputSchema.shape
   },

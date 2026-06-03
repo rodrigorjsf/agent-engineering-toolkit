@@ -668,8 +668,11 @@ registerTool(
       "(a well-formed envelope matching the role, with the parsed `envelope`), " +
       "'invalid' (an envelope was attempted but is truncated, malformed, or " +
       "off-schema — a truncated envelope is ALWAYS invalid, never silently " +
-      "accepted), or 'missing' (no envelope block was found). The orchestrator " +
-      "uses this instead of parsing subagent prose for status or changed files.",
+      "accepted), or 'missing' (no envelope block was found). A failure outcome " +
+      "(implementer 'blocked', reviewer 'failed') must also carry a labelled " +
+      "`rootCause` (verified|hypothesis) or it is reported invalid. The " +
+      "orchestrator uses this instead of parsing subagent prose for status or " +
+      "changed files.",
     inputSchema: validateEnvelopeInputSchema.shape,
     outputSchema: validateEnvelopeOutputSchema.shape,
   },

@@ -136,6 +136,96 @@ describe("validateEnvelope — valid envelopes", () => {
   });
 });
 
+// ─── rootCause on diagnostic failure outcomes (#239) ──────────────────────────
+
+describe("validateEnvelope — rootCause on failure outcomes", () => {
+  it("accepts an implementer 'blocked' envelope carrying a verified rootCause", () => {
+    const env = {
+      ...implementerEnvelope(),
+      status: "blocked" as const,
+      notes: "Hit an unrecoverable obstacle; see rootCause.",
+      rootCause: {
+        status: "verified" as const,
+        claim: "The build fails because a peer dependency is missing.",
+        evidence: "npm run build → error: Cannot find module 'left-pad'.",
+      },
+    };
+    const r = validateEnvelope({ text: fenced(env), role: "implementer" });
+
+    expect(r.status).toBe("valid");
+    expect(r.envelope).toEqual(env);
+    expect(r.errorCode).toBeUndefined();
+  });
+
+  it("accepts a reviewer 'failed' envelope carrying a hypothesis rootCause without evidence", () => {
+    const env = {
+      ...reviewerEnvelope(),
+      status: "failed" as const,
+      notes: "Correctness blocker I cannot fix inline; see rootCause.",
+      rootCause: {
+        status: "hypothesis" as const,
+        claim:
+          "The race condition likely stems from the unsynchronized cache " +
+          "write, but I could not reproduce it within the turn.",
+      },
+    };
+    const r = validateEnvelope({ text: fenced(env), role: "reviewer" });
+
+    expect(r.status).toBe("valid");
+    expect(r.envelope).toEqual(env);
+    expect(r.errorCode).toBeUndefined();
+  });
+
+  it("rejects an implementer 'blocked' envelope that omits rootCause", () => {
+    const env = {
+      ...implementerEnvelope(),
+      status: "blocked" as const,
+      notes: "Hit an obstacle but forgot to declare a root cause.",
+    };
+    const r = validateEnvelope({ text: fenced(env), role: "implementer" });
+
+    expect(r.status).toBe("invalid");
+    expect(r.errorCode).toBe("SCHEMA_MISMATCH");
+    expect(r.envelope).toBeUndefined();
+  });
+
+  it("rejects a reviewer 'failed' envelope that omits rootCause", () => {
+    const env = {
+      ...reviewerEnvelope(),
+      status: "failed" as const,
+      notes: "Found a blocker but did not declare a root cause.",
+    };
+    const r = validateEnvelope({ text: fenced(env), role: "reviewer" });
+
+    expect(r.status).toBe("invalid");
+    expect(r.errorCode).toBe("SCHEMA_MISMATCH");
+    expect(r.envelope).toBeUndefined();
+  });
+
+  it("accepts an implementer 'incomplete' envelope without rootCause", () => {
+    // 'incomplete' is the turn-budget self-report — rootCause is optional there.
+    const env = {
+      ...implementerEnvelope(),
+      status: "incomplete" as const,
+      notes: "Ran out of budget; partial work recorded.",
+    };
+    const r = validateEnvelope({ text: fenced(env), role: "implementer" });
+
+    expect(r.status).toBe("valid");
+    expect(r.errorCode).toBeUndefined();
+  });
+
+  it("accepts the default 'completed' implementer factory without rootCause (regression guard)", () => {
+    const r = validateEnvelope({
+      text: fenced(implementerEnvelope()),
+      role: "implementer",
+    });
+
+    expect(r.status).toBe("valid");
+    expect(r.envelope).toEqual(implementerEnvelope());
+  });
+});
+
 // ─── truncated envelopes ──────────────────────────────────────────────────────
 
 describe("validateEnvelope — truncated envelopes", () => {
