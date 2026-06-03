@@ -170,31 +170,31 @@ one instead of duplicating it.
 
 A `completed` run still leaves a footprint on disk and in git — its run
 directory, any preserved worktrees, and its umbrella and slice branches. **Run
-cleanup** removes that footprint once the run has fully concluded.
-
-A run is eligible for cleanup only when **both** conditions hold:
+cleanup** removes that footprint once the run has fully concluded, eligible only
+when **both** conditions hold:
 
 - Its `status` is `completed` — necessary, but not sufficient on its own.
 - Its `finalPullRequest` has **merged** into the integration base
-  (`development`). A non-null `finalPullRequest` means only that the pull
-  request was *opened*; the gate is its **merged** state. A run whose final pull
-  request is still open or was closed unmerged is left intact and only reported.
+  (`development`). A non-null `finalPullRequest` means only that the pull request
+  was *opened*; the gate is its **merged** state. A run whose final pull request
+  is still open or was closed unmerged is left intact and only reported.
 
-The merge verdict is GitHub state. The orchestrator resolves it with
-`gh pr view <finalPullRequest> --json state,mergedAt` and passes a per-run
+The merge verdict is GitHub state, which the orchestrator resolves with
+`gh pr view <finalPullRequest> --json state,mergedAt` and passes as a per-run
 verdict map (`runId → merged | open | closed-unmerged | unknown`) to the
-`clean_runs` MCP tool, which is itself git + filesystem only. For a `merged`
-run, `clean_runs` removes its `passed`-slice worktrees, deletes its
-`umbrellaBranch` and every `sliceBranch` (local and remote), and removes the run
-directory.
+`clean_runs` MCP tool, itself git + filesystem only. For a `merged` run, a
+`passed` slice's branch is reclaimed **incrementally at squash-merge** — remote
+via `gh pr merge --squash --delete-branch`, local via `git branch -D` after
+worktree removal — so `clean_runs` (which removes the `passed`-slice worktrees,
+the `umbrellaBranch`, the run directory, and as a **backstop** any `sliceBranch`
+surviving a mid-run crash) finds those branches already gone.
 
-A `failed`-state slice's worktree is **preserved** by default — a developer may
-still need to inspect it. When a slice worktree is preserved, its `sliceBranch`
-is left fully intact too (local **and** remote), so the developer can still
-check it out and push from the preserved worktree; only the branches of removed
-worktrees, plus the `umbrellaBranch`, are deleted. The run directory is **kept**
-whenever any worktree was preserved, so the preserved worktree's `run-state.json`
-survives. The `--force` option removes failed-slice worktrees too, deletes every
-branch, and always removes the run directory. Cleanup runs both as a sweep at the
-start of every run and on demand via `/orchestrate clean`; it never touches an
-`in-progress` run.
+A `failed`-state slice's worktree is **preserved** by default for inspection.
+Incremental reclamation fires only on `passed` / `subState: "merged"`, never on
+a failed slice, so a preserved worktree's `sliceBranch` is left fully intact
+(local **and** remote) for the developer; only removed worktrees' branches, plus
+the `umbrellaBranch`, are deleted. The run directory is **kept** whenever any
+worktree was preserved, so its `run-state.json` survives. The `--force` option
+removes failed-slice worktrees too, deletes every branch, and always removes the
+run directory. Cleanup runs both as a start-of-run sweep and on demand via
+`/orchestrate clean`; it never touches an `in-progress` run.

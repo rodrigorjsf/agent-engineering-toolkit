@@ -638,7 +638,12 @@ subagent's verbatim returned text and its `role`:
    - `MERGEABLE` — merge it even when `mergeStateStatus` is `UNSTABLE` (a
      non-required check is failing or still running, but no required check
      blocks the merge). Squash to one commit per slice on the umbrella branch:
-     `gh pr merge <pr-number> --squash`.
+     `gh pr merge <pr-number> --squash --delete-branch`. The `--delete-branch`
+     flag reclaims the **remote** slice branch as part of the merge; it may
+     additionally warn or no-op on the **local** branch because the slice
+     worktree still has it checked out — that warning is **tolerated, not a
+     slice failure**. The authoritative local reclamation is the explicit
+     `git branch -D` at step 9.
    - `CONFLICTING` — resolve the conflict once, per step 8a. Do not FAIL a
      slice on a conflict without attempting resolution.
 
@@ -664,7 +669,7 @@ subagent's verbatim returned text and its `role`:
       tools with the worktree path as `repoPath`. If any reports failure, the
       slice has **FAILED**. If all pass, the merge commit already exists —
       push and merge the slice PR: `git -C <worktree-path> push` then
-      `gh pr merge <pr-number> --squash`.
+      `gh pr merge <pr-number> --squash --delete-branch`.
    4. Spawn the `orchestrate:conflict-resolver-<effort>` subagent — `<effort>`
       and the `model` override from `routing.conflict-resolver`. Its prompt
       must carry the issue, the worktree path, and the list of conflicted
@@ -686,7 +691,7 @@ subagent's verbatim returned text and its `role`:
       git -C <worktree-path> add -- <resolved file> ...
       git -C <worktree-path> commit --no-edit
       git -C <worktree-path> push
-      gh pr merge <pr-number> --squash
+      gh pr merge <pr-number> --squash --delete-branch
       ```
 
 9. **Finish the slice.** Once any of step 8's `gh pr merge --squash` paths
@@ -701,6 +706,22 @@ subagent's verbatim returned text and its `role`:
    `gh issue edit <N> --remove-label ready-for-agent --add-label ready-for-human`.
    Then remove its worktree with the `remove_worktree` MCP tool (`worktreePath`,
    `repoPath`, `force: true` — the worktree may hold untracked build artifacts).
+   Finally, reclaim the **local** slice branch from the repository root:
+
+   ```
+   git branch -D orchestrate/slice-<N>
+   ```
+
+   The `-D` (force) flag is mandatory: the squash-merge rewrote the commit SHA,
+   so the slice branch is **not** an ancestor of umbrella and `git branch -d`
+   would refuse it as "not fully merged." Run this **after** `remove_worktree` —
+   while the worktree still has the branch checked out, the delete is refused.
+   The delete is idempotent: on a run resumed at `subState: merged` the branch
+   may already be gone (an earlier pass reclaimed it), and an already-absent
+   branch is fine, not a failure. This completes incremental reclamation: the
+   **remote** half was done by `--delete-branch` at step 8, the **local** half
+   here. Incremental reclamation fires only on a `passed` / `subState: merged`
+   slice; a failed (preserved) slice's branch is left fully intact.
 
 ## 4. Context handoff
 
