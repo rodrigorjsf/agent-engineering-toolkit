@@ -5,6 +5,7 @@ import * as path from "path";
 import {
   resolveRouting,
   resolveRoutingFromConfig,
+  routingConfigSchema,
   type RoutingConfig,
 } from "../src/tools/routing.js";
 
@@ -30,6 +31,8 @@ const VALID_CONFIG: RoutingConfig = {
     reviewer: { model: "opus", effort: "deep" },
     "conflict-resolver": { model: "opus", effort: "deep" },
   },
+  intraWaveConcurrency: "parallel",
+  continuationBudget: 2,
 };
 
 /** Writes a project dir; `config` null skips the routing.json file entirely. */
@@ -142,6 +145,94 @@ describe("resolveRoutingFromConfig", () => {
       standard: { investigator: null, implementer: VALID_CONFIG.standard.implementer },
     };
     const dir = project(broken);
+    const r = resolveRoutingFromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("error");
+    expect(r.errorCode).toBe("CONFIG_INVALID");
+  });
+});
+
+describe("routingConfigSchema intraWaveConcurrency", () => {
+  // A tiers-only object (no run-policy key) — the shape a pre-knob
+  // routing.json has on disk. Built by dropping the key VALID_CONFIG now
+  // carries, mirroring the destructure-and-ignore pattern used above for the
+  // missing-tier case.
+  const { intraWaveConcurrency: _drop, ...tiersOnly } = VALID_CONFIG;
+
+  it("accepts intraWaveConcurrency: 'sequential'", () => {
+    expect(
+      routingConfigSchema.safeParse({
+        ...VALID_CONFIG,
+        intraWaveConcurrency: "sequential",
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects an invalid intraWaveConcurrency value", () => {
+    expect(
+      routingConfigSchema.safeParse({
+        ...VALID_CONFIG,
+        intraWaveConcurrency: "bogus",
+      }).success
+    ).toBe(false);
+  });
+
+  it("defaults intraWaveConcurrency to 'parallel' when omitted", () => {
+    expect(routingConfigSchema.parse(tiersOnly).intraWaveConcurrency).toBe(
+      "parallel"
+    );
+  });
+
+  it("still requires the three tier blocks (knob is optional, tiers are not)", () => {
+    const { complex: _complex, ...missingTier } = tiersOnly;
+    expect(
+      routingConfigSchema.safeParse({
+        ...missingTier,
+        intraWaveConcurrency: "sequential",
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe("routingConfigSchema continuationBudget (#234)", () => {
+  // A config with no continuationBudget key — the shape a pre-knob routing.json
+  // has on disk. Drop only continuationBudget so the three tiers remain.
+  const { continuationBudget: _drop, ...noBudget } = VALID_CONFIG;
+
+  it("resolves continuationBudget === 2 (the default) when the key is absent", () => {
+    const dir = project(noBudget);
+    const r = resolveRoutingFromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.continuationBudget).toBe(2);
+  });
+
+  it("echoes an explicit continuationBudget verbatim", () => {
+    const dir = project({ ...VALID_CONFIG, continuationBudget: 5 });
+    const r = resolveRoutingFromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.continuationBudget).toBe(5);
+  });
+
+  it("accepts continuationBudget: 0 (continuation disabled)", () => {
+    const dir = project({ ...VALID_CONFIG, continuationBudget: 0 });
+    const r = resolveRoutingFromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.continuationBudget).toBe(0);
+  });
+
+  it("rejects a negative continuationBudget → CONFIG_INVALID", () => {
+    const dir = project({ ...VALID_CONFIG, continuationBudget: -1 });
+    const r = resolveRoutingFromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("error");
+    expect(r.errorCode).toBe("CONFIG_INVALID");
+  });
+
+  it("rejects a non-integer continuationBudget → CONFIG_INVALID", () => {
+    const dir = project({ ...VALID_CONFIG, continuationBudget: 1.5 });
     const r = resolveRoutingFromConfig({ tier: "standard", repoPath: dir });
 
     expect(r.status).toBe("error");

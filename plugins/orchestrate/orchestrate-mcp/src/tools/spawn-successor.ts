@@ -13,12 +13,15 @@ import {
 // `/orchestrate`. Command construction is pure and tested; the detached spawn
 // itself is verified end-to-end, not by unit tests.
 //
-// `spawn_successor` deliberately takes NO `runId` parameter. It resolves no
-// per-run path itself: it reads only the flat `.orchestrate/handoff.json`
-// config and launches a terminal. The successor's `/orchestrate` invocation
-// re-discovers the active run from `.orchestrate/runs/*/run-state.json` on
-// startup — that re-discovery is what makes the handoff per-run-aware. Adding
-// a `runId` here would be a dead parameter.
+// `spawn_successor` takes no `runId` and resolves no per-run path: it reads
+// only the flat `.orchestrate/handoff.json` config and launches a terminal.
+// The partition-correct resume invocation is supplied by the orchestrator
+// via the optional `resumePrompt` input — `/orchestrate <N>` for a `prd<N>-`
+// run, `/orchestrate` for a `backlog-` run — derived from the run's `runId`
+// prefix. The successor's invocation prefix is what the run-discovery scan
+// keys on to re-find the active run. When no `resumePrompt` is passed (manual
+// or legacy launch), `handoff.json`'s static `successor.resumePrompt` is the
+// fallback; that static value alone cannot encode the partition per-run.
 
 // ─── Schemas — z.object is the single source of truth; TS types via z.infer ───
 
@@ -32,6 +35,16 @@ export const spawnSuccessorInputSchema = z.object({
         "from .orchestrate/runs/*/run-state.json to resume. Defaults to the " +
         "MCP server process's current working directory; callers should pass " +
         "it explicitly."
+    ),
+  resumePrompt: z
+    .string()
+    .optional()
+    .describe(
+      "Optional resume invocation for the successor, derived by the " +
+        "orchestrator from the run's partition: '/orchestrate <N>' for a " +
+        "'prd<N>-' run, '/orchestrate' for a 'backlog-' run. Overrides " +
+        "handoff.json's successor.resumePrompt, which remains the fallback " +
+        "for manual/legacy launches."
     ),
 });
 
@@ -212,7 +225,10 @@ export async function spawnSuccessor(
 ): Promise<SpawnSuccessorOutput> {
   const repoPath = input.repoPath ?? process.cwd();
   const { config, warning } = loadHandoffConfig(repoPath);
-  const successor = config.successor;
+  const successor = {
+    ...config.successor,
+    resumePrompt: input.resumePrompt ?? config.successor.resumePrompt,
+  };
   const configWarning = warning ?? undefined;
 
   if (successor.terminals.length === 0) {

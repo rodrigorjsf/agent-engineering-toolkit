@@ -40,6 +40,13 @@ All four subagents have **no Bash and no git access** — they are sandboxed to
 one worktree (the investigator is read-only). Only the orchestrator touches
 branches, remotes, and the tracker.
 
+IDE or language-server diagnostics about files under a worktree path —
+unresolved imports, missing-module errors, or stale type errors from a checkout
+that lacks generated or installed artifacts — are **non-authoritative**. The
+orchestrate capability tools (`run_typecheck`, `run_build`, `run_tests`,
+`run_lint`) are the only source of truth for whether a slice builds and its
+tests pass; trust their result, never an editor's inline diagnostic.
+
 ## Prerequisites
 
 Check these before starting. If one is missing, report it and stop.
@@ -59,8 +66,17 @@ or committed ahead of time from the plugin's `templates/`. Without
 tolerated. When the project's capability commands need installed dependencies,
 `commands.json` must also set an `install` command — `create_worktree` runs it
 in every fresh worktree, which checks out only tracked files and so has no
-dependency directory of its own; the bootstrapper sets `install` automatically
-for an npm project. Without `routing.json` the `resolve_routing` tool errors
+dependency directory of its own, and the implementer/conflict-resolver
+subagents can re-run it via `run_install` to fetch a dependency they added. The
+bootstrapper sets a **PM-aware mutating** `install` automatically for
+npm/cargo/python projects — for the JS ecosystem the package manager is keyed
+on the lockfile (`pnpm-lock.yaml`→pnpm, `yarn.lock`→yarn,
+`package-lock.json`→npm, defaulting to **pnpm** with no lock), and the install
+is the mutating/resolving form (`pnpm install` / `npm install`, never
+`npm ci`). A project that overrides `install` with a strict reproducible form
+(`npm ci`, `--frozen-lockfile`) forfeits in-slice new-dependency support — a
+subagent has no shell to regenerate the lockfile. Without `routing.json` the
+`resolve_routing` tool errors
 and the run falls back to the `-standard` variant of every role with no model
 override.
 An optional `.orchestrate/handoff.json` tunes the context-watchdog threshold
@@ -76,9 +92,10 @@ This skill has two modes, selected by the invocation argument.
 - **No `clean` argument** (`/orchestrate` or `/orchestrate <PRD#>`) — the normal
   orchestration run. Proceed through sections 1–4 below.
 - **The `clean` argument** (`/orchestrate clean`, optionally
-  `/orchestrate clean --force`) — the **`/orchestrate-clean` mode**. Run **only**
-  the cleanup path described here, then **stop**. Do **not** discover or start a
-  run, do not read the backlog, do not create branches.
+  `/orchestrate clean --force`, or `/orchestrate clean --failed <runId>`) — the
+  **`/orchestrate-clean` mode**. Run **only** the cleanup path described here,
+  then **stop**. Do **not** discover or start a run, do not read the backlog, do
+  not create branches.
 
 ### `/orchestrate-clean` mode
 
@@ -95,6 +112,41 @@ When invoked with the `clean` argument:
    (`removed`, `preserved`, or `skipped`), its `reason`, and the removed or
    preserved worktrees and branches — then **stop**. `/orchestrate clean` never
    starts an orchestration run.
+
+#### `/orchestrate clean --failed <runId>` — single-run reclaim
+
+`/orchestrate clean --failed <runId>` reclaims **one** crashed or abandoned run.
+There is no `failed` run status — a crashed run stays `in-progress` forever,
+indistinguishable from a live run in another session — so reclaiming it requires
+a path that **bypasses the `status === "completed"` gate by design**. This is the
+one sanctioned exception to the cross-run isolation invariant (ADR-0012). It is
+**distinct** from the start-of-run / `clean`/`--force` sweep above, which is
+status-gated and never touches an `in-progress` run.
+
+1. **Require the `<runId>`.** It is mandatory — **error out** if it is absent
+   (`/orchestrate clean --failed` with no runId). **Never** treat a bare
+   `--failed` as a sweep; this path acts on exactly one named run.
+2. **Enumerate the exact deletion set.** Read
+   `.orchestrate/runs/<runId>/run-state.json` and list, verbatim, everything the
+   reclaim will delete: every slice's `worktreePath`, the `umbrellaBranch`, every
+   slice's `sliceBranch`, and the run directory `.orchestrate/runs/<runId>/`.
+3. **Surface `updatedAt` as a staleness advisory — never a gate.** Report the
+   run-state `updatedAt`. A live run refreshes `updatedAt` on every checkpoint
+   (see *Checkpointing*), so a frozen `updatedAt` is evidence the run crashed; a
+   fresh one is a warning the run may still be live in another session. This is
+   **advisory only** — it never blocks the reclaim (there is no stale-lock), it
+   only informs the human's decision.
+4. **Confirm interactively — the only guard.** Present the deletion set and the
+   `updatedAt` advisory, then ask the user to confirm. There is **no `--yes` /
+   no bypass** — the interactive confirmation is mandatory and is the sole
+   protection for this gate-bypassing path. **On decline → stop, touch nothing.**
+5. **On confirm**, call the **`reclaim_run` MCP tool** (NOT `clean_runs`) with
+   the repository root as `repoPath` and the `<runId>`. It removes that one run's
+   worktrees (passed AND failed), its umbrella and slice branches (local and
+   remote), and its run directory, bypassing the status gate; it is scoped by
+   construction to that single `runs/<runId>/` and can never touch another run.
+   Report its single `report` (`action`, `reason`, removed worktrees/branches,
+   `runDirRemoved`) to the user, then **stop**.
 
 ## 1. Start or resume the run
 
@@ -128,6 +180,20 @@ is what `/orchestrate clean` (section 0) runs on demand.
    `null`, is **never** swept — it has not concluded. **Never** include the
    current run, or any run still `in-progress`, in the verdict map: omitting a
    run from the map tells `clean_runs` to leave it strictly intact.
+
+   As defense-in-depth, `clean_runs` independently enforces the same
+   `status === "completed" && finalPullRequest != null` gate by re-reading each
+   run's own `run-state.json` (per ADR-0012), so even a misbuilt verdict map can
+   never make it touch an unconcluded or `in-progress` run — such a run is
+   skipped with reason `run-not-completed` or `final-pr-missing`.
+
+   **Collect the close-set before sweeping.** For every run whose verdict
+   resolves to `merged`, you already hold its `run-state.json` open (you just
+   read `finalPullRequest` from it). While it is open, **collect the `issue`
+   number of every slice whose `state` is `"passed"`** into a per-run
+   close-set. Do this **now**, before step 2 — `clean_runs` deletes the merged
+   run's directory and its `run-state.json`, the only source of those issue
+   numbers, so capturing them after the sweep is impossible.
 2. Call the **`clean_runs` MCP tool** with the repository root as `repoPath` and
    the per-run `verdicts` map you built. The tool removes each `merged` run's
    worktrees, its umbrella and slice branches (local and remote), and its run
@@ -135,7 +201,19 @@ is what `/orchestrate clean` (section 0) runs on demand.
    worktree is preserved (and that run's directory kept) so a developer can
    still inspect it. `clean_runs` is git + filesystem only — it never shells
    `gh`; the merge verdict you resolved above is the GitHub half of the gate.
-3. The sweep is best-effort and idempotent — an already-absent branch or
+3. **Close the passed-slice issues (backstop).** After `clean_runs` returns,
+   for every issue in the close-set you collected in step 1, run
+   `gh issue close <N>`. This is **orchestrator** work — the `gh issue close`
+   lives here in the orchestrator procedure, never inside `clean_runs` (the
+   no-`gh` invariant on the MCP tool is preserved). The close is idempotent: on
+   a default-branch integration base the final umbrella PR's `Closes #<N>`
+   keyword already closed the issue, and `gh issue close` on an
+   already-closed issue exits 0 — a no-op, not an error. This backstop is what
+   closes the passed-slice issues when `development` is **not** the repository's
+   default branch (where the `Closes` keywords are inert). It closes **only**
+   passed slices; a failed or skipped slice has no entry in the close-set, so
+   its issue stays open.
+4. The sweep is best-effort and idempotent — an already-absent branch or
    worktree is success, not error. Note the result, then continue to discover
    or start the run; a cleanup hiccup never blocks the run itself.
 
@@ -143,8 +221,9 @@ Every run keeps its ephemeral state in a **per-run directory**,
 `.orchestrate/runs/<runId>/`, holding that run's `run-state.json`,
 `context-flag.json`, and rendered HTML artifacts. The committed config files
 (`commands.json`, `routing.json`, `handoff.json`) stay flat at the
-`.orchestrate/` top level. The run directory's schema and rationale are in
-`references/run-state.md`.
+`.orchestrate/` top level. `routing.json` carries both per-tier subagent routing
+and run-wide run policy (the optional `intraWaveConcurrency` knob — see section
+2). The run directory's schema and rationale are in `references/run-state.md`.
 
 **Read the invocation argument.** `/orchestrate` accepts an optional parent-PRD
 issue number — `/orchestrate <PRD#>` scopes this run to that PRD's children
@@ -186,7 +265,11 @@ prefixes are the only match keys. Then act on the count of matches:
   session hand off immediately (section 2, step 4). Then load the whole
   `run-state.json`, preserving every top-level field — `runId`,
   `umbrellaBranch`, `parentIssue`, `waves`, `completedWaves`,
-  `finalPullRequest`, and `slices`. **Refresh the `driverSessionId` field** —
+  `finalPullRequest`, and `slices`. **Validate the loaded checkpoint before
+  acting on it** — call the `validate_run_state` MCP tool against it; on
+  `status: "invalid"` (e.g. a legacy array-shaped `slices`), **stop loudly**
+  rather than resume from a malformed checkpoint. **Refresh the
+  `driverSessionId` field** —
   this resuming session is a new Claude Code session with a *new* `session_id`,
   so overwrite `driverSessionId` with the current `$ORCHESTRATE_SESSION_ID`
   (or `null` if it is empty or unset — applying the same operator notice as the
@@ -199,14 +282,42 @@ prefixes are the only match keys. Then act on the count of matches:
   `partition_backlog`: a resumed run never widens or re-derives its own scope.
   Every slice in a terminal state (`passed`, `failed`, `skipped`) is left
   untouched — completed work is never redone. Every slice still `in-progress`
-  was interrupted before finishing: discard its partial artifacts so it
-  re-processes cleanly — if it has a `worktreePath`, call `remove_worktree`
+  was interrupted before finishing; resume it **from its recorded `subState`**
+  (section 3 writes this at every per-slice transition) rather than re-processing
+  from scratch. **Preserve** its `worktreePath` and `sliceBranch`; reconstruct
+  its changed-file set by calling `recover_changed_files` on the `worktreePath`;
+  **re-validate** the resume point per the resume matrix below; then resume
+  section 3 at the next uncompleted step, **without** re-spawning the subagents
+  whose work the recorded `subState` already captures. An in-progress slice with
+  **no `subState`** — a legacy checkpoint written before this scheme — instead
+  uses the old discard path: if it has a `worktreePath`, call `remove_worktree`
   (`force: true`); delete its `sliceBranch` if it exists (locally, and on the
   remote if it was pushed) — deleting the remote branch also auto-closes any
-  orphaned slice pull request GitHub opened for it, so re-processing produces a
-  clean branch and PR with no manual PR cleanup needed — then coerce that slice
-  back to `pending`. Checkpoint the refreshed `run-state.json`, then skip to
-  section 2.
+  orphaned slice pull request GitHub opened for it; then coerce it back to
+  `pending` (the same graceful degradation as an absent `driverSessionId`).
+  Checkpoint the refreshed `run-state.json`, then skip to section 2.
+
+  **Resume re-validate matrix** — per the recorded `subState`; the worktree is
+  always preserved and the changed-file set always reconstructed via
+  `recover_changed_files` (accurate under #236's `-uall` recovery):
+
+  | Recorded `subState` | Skip these subagents | Re-validate (cheap) | Resume at |
+  |---|---|---|---|
+  | (absent / legacy) | — | — | discard worktree+branch, coerce to `pending`, reprocess |
+  | `implemented` | investigator, implementer | run the capability gate (may have crashed mid-run) | step 5 (reviewer) after the `verified` gate |
+  | `verified` | investigator, implementer | re-run the capability gate (confirms worktree intact) | step 5 (reviewer) |
+  | `reviewed` | investigator, implementer, reviewer | re-run the capability gate | step 6 (commit + push) |
+  | `pushed` | implementer, reviewer | `git ls-remote --heads origin orchestrate/slice-<N>` confirms the branch | step 7 (open PR) |
+  | `pr-open` | implementer, reviewer | `gh pr view` confirms the PR; `git ls-remote` confirms the branch | step 8 (merge) |
+  | `merged` | all subagents | — (merge already landed in umbrella) | step 9 only (label transition + `remove_worktree`) |
+
+  On resume the implementer's *declared* `filesChanged` is gone, so the
+  reconstructed `recover_changed_files` set feeds the reviewer prompt and the
+  step-6 commit staging exactly as the live path uses the declared set. Do
+  **not** route reconstruction through `verify_changeset` (it needs a
+  `declaredFiles` argument that no longer exists on resume). For pre-push
+  subStates the capability gate is the re-validate; for `pushed`/`pr-open` it is
+  `git ls-remote` / `gh pr view`.
 - **Two or more matches** — a **loud error**. Two in-progress runs for the same
   PRD (or two in-progress whole-backlog runs) must never be silently resolved
   by picking one. Report every matching `runId` and stop. The operator resolves
@@ -221,8 +332,10 @@ prefixes are the only match keys. Then act on the count of matches:
      MCP tool with the repository root as `repoPath` and this session's model
      id as `model` (or an explicit `contextWindowTokens`). It detects the
      project type, writes a project-appropriate `commands.json`,
-     `routing.json`, and `handoff.json`, creates `.orchestrate/runs/`, and adds
-     `.orchestrate/runs/` to the repository's `.gitignore`. Every step is
+     `routing.json` (per-tier routing plus the run-wide `intraWaveConcurrency`
+     policy, defaulting to `parallel`), and `handoff.json`, creates
+     `.orchestrate/runs/`, and adds `.orchestrate/runs/` to the repository's
+     `.gitignore`. Every step is
      idempotent — an existing committed config is never overwritten — so this
      is also a safe no-op on a repository already configured by hand.
    - Fetch so branch operations use current refs: `git fetch origin`.
@@ -344,7 +457,30 @@ prefixes are the only match keys. Then act on the count of matches:
      "orchestrate/slice-<N>"`, `worktreePath: null`, `pullRequest: null`,
      `failureReason: null`, and `updatedAt`.
 
+   **`slices` is a MAP keyed by the issue-id string, not an array.**
+   `partition_backlog` returns `slices` as an **array**; do **not** write that
+   array straight into `run-state.json`. Transform it into a map by keying each
+   slice on its issue id, e.g. `"slices": { "25": { "issue": 25, … } }`. An
+   array-shaped `slices` fails the canonical run-state schema.
+
+   **Validate the checkpoint immediately.** Right after writing this first
+   `run-state.json`, call the `validate_run_state` MCP tool with the repository
+   root as `repoPath` and the run's `runId`. On `status: "invalid"`, **stop
+   loudly** and report the `errorMessage` before creating any worktree or
+   spawning any subagent — a mis-shaped checkpoint must fail here, in seconds,
+   not after expensive subagent work.
+
 ## 2. The wave loop
+
+**Read the run-wide concurrency policy once, before any slice spawns.** Read
+`.orchestrate/routing.json` and take its optional top-level
+`intraWaveConcurrency` key — `"parallel" | "sequential"`, **absent ⇒
+`parallel`** (apply the default here, in the orchestrator; do **not** route this
+through `resolve_routing`, which is per-tier and returns only `tier` + per-tier
+`routing`, never the whole config). This is a single run-wide decision that
+selects how each wave processes its slices, and it does not change between waves.
+`routing.json` thus carries both per-tier subagent routing **and** this run-wide
+run policy.
 
 Process waves in order, starting at index `completedWaves`. For each wave:
 
@@ -392,18 +528,106 @@ Process waves in order, starting at index `completedWaves`. For each wave:
      naming the external blocker issue (e.g. "blocked by #<id>, an issue
      outside this run's partition that is still open"), checkpoint, and do not
      process it. Never silently assume an out-of-partition blocker is done.
-3. **Process the slices.** Run section 3 for every processable slice. Slices in
-   a wave are independent, so parallelize: when several slices are at the same
-   subagent stage (investigation, implementation, review), spawn those
-   subagents by issuing all the Agent tool calls **in a single message**. Each
-   slice has its own worktree, so they never collide.
-4. **Integrate sequentially.** The commit, pull-request, and merge steps
-   (section 3, steps 6–9) run **one slice at a time** — merges into the
-   umbrella branch must not race each other. After each slice finishes
-   integrating, check for `.orchestrate/runs/<runId>/context-flag.json`: if it
+3. **Process the slices.** Branch on the `intraWaveConcurrency` policy read at
+   the top of this section:
+
+   - **`parallel` (the default).** Run section 3 for every processable slice.
+     Slices in a wave are independent, so parallelize: when several slices are
+     at the same subagent stage (investigation, implementation, review), spawn
+     those subagents by issuing all the Agent tool calls **in a single
+     message**. Each slice has its own worktree, so they never collide. Then
+     integrate them sequentially — step 4 below.
+
+   - **`sequential`.** Process the wave's processable slices **one at a time, in
+     issue-id ascending order** — steps 3 and 4 below fuse into a per-slice
+     serial loop. This imposes a deterministic order on slices the DAG says are
+     independent, deciding who "wins" a shared-file region; in exchange every
+     slice branches from an already-integrated base, so it is conflict-free
+     without the conflict-resolver. For each slice, in ascending issue-id order:
+
+     1. **Refresh the umbrella base** by re-running this section's step 1 fetch
+        (`git fetch origin orchestrate/umbrella-<runId>:orchestrate/umbrella-<runId>`)
+        so this slice branches from `base + slice1..N-1` — the integrated state
+        of every earlier slice in this wave, not just the prior waves'.
+     2. **Process it** — run section 3 (all stages) for this one slice.
+     3. **Integrate it** — run section 3 steps 6–9 (commit, pull request, merge)
+        for this one slice; merges into the umbrella must not race, and here
+        they cannot, because only one slice is in flight.
+     4. **Check for the context-handoff signal** — exactly as the `parallel`
+        path does in step 4: if `.orchestrate/runs/<runId>/context-flag.json`
+        exists, finish writing `run-state.json` for the slice just integrated,
+        then go to section 4 (Context handoff) rather than starting the next
+        slice.
+
+     After the loop drains the wave's processable slices, continue at step 5.
+
+4. **Integrate sequentially** (the `parallel` path; the `sequential` path
+   already integrated each slice inline in step 3). The commit, pull-request,
+   and merge steps (section 3, steps 6–9) run **one slice at a time** — merges
+   into the umbrella branch must not race each other.
+
+   **Per-slice post-merge unit re-verify (parallel path only).** Each slice's
+   worktree was branched from the wave's *starting* umbrella (step 1) and never
+   saw this wave's earlier siblings, so the clean `MERGEABLE` path (section 3,
+   step 8) would otherwise squash-merge without ever testing the
+   `base + slice1..N` combination. Before the `gh pr merge --squash` of every
+   slice **except the first merged slice of this wave** (whose pre-merge gate
+   already covered the umbrella — the merge is a no-op at that point), in the
+   slice's still-present worktree bring in the wave's already-merged siblings
+   and re-run the fast unit command:
+
+   ```
+   git -C <worktree-path> fetch origin orchestrate/umbrella-<runId>
+   git -C <worktree-path> merge origin/orchestrate/umbrella-<runId>
+   ```
+
+   Then run the `run_tests` and `run_build` capability tools (only these two —
+   the fast unit command, not all four) with `<worktree-path>` as `repoPath`,
+   and gate the `gh pr merge --squash` on **both** passing. Because the
+   re-verify runs *before* the merge, a failure never pollutes the umbrella and
+   **no revert/rollback machinery is needed**: the slice has **FAILED** via the
+   existing failure path (its worktree is preserved and the wave continues — see
+   "Failure handling"). If the `git merge origin/orchestrate/umbrella-<runId>`
+   surfaces conflicts, defer to section 3 step 8a (do not duplicate conflict
+   logic here). The `sequential` path needs no equivalent step: each of its
+   slices already branches from `base + slice1..N-1` (step 3 above), so its
+   pre-merge gate has already tested the integrated state.
+
+   After each slice finishes integrating, check for
+   `.orchestrate/runs/<runId>/context-flag.json`: if it
    exists, the context-watchdog has signalled that this session's context is
    filling. Do not start the next slice — finish writing `run-state.json` for
    the slice just integrated, then go to section 4 (Context handoff).
+4a. **Run the per-wave integration suite.** After every processable slice in
+   this wave has integrated and passed its post-merge unit re-verify, run the
+   optional heavy `integration` suite **once** against the umbrella tip — a
+   bounded `num_waves` cost that localizes a cross-slice integration break to
+   this wave's small slice set. The slice worktrees are removed at section 3
+   step 9, so **defer removal of the last successfully-merged slice's worktree**
+   until after this step, fast-forward-merge the umbrella into it, and use that
+   worktree path as `repoPath` (`.orchestrate/commands.json` is repo-tracked, so
+   it is present in every worktree):
+
+   ```
+   git -C <worktree-path> fetch origin orchestrate/umbrella-<runId>
+   git -C <worktree-path> merge origin/orchestrate/umbrella-<runId>
+   ```
+
+   Call the `run_integration` MCP tool with `<worktree-path>` as `repoPath`.
+
+   - `not-configured` (the project ships no `integration` command) — **tolerated
+     and skipped**, the same posture as any unconfigured capability verb.
+     Proceed to step 5.
+   - `passed` — proceed to step 5.
+   - `failed` / `error` — **halt the run**: do **not** checkpoint
+     `completedWaves` forward and do **not** build the next wave on a broken
+     umbrella. Leave the umbrella branch and the failing worktree on disk,
+     record the failure in `run-state.json`, report to the user, and stop —
+     consistent with step 1's "fail loud, do not branch a wave from a wrong
+     base".
+
+   Remove the deferred worktree (section 3 step 9's `remove_worktree`) only
+   after a `passed` or `not-configured` result.
 5. **Checkpoint the wave.** Set `completedWaves` to this wave's index + 1 and
    write `run-state.json`.
 6. **Report wave progress to the PRD.** If `parentIssue` is set, post a comment
@@ -417,8 +641,23 @@ a developer to review and merge:
 ```
 gh pr create --base development --head orchestrate/umbrella-<runId> \
   --title "orchestrate run <runId>" \
-  --body "<summary of the run — slices passed, failed, and skipped>"
+  --body "<summary of the run — slices passed, failed, and skipped>
+
+Closes #<N>
+Closes #<M>"
 ```
+
+The `--body` enumerates **one `Closes #<N>` line per slice** whose
+`run-state.json` `state` is `"passed"` (the `#<N>`/`#<M>` placeholders above
+stand for those passed-slice issue numbers — emit as many lines as there are
+passed slices), in addition to the run summary. A
+**failed** or **skipped** slice gets **no** `Closes` line — its code is not in
+the umbrella, so its issue must stay open. Because the integration base is
+`development`: when `development` is the repository's default branch these
+`Closes` keywords fire a native GitHub close the instant the umbrella pull
+request merges; when `development` is **not** the default branch the keywords
+are inert and the §1 start-of-run sweep backstop (below) closes the passed-slice
+issues instead.
 
 Record its URL as `finalPullRequest` in `run-state.json`, set
 `status: "completed"`, and checkpoint. Then render the run's HTML artifacts
@@ -494,18 +733,59 @@ subagent's verbatim returned text and its `role`:
    prompt must carry the issue number/title/body, the worktree path (every
    change goes there), the investigator's brief if one was produced, an
    instruction to verify with the capability tools using the worktree path as
-   `repoPath`, and a reminder not to commit, push, or run git. Validate its
-   returned text with `validate_envelope` (role `implementer`). On a `valid`
-   envelope, classify the envelope `status`:
+   `repoPath`, a note that it MAY call `run_install` (worktree path as
+   `repoPath`) to fetch a newly-added dependency before re-verifying — and that
+   any lockfile that install mutates MUST be reported in `filesChanged` so it
+   lands in the slice diff — and a reminder not to commit, push, or run git.
+   Validate its returned text with `validate_envelope` (role `implementer`). On
+   a `valid` envelope, classify the envelope `status`:
    - `completed` — proceed to the worktree scope check in step 4a.
    - `incomplete` — the implementer's graceful turn-budget self-report: it
      foresaw it could not finish within its remaining turns and stopped cleanly
-     with partial work recorded. The slice has **FAILED** — record a
-     `failureReason` that names the turn-limit cutoff explicitly (e.g.
-     "implementer reported `incomplete` — exhausted its turn budget; partial
-     work preserved in the worktree for resumption"). See *Failure handling*.
+     with partial work recorded **and a `remainingWork` handoff**. Do **not**
+     fail the slice immediately. Instead run the **bounded continue-in-place
+     loop** below: re-spawn the implementer in the *same* worktree carrying the
+     `remainingWork`, until it returns `completed` or the continuation budget is
+     exhausted. The slice FAILs from `incomplete` only when the budget runs out
+     or the no-progress guard trips — see the loop and *Failure handling*.
    - `blocked` — the implementer hit an unrecoverable obstacle: the slice has
      **FAILED**.
+
+   **Continue-in-place loop (on a `valid` `incomplete` envelope):**
+   - Read `budget = continuationBudget` from the step-2 `resolve_routing` result
+     (the resolved run-wide budget, default `2`; `0` disables continuation —
+     legacy immediate-FAIL). When `resolve_routing` returned `CONFIG_NOT_FOUND`
+     (no routing configured), there is no budget — use **0**.
+   - Initialize an in-session `continuationsUsed = 0` and capture a
+     **content-level fingerprint** of the worktree's uncommitted state: a hash
+     of `git -C <worktreePath> diff HEAD` concatenated with the contents of the
+     untracked files listed by
+     `git -C <worktreePath> ls-files --others --exclude-standard`. A filename-set
+     comparison is insufficient — the same file may be rewritten with real
+     progress or returned byte-identical.
+   - While `continuationsUsed < budget`: re-spawn `orchestrate:implementer-<effort>`
+     in the **same** worktree (same routing/model/effort) with a continuation
+     prompt = the issue, the worktree path, the PRIOR envelope's `remainingWork`,
+     the standard verify/no-git reminders, and an explicit "partial work is
+     already in the worktree — continue it, do not restart." Validate the
+     returned text with `validate_envelope` (role `implementer`).
+     - `completed` — proceed to the worktree scope check in step 4a. Loop done.
+     - `blocked`, or an `invalid`/`missing` envelope — the slice has **FAILED**
+       (record the precise cause). Loop done.
+     - `incomplete` again — recompute the fingerprint. If it **equals** the
+       prior fingerprint, the **no-progress guard trips**: the slice FAILs, its
+       `failureReason` names the no-progress stall, label `needs-triage`.
+       Otherwise increment `continuationsUsed`, update the stored fingerprint and
+       `remainingWork`, and loop.
+   - When `continuationsUsed === budget` and the last envelope is still
+     `incomplete`: the slice FAILs with a budget-exhausted `failureReason`
+     ("implementer reported `incomplete` after exhausting the continuation budget
+     of N; partial work preserved in the worktree for resumption"), label
+     `needs-info` (resumable).
+   - The counter and fingerprint are **loop-local** — nothing is persisted to
+     `run-state.json`. A mid-continuation context handoff/resume discards the
+     in-progress slice and rebuilds its worktree (§1), restarting the slice
+     clean; this is intentional.
 
    An `invalid` or `missing` envelope also means the slice has **FAILED** — a
    hard turn-limit cutoff that truncates the envelope mid-emission lands here as
@@ -530,6 +810,14 @@ subagent's verbatim returned text and its `role`:
      (`declaredButAbsent` / `presentButUndeclared`) so the reviewer sees it.
    - `status: "error"` — the worktree could not be inspected; the slice has
      **FAILED**.
+
+   Once the changed-file set is established (a `matched`/`clean`/`mismatch`
+   verdict), set the slice's `subState` to `implemented` and checkpoint
+   `run-state.json`; the completed implementer envelope also satisfies the
+   pre-review gate, so set `subState` to `verified` and checkpoint again before
+   spawning the reviewer. (These two adjacent checkpoints differ only in
+   resume granularity — the resume matrix in section 1 re-runs the capability
+   gate for both.)
 5. **Run the reviewer.** Spawn the `orchestrate:reviewer-<effort>` subagent —
    `<effort>` and the `model` override from `routing.reviewer` — in the same
    worktree. Its prompt must carry the issue, the worktree path, the
@@ -539,24 +827,100 @@ subagent's verbatim returned text and its `role`:
    investigator's brief if one was produced. Validate its returned text with
    `validate_envelope` (role `reviewer`). On a `valid` envelope, an envelope
    `status` of `failed` means the slice has **FAILED**; `passed` proceeds. An
-   `invalid` or `missing` envelope also means the slice has **FAILED**.
+   `invalid` or `missing` envelope also means the slice has **FAILED**. On a
+   `passed` envelope, set the slice's `subState` to `reviewed` and checkpoint
+   `run-state.json` before proceeding to step 6.
+5a. **Pre-merge capability gate.** After the reviewer returns `passed` (step 5),
+   and **before any commit, push, or GitHub state exists**, the orchestrator
+   independently runs the correctness capability tools on the slice worktree —
+   this is the pre-merge capability gate. It does **not** trust the reviewer's
+   envelope `verification`: the reviewer's re-run is a subagent self-report;
+   this step is the orchestrator's own deterministic check, the last link in the
+   `implementer → reviewer → orchestrator` trust chain.
+
+   Call the `run_build` and `run_tests` MCP tools with the slice's
+   `<worktree-path>` as `repoPath` (the same pattern step 8a.3 uses). Each tool
+   returns a `status` enum (`passed | failed | not-configured | error`); handle
+   all four:
+   - `passed` on **both** verbs → proceed to step 6.
+   - `not-configured` (either verb) → **tolerated**, treated as a pass for that
+     verb (consistent with the prerequisites note that a missing-command
+     `not-configured` is tolerated). The gate must not fail a project that has
+     not configured `build`/`tests`.
+   - `failed` or `error` (either verb) → the slice has **FAILED** (the existing
+     FAILED semantics defined throughout section 3 — no new failure handling).
+
+   **Known-baseline-failure hint (`knownFailureMatches`).** When a capability
+   tool returns `status: "failed"` and the project's `commands.json` configures a
+   `knownFailures` pattern list, the result carries
+   `knownFailureMatches.matched` (configured patterns that appeared in the
+   failing output) and `.unmatched` (configured patterns that did not). Use it
+   only as a **hint**, never as a verdict — it is a best-effort L1 annotation,
+   not a deterministic "zero new failures" assertion (`run_tests` returns capped
+   exit-code output, not a structured test-result list). When every failure
+   indicator in the output is explained by a `matched` pattern and `unmatched`
+   holds only not-present baseline cases, treat the failure as a **likely known
+   baseline** and proceed per this gate's baseline handling. When the failing
+   output contains indicators NOT covered by any `matched` pattern,
+   **spot-check** before treating it as baseline — L1 cannot deterministically
+   assert "0 new failures." A `knownFailures` entry in `commands.json` looks
+   like, e.g.:
+
+   ```json
+   { "tests": ["npm", "test"], "knownFailures": ["flaky-network timeout", "ECONNRESET"] }
+   ```
+
+   The verb set is exactly `run_build` + `run_tests` — a deliberate subset:
+   build+test is the correctness trust boundary, while `typecheck`/`lint` remain
+   the reviewer's quality remit and are intentionally **not** re-run here. The
+   step 8a.3 (post-conflict) re-verify running all four
+   `run_tests`/`run_typecheck`/`run_build`/`run_lint` verbs is a **known,
+   intentional asymmetry** — and is left unchanged: this pre-merge gate is
+   focused correctness on a worktree the reviewer already saw, whereas the
+   conflict re-verify is max-confidence on a never-before-tested merged
+   combination. "Pre-merge" names what the gate controls (whether the merge
+   proceeds); mechanically it runs pre-commit, on the same worktree state the
+   reviewer validated.
 6. **Commit and push.** Stage only the files the subagents reported changing —
    the union of the `filesChanged` arrays from the validated implementer and
    reviewer envelopes. Never `git add -A`: the capability tools leave untracked
-   build artifacts in the worktree.
+   build artifacts in the worktree. When the implementer fetched a new
+   dependency with `run_install`, install ran **in its turn before this
+   commit** and mutated the lockfile (`pnpm-lock.yaml` / `package-lock.json` /
+   `Cargo.lock`); because the implementer declared that lockfile in
+   `filesChanged`, it is in this staged union and the commit captures it — so
+   the new dependency lands in the slice diff.
 
    ```
    git -C <worktree-path> add -- <file> <file> ...
    ```
 
    If `git -C <worktree-path> diff --cached --quiet` exits 0, nothing changed —
-   the slice has **FAILED**. Otherwise commit and push (two `-m` flags keep a
-   newline out of the shell argument):
+   the slice has **FAILED**. Otherwise commit (local; two `-m` flags keep a
+   newline out of the shell argument), then push **with the `push_and_verify`
+   MCP tool** — not a raw `git push`:
 
    ```
    git -C <worktree-path> commit -m "<type>(<scope>): <issue title>" -m "Closes #<N>"
-   git -C <worktree-path> push -u origin orchestrate/slice-<N>
    ```
+
+   Call the **`push_and_verify` MCP tool** with `repoPath` = the slice
+   `worktreePath`, `branch` = `orchestrate/slice-<N>`, `remote` = `origin`,
+   `setUpstream: true`. On `status: "ok"` — and **only** then, because that
+   status means `push_and_verify`'s SHA-matched `git ls-remote` has confirmed the
+   branch actually landed on the remote — set the slice's `subState` to `pushed`,
+   checkpoint `run-state.json`, and proceed to step 7. Never write
+   `subState: pushed` on a bare `git push` exit-0; the landing check is what the
+   `pushed` checkpoint attests to (and what the section-1 resume re-validates).
+   On `status: "error"` (any `errorCode` — `PUSH_FAILED`, `BRANCH_NOT_ON_REMOTE`,
+   `INVALID_INPUT`, `GIT_ERROR`) the slice has **FAILED**, the same wiring as
+   every other MCP-tool error in this section.
+
+   `push_and_verify` gates step 7's `gh pr create`: it pushes the branch and
+   then confirms via SHA-matched `git ls-remote` that it actually landed on the
+   remote. A `git push` that exits 0 but never lands is exactly the
+   confusing-`gh pr create`-error site #230 reports — verifying the branch is on
+   the remote *before* opening the PR removes that silent-failure mode.
 
 7. **Open the slice pull request.**
 
@@ -565,7 +929,8 @@ subagent's verbatim returned text and its `role`:
      --title "<issue title>" --body "Implements #<N>. <summary>"
    ```
 
-   Record the pull request URL in the slice's `run-state.json` entry.
+   Record the pull request URL in the slice's `run-state.json` entry, set its
+   `subState` to `pr-open`, and checkpoint.
 8. **Merge the slice.** GitHub computes mergeability asynchronously — check it
    before merging:
 
@@ -573,10 +938,20 @@ subagent's verbatim returned text and its `role`:
    gh pr view <pr-number> --json mergeable,mergeStateStatus
    ```
 
+   The gate is the `mergeable` field; `mergeStateStatus` is informational
+   context, not a separate gate.
+
    - `UNKNOWN` — GitHub is still computing; wait a moment and re-check, up to a
      few attempts. If it never resolves, the slice has **FAILED**.
-   - `MERGEABLE` — merge it, squashing to one commit per slice on the umbrella
-     branch: `gh pr merge <pr-number> --squash`.
+   - `MERGEABLE` — merge it even when `mergeStateStatus` is `UNSTABLE` (a
+     non-required check is failing or still running, but no required check
+     blocks the merge). Squash to one commit per slice on the umbrella branch:
+     `gh pr merge <pr-number> --squash --delete-branch`. The `--delete-branch`
+     flag reclaims the **remote** slice branch as part of the merge; it may
+     additionally warn or no-op on the **local** branch because the slice
+     worktree still has it checked out — that warning is **tolerated, not a
+     slice failure**. The authoritative local reclamation is the explicit
+     `git branch -D` at step 9.
    - `CONFLICTING` — resolve the conflict once, per step 8a. Do not FAIL a
      slice on a conflict without attempting resolution.
 
@@ -602,7 +977,7 @@ subagent's verbatim returned text and its `role`:
       tools with the worktree path as `repoPath`. If any reports failure, the
       slice has **FAILED**. If all pass, the merge commit already exists —
       push and merge the slice PR: `git -C <worktree-path> push` then
-      `gh pr merge <pr-number> --squash`.
+      `gh pr merge <pr-number> --squash --delete-branch`.
    4. Spawn the `orchestrate:conflict-resolver-<effort>` subagent — `<effort>`
       and the `model` override from `routing.conflict-resolver`. Its prompt
       must carry the issue, the worktree path, and the list of conflicted
@@ -624,14 +999,37 @@ subagent's verbatim returned text and its `role`:
       git -C <worktree-path> add -- <resolved file> ...
       git -C <worktree-path> commit --no-edit
       git -C <worktree-path> push
-      gh pr merge <pr-number> --squash
+      gh pr merge <pr-number> --squash --delete-branch
       ```
 
-9. **Finish the slice.** Set the slice `state` to `passed` and transition the
+9. **Finish the slice.** Once any of step 8's `gh pr merge --squash` paths
+   (`MERGEABLE`, the clean-textual-merge 8a.3 path, or the conflict-resolved
+   8a.6 path) has succeeded — the slice PR is now squash-merged into the
+   umbrella — set the slice's `subState` to `merged` and checkpoint
+   `run-state.json` **before** the label transition and worktree removal below.
+   `merged` is the integration-boundary anchor: a run resumed at
+   `subState: merged` skips every subagent and re-enters here at step 9 only,
+   never re-merging. Then set the slice `state` to `passed` and transition the
    issue's tracker label — it is done and awaiting human review:
    `gh issue edit <N> --remove-label ready-for-agent --add-label ready-for-human`.
    Then remove its worktree with the `remove_worktree` MCP tool (`worktreePath`,
    `repoPath`, `force: true` — the worktree may hold untracked build artifacts).
+   Finally, reclaim the **local** slice branch from the repository root:
+
+   ```
+   git branch -D orchestrate/slice-<N>
+   ```
+
+   The `-D` (force) flag is mandatory: the squash-merge rewrote the commit SHA,
+   so the slice branch is **not** an ancestor of umbrella and `git branch -d`
+   would refuse it as "not fully merged." Run this **after** `remove_worktree` —
+   while the worktree still has the branch checked out, the delete is refused.
+   The delete is idempotent: on a run resumed at `subState: merged` the branch
+   may already be gone (an earlier pass reclaimed it), and an already-absent
+   branch is fine, not a failure. This completes incremental reclamation: the
+   **remote** half was done by `--delete-branch` at step 8, the **local** half
+   here. Incremental reclamation fires only on a `passed` / `subState: merged`
+   slice; a failed (preserved) slice's branch is left fully intact.
 
 ## 4. Context handoff
 
@@ -659,10 +1057,20 @@ To hand off:
    `in-progress` — the successor resumes from it. Do **not** delete
    `.orchestrate/runs/<runId>/context-flag.json`; the successor deletes it on
    startup once it has consumed it.
-2. Call the `spawn_successor` MCP tool with the repository root as `repoPath`.
-   It launches a new interactive Claude Code session — terminal and `claude`
-   flags come from `.orchestrate/handoff.json`, defaults otherwise — that
-   re-invokes `/orchestrate` with Remote Control active.
+2. Derive the resume invocation from the active run's `runId` prefix and pass
+   it to `spawn_successor` as `resumePrompt`. The rule is exact: if the `runId`
+   starts with `prd`, strip the `prd` prefix and take the characters up to the
+   first `-` as `<N>` (e.g. `prd195-20260521-015143` → `195`), pass
+   `resumePrompt: "/orchestrate 195"`; if it starts with `backlog-`, pass
+   `resumePrompt: "/orchestrate"`. **Always derive and pass** `resumePrompt`
+   uniformly — even for a `backlog-` run, where it equals the default — so the
+   static `handoff.json` `successor.resumePrompt` is purely a manual/legacy
+   fallback. Then call the `spawn_successor` MCP tool with the repository root
+   as `repoPath` and the derived `resumePrompt`. It launches a new interactive
+   Claude Code session — terminal and `claude` flags come from
+   `.orchestrate/handoff.json`, defaults otherwise — that re-invokes the
+   passed `resumePrompt` (the partition-correct `/orchestrate <N>` or bare
+   `/orchestrate`) with Remote Control active.
    - `status: "ok"` — the successor launched. Report to the user which terminal
      opened (`terminal`) and that the run continues there, then **stop** — do
      not process any further waves in this session.
@@ -675,8 +1083,11 @@ To hand off:
 
 A slice **FAILS** when `create_worktree` errors, a subagent's result envelope
 is invalid or missing (`validate_envelope` returns `invalid` or `missing`), a
-validated implementer envelope has `status: "blocked"` or `status: "incomplete"`,
-a validated reviewer envelope has `status: "failed"`, `verify_changeset` reports
+validated implementer envelope has `status: "blocked"` — or `status: "incomplete"`
+**after** the continue-in-place loop exhausts the continuation budget or trips
+the no-progress guard (a single `incomplete` no longer FAILs immediately; see
+§3 step 4) — a validated reviewer envelope has `status: "failed"`,
+`verify_changeset` reports
 the implementer's declared file set does not match the worktree
 (`empty-but-declared` or `suspiciously-empty`, or a `status: "error"`), the
 staged changeset is empty, or a merge conflict the `conflict-resolver` cannot
@@ -684,23 +1095,44 @@ fix. The orchestrator decides FAILURE **only** from the validated envelope and
 tool results — never from a subagent's prose. An invalid or missing envelope is
 always a FAILED slice; it is never treated as success.
 
-The implementer envelope's `incomplete` status is a **distinct** failure flavor:
-it is the implementer's graceful turn-budget self-report — partial, resumable
-work — as opposed to `blocked` (an unrecoverable obstacle) or an `invalid`
-envelope (a hard turn-limit cutoff that truncated the envelope). All three FAIL
-the slice, but the `failureReason` must name the cause precisely so a developer
-can tell a resumable budget exhaustion apart from a genuine blocker. An
+The implementer envelope's `incomplete` status is the implementer's graceful
+turn-budget self-report — partial, resumable work, carrying a `remainingWork`
+handoff — as opposed to `blocked` (an unrecoverable obstacle) or an `invalid`
+envelope (a hard turn-limit cutoff that truncated the envelope). Unlike `blocked`
+and `invalid`, a single `incomplete` does **not** FAIL the slice: it drives the
+bounded continue-in-place loop (§3 step 4), where the orchestrator re-spawns the
+implementer in the same preserved worktree with the `remainingWork` until it
+returns `completed` or the loop terminates. An `incomplete` slice FAILs **only**
+when one of two terminal causes is reached:
+
+- **Budget exhausted** (resumable) — `continuationsUsed === continuationBudget`
+  and the last envelope is still `incomplete`. The `failureReason` names the
+  budget exhaustion ("implementer reported `incomplete` after exhausting the
+  continuation budget of N; partial work preserved in the worktree for
+  resumption"); label `needs-info`.
+- **No progress** — a continuation returned `incomplete` whose worktree
+  content-fingerprint equals the prior one (the re-spawn changed nothing). The
+  `failureReason` names the no-progress stall; label `needs-triage`.
+
+In both terminal cases the `failureReason` must name the cause precisely so a
+developer can tell a resumable budget exhaustion apart from a genuine stall. An
 `incomplete` slice's worktree holds usable partial work — preserve it (as every
 FAILED slice's worktree is preserved) so the slice can be resumed.
 
 On a FAILED slice:
 
+- When the failure cause is a validated worker envelope with `status: "blocked"`
+  (implementer) or `status: "failed"` (reviewer), that envelope now carries a
+  validated `rootCause` (`verified` | `hypothesis` + `claim` + optional
+  `evidence`) — surface it in the failure artifact alongside the `failureReason`
+  so a developer reads the subagent's own labelled diagnosis.
 - Set its `state` to `failed` with a `failureReason`, checkpoint, and
   transition the issue's tracker label. For a slice that failed because the
-  implementer reported `incomplete` — partial, resumable work — `needs-info`
-  better signals "resume me" than `needs-triage`:
+  continue-in-place loop **exhausted the continuation budget** — partial,
+  resumable work — `needs-info` better signals "resume me" than `needs-triage`:
   `gh issue edit <N> --remove-label ready-for-agent --add-label needs-info`.
-  For every other failure cause, use `needs-triage`:
+  For the **no-progress** terminal cause (a continuation that changed nothing)
+  and every other failure cause, use `needs-triage`:
   `gh issue edit <N> --remove-label ready-for-agent --add-label needs-triage`.
 - Do **not** merge it. **Preserve its worktree** — leave it on disk for a
   developer to inspect. Do not call `remove_worktree`.
@@ -714,6 +1146,18 @@ On a FAILED slice:
   inspection. This fallback applies to the implementer, reviewer, and
   conflict-resolver only — the investigator is read-only and leaves no worktree
   changes to recover.
+- **Post a triage comment on the child issue.** This is **orchestrator** `gh`
+  work (alongside closing passed-slice issues on a `merged` verdict, above) —
+  the no-`gh` invariant on the MCP tools is preserved. Run
+  `gh issue comment <N> --body "<body>"` whose body carries: the `failureReason`;
+  the structured `rootCause` from the validated envelope (#239) as
+  `rootCause.status` (`verified` | `hypothesis`) plus its `claim`/`evidence`
+  detail; the preserved `worktreePath`; and a **resume hint that names
+  `/orchestrate clean --failed <runId>`** as the deliberate post-triage reclaim
+  action for this run once a developer has inspected the worktree. When the
+  envelope was `invalid` or `missing` (so no `rootCause` exists), the comment
+  **omits `rootCause`** and carries `failureReason` + `worktreePath` + the resume
+  hint only — the degraded body, never a blocker.
 - **Continue the wave.** A failed slice never cancels the other slices in its
   wave — they are independent and proceed normally.
 
@@ -732,20 +1176,58 @@ Other stop conditions: an empty backlog is a clean no-op, as is a
 The orchestrator is the **single writer** of GitHub tracker state — the
 subagents never touch issues, labels, or pull requests. Tracker writes happen
 only at a slice's terminal state (see section 3 step 9 for the pass label
-command and *Failure handling* for the failure label command) and as PRD
-progress/summary comments (see section 2 steps 6 and the final-PR paragraph).
-The parent PRD issue receives a progress comment after each wave and a final
-summary when the run completes.
+command and *Failure handling* for the failure label command), as PRD
+progress/summary comments (see section 2 steps 6 and the final-PR paragraph),
+and as **issue closes** on merge→development (below). The parent PRD issue
+receives a progress comment after each wave and a final summary when the run
+completes. Issue-closing is part of the single-writer role — alongside labels
+and progress comments — and is **not** delegated to subagents.
 
-The orchestrator does not close issues. The `Closes #N` trailers on the slice
-commits close them when a developer merges the final umbrella pull request into
-`development`.
+The orchestrator closes a passed slice's issue **when its code lands in
+`development`** — never on the slice→umbrella merge (the slice merely vanishes
+into the umbrella branch; its code is not yet in the integration base). Two
+complementary mechanisms enforce the correct semantics (issue closed ⇔ code in
+`development`):
+
+- **Native close — final umbrella PR body.** The final integration pull request
+  (section 2) lists a `Closes #<N>` line for every passed slice. When
+  `development` is the repository's default branch, merging that pull request
+  fires GitHub's native close instantly.
+- **Backstop — §1 start-of-run sweep.** When `development` is **not** the
+  default branch the `Closes` keywords are inert, so the start-of-run cleanup
+  sweep (section 1) covers the gap: on a `merged` verdict it collects each
+  passed slice's issue number from `run-state.json` (before `clean_runs` deletes
+  it) and runs `gh issue close <N>` — orchestrator work, idempotent if the
+  native keyword already fired (an already-closed issue exits 0).
+
+This is orchestrator `gh` work; `clean_runs` stays git + filesystem only and
+never shells `gh` (the no-`gh` invariant). The slice-commit `Closes #<N>`
+trailer (section 3 step 6) and the slice pull request's `Implements #<N>` body
+(section 3) are **unchanged** — the trailer is now harmless reinforcing
+redundancy, and `Implements` remains the deliberate non-closing slice→umbrella
+verb; the lifecycle no longer relies on either.
+
+**`gh`-op resilience (prose, not a tool).** Wrap every `gh` operation —
+`gh pr create`, `gh pr merge`, `gh pr view`, `gh issue edit`, `gh issue
+comment` — in a bounded retry that **distinguishes transient failures (network
+timeout, 5xx, DNS) — retry with backoff — from permanent failures (auth,
+validation, not-found) — fail immediately**. This is orchestrator prose rather
+than an MCP tool **because the MCP layer never shells `gh`** (the no-`gh`
+invariant): forge-op resilience is the orchestrator's responsibility. The
+`push_and_verify` MCP tool covers the git-push half of the same #230 failure
+mode (an exit-0 push that never lands); this note covers the `gh`-op half —
+together they close #230.
 
 ## Checkpointing
 
 Write the run's `run-state.json` — at `.orchestrate/runs/<runId>/run-state.json`
-— after every slice state change and after every wave. Every write refreshes
-the top-level `updatedAt`, and a slice's own `updatedAt` whenever its entry
-changes, so an artifact rendered from the file has accurate timestamps. The
-checkpoint is what makes a run resumable: an interrupted run, re-invoked, skips
-every terminal-state slice and continues.
+— after every slice state change and after every wave. In addition, write a
+slice's `subState` at **every** section-3 per-slice transition
+(`implemented` → `verified` → `reviewed` → `pushed` → `pr-open` → `merged`);
+that fine-grained checkpoint is the **resume anchor** an interrupted in-progress
+slice continues from (section 1), alongside the coarse-`state` and wave
+checkpoints. Every write refreshes the top-level `updatedAt`, and a slice's own
+`updatedAt` whenever its entry changes, so an artifact rendered from the file
+has accurate timestamps. The checkpoint is what makes a run resumable: an
+interrupted run, re-invoked, skips every terminal-state slice and resumes every
+in-progress slice from its recorded `subState`.

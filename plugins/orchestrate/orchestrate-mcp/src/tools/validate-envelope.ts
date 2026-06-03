@@ -26,6 +26,34 @@ const verificationEntrySchema = z.object({
 });
 
 /**
+ * Root-cause analysis for a non-success outcome. A forcing function: a subagent
+ * reporting a failure must consciously label its diagnosis as empirically
+ * `verified` (citing the command/output as `evidence`) versus an unproven
+ * `hypothesis`, rather than presenting a guess as a fact.
+ */
+const rootCauseSchema = z.object({
+  status: z
+    .enum(["verified", "hypothesis"])
+    .describe(
+      "Epistemic label for the root-cause analysis. 'verified' = " +
+        "confirmed empirically by a command and its output (cite it in " +
+        "`evidence`); 'hypothesis' = an unproven inference the subagent " +
+        "could not confirm within its turn. The subagent must consciously " +
+        "pick one — never present a guess as a fact."
+    ),
+  claim: z
+    .string()
+    .describe("The root-cause statement itself — what actually went wrong."),
+  evidence: z
+    .string()
+    .optional()
+    .describe(
+      "The command run and the relevant output that proves the claim. " +
+        "Required in spirit when status='verified'; omit for a 'hypothesis'."
+    ),
+});
+
+/**
  * Result envelope for the implementer role. `status` carries the implementer's
  * three-value vocabulary: 'completed', 'incomplete', or 'blocked'.
  */
@@ -60,6 +88,23 @@ export const implementerEnvelopeSchema = z.object({
       "Free-form notes for the orchestrator or a later reviewer — assumptions, " +
         "partial work, or, when blocked, exactly what stopped the implementer."
     ),
+  rootCause: rootCauseSchema
+    .optional()
+    .describe(
+      "Root-cause analysis for a non-success outcome. REQUIRED when " +
+        "status='blocked' (label it verified|hypothesis and cite evidence " +
+        "when verified); optional for 'incomplete' (cause is definitionally " +
+        "turn-budget); omit for 'completed'."
+    ),
+  remainingWork: z
+    .string()
+    .optional()
+    .describe(
+      "Present and non-empty ONLY when status='incomplete'. The handoff note " +
+        "the orchestrator forwards to the continuation implementer: what is " +
+        "done, what is left, and how to resume in the same worktree. Required " +
+        "for an 'incomplete' envelope; absent or empty for 'completed'/'blocked'."
+    ),
 });
 
 /**
@@ -88,6 +133,13 @@ export const reviewerEnvelopeSchema = z.object({
     .describe(
       "Free-form notes — what was fixed and why, or, when failed, the exact " +
         "blocker and why it is unsafe to fix inline."
+    ),
+  rootCause: rootCauseSchema
+    .optional()
+    .describe(
+      "Root-cause analysis for a non-success outcome. REQUIRED when " +
+        "status='failed' (label it verified|hypothesis and cite evidence " +
+        "when verified); omit for 'passed'."
     ),
 });
 
@@ -159,12 +211,35 @@ export const investigatorEnvelopeSchema = z.object({
  * The full set of envelope shapes, discriminated on `role`. Each subagent role
  * maps to exactly one member.
  */
-export const envelopeSchema = z.discriminatedUnion("role", [
-  implementerEnvelopeSchema,
-  reviewerEnvelopeSchema,
-  conflictResolverEnvelopeSchema,
-  investigatorEnvelopeSchema,
-]);
+export const envelopeSchema = z
+  .discriminatedUnion("role", [
+    implementerEnvelopeSchema,
+    reviewerEnvelopeSchema,
+    conflictResolverEnvelopeSchema,
+    investigatorEnvelopeSchema,
+  ])
+  // An 'incomplete' implementer envelope MUST carry a non-empty `remainingWork`
+  // handoff — it is the note the orchestrator forwards to the continuation
+  // implementer in the same worktree. Enforced at the union level (rather than
+  // refining the member, which would turn it into a ZodEffects the
+  // discriminatedUnion cannot take as an option) so the issue lands on the
+  // `remainingWork` path and `validateEnvelope` classifies it SCHEMA_MISMATCH.
+  .superRefine((data, ctx) => {
+    if (
+      data.role === "implementer" &&
+      data.status === "incomplete" &&
+      (data.remainingWork === undefined || data.remainingWork.trim() === "")
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["remainingWork"],
+        message:
+          "An 'incomplete' implementer envelope must carry a non-empty " +
+          "`remainingWork` handoff: what is done, what is left, and how to " +
+          "resume in the same worktree.",
+      });
+    }
+  });
 
 // ─── validate_envelope tool I/O schemas ───────────────────────────────────────
 
@@ -400,6 +475,24 @@ export function validateEnvelope(
       errorMessage:
         `The envelope declares role "${result.data.role}" but the subagent was ` +
         `spawned as "${role}".`,
+    };
+  }
+
+  // #239: a diagnostic failure outcome must carry a labelled root cause.
+  const env = result.data;
+  const requiresRootCause =
+    (env.role === "implementer" && env.status === "blocked") ||
+    (env.role === "reviewer" && env.status === "failed");
+  if (requiresRootCause && env.rootCause === undefined) {
+    return {
+      status: "invalid",
+      role,
+      errorCode: "SCHEMA_MISMATCH",
+      errorMessage:
+        `A ${env.role} envelope with status "${env.status}" must include a ` +
+        `rootCause object ({ status: "verified" | "hypothesis", claim, ` +
+        `evidence? }). The subagent did not declare a root cause for the ` +
+        `failure.`,
     };
   }
 

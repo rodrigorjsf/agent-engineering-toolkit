@@ -44,6 +44,30 @@ export const routingConfigSchema = z.object({
   trivial: tierRoutingSchema,
   standard: tierRoutingSchema,
   complex: tierRoutingSchema,
+  intraWaveConcurrency: z
+    .enum(["parallel", "sequential"])
+    .optional()
+    .default("parallel")
+    .describe(
+      "Run-wide policy: how to process the independent slices within one " +
+        "wave. 'parallel' (default) spawns all processable slices at once " +
+        "and integrates them sequentially. 'sequential' processes slices one " +
+        "at a time in issue-id ascending order, refreshing the umbrella base " +
+        "between each so slice N branches from base+slice1..N-1 — guaranteed " +
+        "conflict-free, at the cost of serializing the wave. Optional; the " +
+        "three tier blocks remain required."
+    ),
+  continuationBudget: z
+    .number()
+    .int()
+    .min(0)
+    .default(2)
+    .describe(
+      "How many times the orchestrator may re-spawn the implementer in the " +
+        "same worktree after an 'incomplete' envelope (re-spawns BEYOND the " +
+        "initial run). 0 disables continuation (incomplete FAILs immediately, " +
+        "the legacy behavior). Defaults to 2."
+    ),
 });
 
 export const resolveRoutingInputSchema = z.object({
@@ -94,6 +118,16 @@ export const resolveRoutingOutputSchema = z.object({
     .optional()
     .describe(
       "Cleaned, human-readable failure description. Present when status='error'."
+    ),
+  continuationBudget: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe(
+      "The resolved continuation budget for this run — how many implementer " +
+        "re-spawns are allowed after an 'incomplete' envelope. Present when " +
+        "status='ok'."
     ),
 });
 
@@ -179,5 +213,6 @@ export function resolveRoutingFromConfig(
     status: "ok",
     tier: input.tier,
     routing: resolveRouting(input.tier, config.data),
+    continuationBudget: config.data.continuationBudget,
   };
 }

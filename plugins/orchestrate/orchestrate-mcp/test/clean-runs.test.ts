@@ -3,7 +3,7 @@ import { execFileSync } from "child_process";
 import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
-import { cleanRuns } from "../src/tools/clean-runs.js";
+import { cleanRuns, reclaimRun } from "../src/tools/clean-runs.js";
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
@@ -393,6 +393,129 @@ describe("clean_runs — in-progress defense", () => {
   });
 });
 
+// ─── defense-in-depth: completed run with a null finalPullRequest ─────────────
+
+describe("clean_runs — final-pr-missing gate", () => {
+  it("refuses to clean a completed run whose finalPullRequest is null, even with a merged verdict", async () => {
+    const runId = "20260522-155000";
+    const { umbrellaBranch, sliceBranch } = makeBranches(runId, "207", {
+      push: false,
+    });
+    const wtPath = makeWorktree(sliceBranch, "slice-207");
+    writeRunState(
+      repoPath,
+      runId,
+      buildRunState({
+        runId,
+        status: "completed",
+        umbrellaBranch,
+        finalPullRequest: null,
+        slices: { "207": { sliceBranch, worktreePath: wtPath, state: "passed" } },
+      })
+    );
+
+    const result = await cleanRuns({
+      repoPath,
+      verdicts: { [runId]: "merged" },
+    });
+
+    const run = result.runs.find((r) => r.runId === runId)!;
+    expect(run.action).toBe("skipped");
+    expect(run.reason).toBe("final-pr-missing");
+
+    // Nothing removed — the run never concluded (its final PR was never opened).
+    expect(fs.existsSync(wtPath)).toBe(true);
+    expect(fs.existsSync(runDirPath(repoPath, runId))).toBe(true);
+    expect(localBranchExists(umbrellaBranch, repoPath)).toBe(true);
+  });
+});
+
+// ─── cross-run isolation: a live sibling run is never touched ──────────────────
+
+describe("clean_runs — cross-run isolation", () => {
+  it("cleans a merged run while leaving a concurrent in-progress sibling completely untouched", async () => {
+    // Structural isolation is guaranteed by construction: `run-dir.ts`
+    // `isValidRunId`/`resolveRunDir` are pure functions of `(repoPath, runId)`,
+    // so two distinct valid run ids always resolve to disjoint
+    // `.orchestrate/runs/<runId>/` paths and disjoint runId-embedding branch
+    // names — no tool can write outside its own run's footprint. This test pins
+    // that empirically: even when BOTH runs carry a `merged` verdict, the
+    // status gate (`checkCrossRunMutationAllowed`) protects the in-progress
+    // sibling while the concluded run is cleaned.
+    withRemote();
+
+    // Run B — completed, non-null finalPR, merged verdict → cleaned.
+    const runB = "20260522-240000";
+    const { umbrellaBranch: umbrellaB, sliceBranch: sliceBranchB } =
+      makeBranches(runB, "801", { push: true });
+    const wtB = makeWorktree(sliceBranchB, "slice-801");
+    writeRunState(
+      repoPath,
+      runB,
+      buildRunState({
+        runId: runB,
+        status: "completed",
+        umbrellaBranch: umbrellaB,
+        finalPullRequest: "https://github.com/o/r/pull/20",
+        slices: {
+          "801": { sliceBranch: sliceBranchB, worktreePath: wtB, state: "passed" },
+        },
+      })
+    );
+
+    // Run A — in-progress, still live in another session. Distinct runId and
+    // slice issue so Run B's branch deletion can never coincidentally match.
+    // Its branches are pushed so the remote half is exercised too.
+    const runA = "20260522-250000";
+    const { umbrellaBranch: umbrellaA, sliceBranch: sliceBranchA } =
+      makeBranches(runA, "802", { push: true });
+    const wtA = makeWorktree(sliceBranchA, "slice-802");
+    writeRunState(
+      repoPath,
+      runA,
+      buildRunState({
+        runId: runA,
+        status: "in-progress",
+        umbrellaBranch: umbrellaA,
+        finalPullRequest: null,
+        slices: {
+          "802": { sliceBranch: sliceBranchA, worktreePath: wtA, state: "passed" },
+        },
+      })
+    );
+
+    // Both runs carry a `merged` verdict — the status gate is the only thing
+    // standing between Run A and deletion.
+    const result = await cleanRuns({
+      repoPath,
+      verdicts: { [runB]: "merged", [runA]: "merged" },
+    });
+
+    expect(result.status).toBe("ok");
+
+    // Run B is removed — worktree, branches (local + remote), and run dir gone.
+    const reportB = result.runs.find((r) => r.runId === runB)!;
+    expect(reportB.action).toBe("removed");
+    expect(reportB.runDirRemoved).toBe(true);
+    expect(fs.existsSync(wtB)).toBe(false);
+    expect(fs.existsSync(runDirPath(repoPath, runB))).toBe(false);
+    expect(localBranchExists(umbrellaB, repoPath)).toBe(false);
+    expect(remoteBranchExists(umbrellaB, repoPath)).toBe(false);
+
+    // Run A — the in-progress sibling — is COMPLETELY untouched.
+    const reportA = result.runs.find((r) => r.runId === runA)!;
+    expect(reportA.action).toBe("skipped");
+    expect(reportA.reason).toBe("run-not-completed");
+    // Its run dir, worktree, and branches (local AND remote) all still present.
+    expect(fs.existsSync(runDirPath(repoPath, runA))).toBe(true);
+    expect(fs.existsSync(wtA)).toBe(true);
+    expect(localBranchExists(umbrellaA, repoPath)).toBe(true);
+    expect(localBranchExists(sliceBranchA, repoPath)).toBe(true);
+    expect(remoteBranchExists(umbrellaA, repoPath)).toBe(true);
+    expect(remoteBranchExists(sliceBranchA, repoPath)).toBe(true);
+  });
+});
+
 // ─── failed-slice worktree preservation ───────────────────────────────────────
 
 describe("clean_runs — failed-slice worktree preservation", () => {
@@ -716,5 +839,329 @@ describe("clean_runs — sweep continues past one run's failure", () => {
     expect(bad.action).toBe("skipped");
     expect(bad.reason).toBe("malformed-run-state");
     expect(fs.existsSync(runDirPath(repoPath, badRun))).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// reclaim_run — the human-gated single-run override (ADR-0012's sanctioned
+// status-gate exception). It removes ONE named run's complete footprint —
+// passed AND failed worktrees, umbrella + slice branches, run dir — WITHOUT the
+// status gate, scoped by construction to that single run, and never throws.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("reclaimRun — removes both passed- and failed-state worktrees", () => {
+  it("removes BOTH the passed- and failed-state worktrees for the runId", async () => {
+    const runId = "20260522-300000";
+    withRemote();
+    const umbrellaBranch = `orchestrate/umbrella-${runId}`;
+    const passedSlice = "orchestrate/slice-901";
+    const failedSlice = "orchestrate/slice-902";
+    git(["branch", umbrellaBranch], repoPath);
+    git(["branch", passedSlice], repoPath);
+    git(["branch", failedSlice], repoPath);
+    git(["push", "origin", umbrellaBranch], repoPath);
+    git(["push", "origin", passedSlice], repoPath);
+    git(["push", "origin", failedSlice], repoPath);
+    const passedWt = makeWorktree(passedSlice, "slice-901");
+    const failedWt = makeWorktree(failedSlice, "slice-902");
+
+    writeRunState(
+      repoPath,
+      runId,
+      buildRunState({
+        runId,
+        // in-progress + null finalPR — exactly what a status gate would refuse.
+        status: "in-progress",
+        umbrellaBranch,
+        finalPullRequest: null,
+        slices: {
+          "901": { sliceBranch: passedSlice, worktreePath: passedWt, state: "passed" },
+          "902": { sliceBranch: failedSlice, worktreePath: failedWt, state: "failed" },
+        },
+      })
+    );
+
+    const result = await reclaimRun({ repoPath, runId });
+
+    expect(result.status).toBe("ok");
+    const report = result.report!;
+    expect(report.action).toBe("removed");
+    expect(report.reason).toBe("failed-run-reclaimed");
+
+    // BOTH worktrees gone — the failed one too (no inspection preservation here).
+    expect(fs.existsSync(passedWt)).toBe(false);
+    expect(fs.existsSync(failedWt)).toBe(false);
+    expect(report.removedWorktrees).toContain(passedWt);
+    expect(report.removedWorktrees).toContain(failedWt);
+    expect(report.preservedWorktrees).toEqual([]);
+  });
+});
+
+describe("reclaimRun — deletes umbrella + every slice branch", () => {
+  it("deletes the umbrella branch and every slice branch (local and remote)", async () => {
+    const runId = "20260522-310000";
+    withRemote();
+    const umbrellaBranch = `orchestrate/umbrella-${runId}`;
+    const sliceA = "orchestrate/slice-911";
+    const sliceB = "orchestrate/slice-912";
+    git(["branch", umbrellaBranch], repoPath);
+    git(["branch", sliceA], repoPath);
+    git(["branch", sliceB], repoPath);
+    git(["push", "origin", umbrellaBranch], repoPath);
+    git(["push", "origin", sliceA], repoPath);
+    git(["push", "origin", sliceB], repoPath);
+
+    writeRunState(
+      repoPath,
+      runId,
+      buildRunState({
+        runId,
+        status: "in-progress",
+        umbrellaBranch,
+        finalPullRequest: null,
+        slices: {
+          "911": { sliceBranch: sliceA, worktreePath: null, state: "passed" },
+          "912": { sliceBranch: sliceB, worktreePath: null, state: "failed" },
+        },
+      })
+    );
+
+    const result = await reclaimRun({ repoPath, runId });
+
+    const report = result.report!;
+    expect(report.removedBranches).toContain(umbrellaBranch);
+    expect(report.removedBranches).toContain(sliceA);
+    expect(report.removedBranches).toContain(sliceB);
+    expect(localBranchExists(umbrellaBranch, repoPath)).toBe(false);
+    expect(localBranchExists(sliceA, repoPath)).toBe(false);
+    expect(localBranchExists(sliceB, repoPath)).toBe(false);
+    expect(remoteBranchExists(umbrellaBranch, repoPath)).toBe(false);
+    expect(remoteBranchExists(sliceA, repoPath)).toBe(false);
+    expect(remoteBranchExists(sliceB, repoPath)).toBe(false);
+    expect(report.branchErrors).toEqual([]);
+  });
+});
+
+describe("reclaimRun — removes the run directory", () => {
+  it("removes the run directory", async () => {
+    const runId = "20260522-320000";
+    const { umbrellaBranch, sliceBranch } = makeBranches(runId, "921", {
+      push: false,
+    });
+    writeRunState(
+      repoPath,
+      runId,
+      buildRunState({
+        runId,
+        status: "in-progress",
+        umbrellaBranch,
+        finalPullRequest: null,
+        slices: { "921": { sliceBranch, worktreePath: null, state: "passed" } },
+      })
+    );
+
+    const result = await reclaimRun({ repoPath, runId });
+
+    expect(result.report!.runDirRemoved).toBe(true);
+    expect(fs.existsSync(runDirPath(repoPath, runId))).toBe(false);
+  });
+});
+
+describe("reclaimRun — bypasses the status gate", () => {
+  it("acts when run-state.status is in-progress — the central new behavior clean_runs refuses", async () => {
+    const runId = "20260522-330000";
+    const { umbrellaBranch, sliceBranch } = makeBranches(runId, "931", {
+      push: false,
+    });
+    const wt = makeWorktree(sliceBranch, "slice-931");
+    writeRunState(
+      repoPath,
+      runId,
+      buildRunState({
+        runId,
+        status: "in-progress",
+        umbrellaBranch,
+        finalPullRequest: null,
+        slices: { "931": { sliceBranch, worktreePath: wt, state: "passed" } },
+      })
+    );
+
+    // Contrast: clean_runs REFUSES this exact run (status gate → run-not-completed).
+    const cleanResult = await cleanRuns({
+      repoPath,
+      verdicts: { [runId]: "merged" },
+    });
+    const cleanReport = cleanResult.runs.find((r) => r.runId === runId)!;
+    expect(cleanReport.action).toBe("skipped");
+    expect(cleanReport.reason).toBe("run-not-completed");
+    expect(fs.existsSync(runDirPath(repoPath, runId))).toBe(true);
+
+    // reclaimRun acts on the very same in-progress run.
+    const result = await reclaimRun({ repoPath, runId });
+    expect(result.status).toBe("ok");
+    expect(result.report!.action).toBe("removed");
+    expect(result.report!.reason).toBe("failed-run-reclaimed");
+    expect(fs.existsSync(wt)).toBe(false);
+    expect(fs.existsSync(runDirPath(repoPath, runId))).toBe(false);
+  });
+});
+
+describe("reclaimRun — ignores any verdict input", () => {
+  it("takes only a runId — no verdict map participates", async () => {
+    const runId = "20260522-340000";
+    const { umbrellaBranch, sliceBranch } = makeBranches(runId, "941", {
+      push: false,
+    });
+    writeRunState(
+      repoPath,
+      runId,
+      buildRunState({
+        runId,
+        // A `completed` run whose final PR was closed-unmerged: clean_runs would
+        // need a verdict to act; reclaimRun ignores verdicts entirely.
+        status: "completed",
+        umbrellaBranch,
+        finalPullRequest: null,
+        slices: { "941": { sliceBranch, worktreePath: null, state: "passed" } },
+      })
+    );
+
+    // No verdict argument exists on reclaimRun's input — its signature is runId-only.
+    const result = await reclaimRun({ repoPath, runId });
+    expect(result.status).toBe("ok");
+    expect(result.report!.action).toBe("removed");
+    expect(result.report!.reason).toBe("failed-run-reclaimed");
+    expect(fs.existsSync(runDirPath(repoPath, runId))).toBe(false);
+  });
+});
+
+describe("reclaimRun — cross-run isolation", () => {
+  it("leaves a second run present on disk completely untouched", async () => {
+    withRemote();
+
+    // Target run — to be reclaimed.
+    const target = "20260522-350000";
+    const { umbrellaBranch: umbT, sliceBranch: sliceT } = makeBranches(
+      target,
+      "951",
+      { push: true }
+    );
+    const wtT = makeWorktree(sliceT, "slice-951");
+    writeRunState(
+      repoPath,
+      target,
+      buildRunState({
+        runId: target,
+        status: "in-progress",
+        umbrellaBranch: umbT,
+        finalPullRequest: null,
+        slices: { "951": { sliceBranch: sliceT, worktreePath: wtT, state: "passed" } },
+      })
+    );
+
+    // Sibling run — distinct runId + slice issue; must be untouched.
+    const sibling = "20260522-360000";
+    const { umbrellaBranch: umbS, sliceBranch: sliceS } = makeBranches(
+      sibling,
+      "952",
+      { push: true }
+    );
+    const wtS = makeWorktree(sliceS, "slice-952");
+    writeRunState(
+      repoPath,
+      sibling,
+      buildRunState({
+        runId: sibling,
+        status: "in-progress",
+        umbrellaBranch: umbS,
+        finalPullRequest: null,
+        slices: { "952": { sliceBranch: sliceS, worktreePath: wtS, state: "passed" } },
+      })
+    );
+
+    const result = await reclaimRun({ repoPath, runId: target });
+    expect(result.status).toBe("ok");
+    expect(result.report!.runId).toBe(target);
+
+    // Target gone.
+    expect(fs.existsSync(wtT)).toBe(false);
+    expect(fs.existsSync(runDirPath(repoPath, target))).toBe(false);
+    expect(localBranchExists(umbT, repoPath)).toBe(false);
+    expect(remoteBranchExists(umbT, repoPath)).toBe(false);
+
+    // Sibling COMPLETELY untouched — run dir, worktree, branches (local + remote).
+    expect(fs.existsSync(runDirPath(repoPath, sibling))).toBe(true);
+    expect(fs.existsSync(wtS)).toBe(true);
+    expect(localBranchExists(umbS, repoPath)).toBe(true);
+    expect(localBranchExists(sliceS, repoPath)).toBe(true);
+    expect(remoteBranchExists(umbS, repoPath)).toBe(true);
+    expect(remoteBranchExists(sliceS, repoPath)).toBe(true);
+  });
+});
+
+describe("reclaimRun — invalid runId", () => {
+  it("returns a structured invalid-run-id result, never a throw, for an option-injection-shaped runId", async () => {
+    const result = await reclaimRun({ repoPath, runId: "--evil" });
+    expect(result.status).toBe("ok");
+    expect(result.report!.action).toBe("skipped");
+    expect(result.report!.reason).toBe("invalid-run-id");
+  });
+
+  it("returns invalid-run-id for a non-runId-shaped name (fails isValidRunId)", async () => {
+    const result = await reclaimRun({ repoPath, runId: "bad.name" });
+    expect(result.status).toBe("ok");
+    expect(result.report!.action).toBe("skipped");
+    expect(result.report!.reason).toBe("invalid-run-id");
+  });
+});
+
+describe("reclaimRun — nonexistent but valid runId", () => {
+  it("reports run-not-found for a valid runId with no run directory, never a throw", async () => {
+    const result = await reclaimRun({ repoPath, runId: "20260522-999999" });
+    expect(result.status).toBe("ok");
+    expect(result.report!.action).toBe("skipped");
+    expect(result.report!.reason).toBe("run-not-found");
+  });
+});
+
+describe("reclaimRun — idempotent re-run", () => {
+  it("a second reclaim of the same runId is a clean run-not-found no-op", async () => {
+    const runId = "20260522-370000";
+    withRemote();
+    const { umbrellaBranch, sliceBranch } = makeBranches(runId, "961", {
+      push: true,
+    });
+    const wt = makeWorktree(sliceBranch, "slice-961");
+    writeRunState(
+      repoPath,
+      runId,
+      buildRunState({
+        runId,
+        status: "in-progress",
+        umbrellaBranch,
+        finalPullRequest: null,
+        slices: { "961": { sliceBranch, worktreePath: wt, state: "passed" } },
+      })
+    );
+
+    const first = await reclaimRun({ repoPath, runId });
+    expect(first.status).toBe("ok");
+    expect(first.report!.action).toBe("removed");
+    expect(first.report!.reason).toBe("failed-run-reclaimed");
+    expect(fs.existsSync(runDirPath(repoPath, runId))).toBe(false);
+
+    // Second reclaim: the run dir is already gone — a clean no-op, not an error.
+    const second = await reclaimRun({ repoPath, runId });
+    expect(second.status).toBe("ok");
+    expect(second.report!.action).toBe("skipped");
+    expect(second.report!.reason).toBe("run-not-found");
+  });
+});
+
+describe("reclaimRun — invalid repoPath", () => {
+  it("returns errorCode=INVALID_INPUT when repoPath starts with '-'", async () => {
+    const result = await reclaimRun({ repoPath: "--bad", runId: "20260522-380000" });
+    expect(result.status).toBe("error");
+    expect(result.errorCode).toBe("INVALID_INPUT");
   });
 });

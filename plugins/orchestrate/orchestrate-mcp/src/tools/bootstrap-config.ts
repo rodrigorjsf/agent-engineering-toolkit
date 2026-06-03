@@ -78,6 +78,8 @@ const DEFAULT_ROUTING_CONFIG = {
     reviewer: { model: "opus", effort: "deep" },
     "conflict-resolver": { model: "opus", effort: "deep" },
   },
+  intraWaveConcurrency: "parallel",
+  continuationBudget: 2,
 } as const;
 
 /** The `.gitignore` entry covering every run's ephemeral per-run directory. */
@@ -250,10 +252,13 @@ export function resolveContextWindow(
 
 /**
  * Builds the `commands.json` content for a detected project. The four
- * capability verbs come from the capability detector. `install: ["npm", "ci"]`
- * is added for an npm project only — a fresh worktree needs the dependency
- * install, and a wrong install command for another toolchain is worse than
- * none. A manifest-less ('none') project yields an empty object.
+ * capability verbs AND the `install` setup verb come from the capability
+ * detector ({@link detectCommandMap}), which is package-manager-aware for the
+ * JS ecosystem: it emits a **mutating/resolving** install keyed on the lockfile
+ * (`pnpm install` / `yarn install` / `npm install`, defaulting to pnpm with no
+ * lock — never `npm ci`), plus `cargo fetch` for cargo and `pip install -e .`
+ * for python. A `make`/manifest-less ('none') project has no install verb. The
+ * detected install flows through unchanged — there is no hardcoded override.
  */
 export function buildCommandsConfig(repoRoot: string): {
   config: CommandsConfig;
@@ -269,9 +274,6 @@ export function buildCommandsConfig(repoRoot: string): {
   const capabilities = detectCommandMap(repoRoot);
 
   const config: CommandsConfig = { ...capabilities };
-  if (projectType === "npm") {
-    config.install = ["npm", "ci"];
-  }
   return { config, projectType };
 }
 

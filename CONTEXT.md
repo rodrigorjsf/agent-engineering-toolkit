@@ -150,7 +150,7 @@ The branch every umbrella branch is cut from and every run's final pull request 
 _Avoid_: main, master, trunk (the integration base is `development`, distinct from any release branch)
 
 **Run cleanup**:
-Removal of a concluded run's run directory, worktrees, and umbrella/slice branches — gated on that run's final integration pull request having been merged into the **Integration base**.
+Removal of a concluded run's run directory, worktrees, and umbrella/slice branches — gated on that run's final integration pull request having been merged into the **Integration base**. Automatic start-of-run sweeps and `/orchestrate clean` (including `--force`) are **status-gated** — they never touch an `in-progress` run. `/orchestrate clean --failed <runId>` is the sanctioned **human-gated single-run override** that bypasses the status gate for one named crashed/`in-progress`-looking run (via the `reclaim_run` MCP tool), scoped by construction to that run and protected only by a mandatory interactive confirmation.
 _Avoid_: purge, garbage collection, prune
 
 **Backlog partitioner**:
@@ -174,7 +174,7 @@ A pure module in `orchestrate-mcp/src/tools/detect-project.ts` that inspects a r
 _Avoid_: project sniffer, auto-configurator, manifest scanner
 
 **Capability command map**:
-A plain object with the four fixed capability verb keys (`tests`, `typecheck`, `build`, `lint`), each mapping to an argv array consumed directly by the orchestrate run tools. Produced by the **Capability detector**. The `install` verb is never included — that is a setup verb, not a capability verb. For unrecognized project types the map is empty (`{}`).
+A plain object with the four auto-detected capability verb keys (`tests`, `typecheck`, `build`, `lint`), each mapping to an argv array consumed directly by the orchestrate run tools. Produced by the **Capability detector**. The `install` verb is never included — that is a setup verb, not a capability verb. `commands.json` also accepts an optional, never-auto-detected `integration` capability verb: a heavy per-wave suite (e.g. Testcontainers/failsafe) the run tools execute once per wave against the umbrella tip, distinct from the four fast per-slice verbs. It is hand-authored only when a project ships such a suite and is **not** produced by the detector (`buildCommandsConfig` omits it). `commands.json` also accepts an optional non-capability `knownFailures` key: a list of substring/regex patterns the run tools match against the captured output of a *failing* capability command to annotate matched-vs-unmatched baseline failures (a best-effort hint); like `install` it is never executed and is not produced by the detector. For unrecognized project types the map is empty (`{}`).
 _Avoid_: command config, verb table, command dictionary
 
 **Config bootstrapper** (`bootstrap_config` MCP tool):
@@ -185,8 +185,12 @@ _Avoid_: config generator, init tool, setup wizard
 The machine-checkable structured result every orchestrate subagent emits as the last of its turn — a fenced ` ```orchestrate-envelope ` JSON block conforming to a per-role schema (a `discriminatedUnion` on `role`). Worker roles (implementer, reviewer, conflict-resolver) carry `status`, `filesChanged`, `verification`, and `notes`; the read-only investigator carries a research brief and no `status`/`filesChanged`. It is the orchestrator's only source of a subagent's status and changed-file set — the orchestrator never parses subagent prose.
 _Avoid_: result blob, subagent summary, return payload
 
+**Capability gate**:
+The orchestrator's own pre-merge run of `run_build` + `run_tests` on a slice worktree — section 3 step 5a — after a `passed` reviewer and before any commit, push, or GitHub state exists. Independent of the reviewer's `verification` self-report in the **Result envelope**: it is the deterministic final link in the `implementer → reviewer → orchestrator` trust chain. Runs exactly the two correctness verbs (`typecheck`/`lint` stay the reviewer's quality remit); `not-configured` is tolerated as a pass, while `failed`/`error` fails the slice.
+_Avoid_: merge check, verification gate
+
 **Implementer `incomplete` status**:
-The third value of the implementer **Result envelope**'s `status` enum — alongside `completed` and `blocked`, and unique to the implementer role. It is the implementer's *graceful* turn-budget self-report: when the implementer foresees it cannot finish every acceptance criterion within its remaining turns, it stops cleanly and emits `status: "incomplete"` with the partial work recorded, rather than being cut off mid-sentence. Distinct from `blocked` (an unrecoverable obstacle — more turns would not help) and from a hard turn-limit cutoff (which truncates the envelope into an unclosed fence the **Envelope validator** reports `invalid`). The orchestrator treats an `incomplete` slice as a FAILED slice with a `failureReason` naming the turn-limit cutoff — partial, resumable work — never a new `run-state.json` slice `state` value.
+The third value of the implementer **Result envelope**'s `status` enum — alongside `completed` and `blocked`, and unique to the implementer role. It is the implementer's *graceful* turn-budget self-report: when the implementer foresees it cannot finish every acceptance criterion within its remaining turns, it stops cleanly and emits `status: "incomplete"` with the partial work recorded, rather than being cut off mid-sentence. Distinct from `blocked` (an unrecoverable obstacle — more turns would not help) and from a hard turn-limit cutoff (which truncates the envelope into an unclosed fence the **Envelope validator** reports `invalid`). A single `incomplete` does **not** FAIL the slice immediately: the envelope carries a `remainingWork` handoff, and the orchestrator re-spawns the implementer in the same preserved worktree — the bounded continue-in-place loop — until it returns `completed` or the run-wide continuation budget is exhausted. The slice FAILs from `incomplete` only when the budget runs out (resumable → `needs-info`) or a continuation makes no worktree progress (the no-progress guard → `needs-triage`). It is never a new `run-state.json` slice `state` value — the continuation counter and fingerprint are within-session loop state, never persisted.
 _Avoid_: partial status, timed-out status (it is a proactive self-report, not a passively-observed timeout)
 
 **Changeset scope check**:
@@ -225,11 +229,11 @@ _Avoid_: scope check, brief filter (the guard is a positive constraint on what t
 - An **Orchestration run** owns exactly one **Run partition** and writes its ephemeral state to exactly one **Run directory**.
 - Sibling **Orchestration runs** in the same repository must own disjoint **Run partitions** — one parent PRD's children each.
 - A **Driver session** executes exactly one **Orchestration run**; the context-watchdog binds a run by matching the **Driver session** identity recorded in run-state.
-- **Run cleanup** acts on an **Orchestration run** only after its final pull request has merged into the **Integration base**.
+- **Run cleanup** acts on an **Orchestration run** only after its final pull request has merged into the **Integration base** — except the human-gated `/orchestrate clean --failed <runId>` override, which reclaims one crashed run by bypassing that status gate under interactive confirmation.
 - Every orchestrate subagent returns exactly one **Result envelope**; the **Envelope validator** classifies it, and the orchestrator acts only on that classification — never on subagent prose.
 - The **Worktree fallback** runs only when the **Envelope validator** reports a worker subagent's **Result envelope** `invalid` or `missing` — it never substitutes for a `valid` envelope.
 - The **Changeset scope check** runs after every implementer returns a `valid` `completed` envelope — it cross-checks the declared `filesChanged` against the worktree before the orchestrator trusts the result; the **Worktree fallback** instead runs only when the envelope itself was `invalid` or `missing`.
-- The **Implementer `incomplete` status** is the graceful counterpart to a hard turn-limit cutoff: the cutoff truncates the envelope into an `invalid` classification, while `incomplete` is a clean, schema-conforming self-report — both FAIL the slice, distinguished by the `failureReason`.
+- The **Implementer `incomplete` status** is the graceful counterpart to a hard turn-limit cutoff: the cutoff truncates the envelope into an `invalid` classification that FAILs the slice at once, while `incomplete` is a clean, schema-conforming self-report that drives the bounded continue-in-place loop — re-spawning the implementer in the same worktree with its `remainingWork` until `completed` or the continuation budget is exhausted. It FAILs the slice only on budget exhaustion (`needs-info`) or the no-progress guard (`needs-triage`).
 
 ## Example dialogue
 

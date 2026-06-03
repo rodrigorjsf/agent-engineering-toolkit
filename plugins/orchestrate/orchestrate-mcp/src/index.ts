@@ -17,10 +17,14 @@ import {
   runTypecheck,
   runBuild,
   runLint,
+  runIntegration,
+  runInstall,
   runCommandInputSchema,
   runCommandOutputSchema,
+  runInstallOutputSchema,
   type RunCommandInput,
   type RunCommandOutput,
+  type InstallResult,
 } from "./tools/run-command.js";
 import {
   planWaves,
@@ -89,8 +93,13 @@ import {
   cleanRuns,
   cleanRunsInputSchema,
   cleanRunsOutputSchema,
+  reclaimRun,
+  reclaimRunInputSchema,
+  reclaimRunOutputSchema,
   type CleanRunsInput,
   type CleanRunsOutput,
+  type ReclaimRunInput,
+  type ReclaimRunOutput,
 } from "./tools/clean-runs.js";
 import {
   verifyChangeset,
@@ -106,10 +115,24 @@ import {
   type BootstrapConfigInput,
   type BootstrapConfigOutput,
 } from "./tools/bootstrap-config.js";
+import {
+  pushAndVerify,
+  pushAndVerifyInputSchema,
+  pushAndVerifyOutputSchema,
+  type PushAndVerifyInput,
+  type PushAndVerifyOutput,
+} from "./tools/push-and-verify.js";
+import {
+  validateRunState,
+  validateRunStateInputSchema,
+  validateRunStateOutputSchema,
+  type ValidateRunStateInput,
+  type ValidateRunStateOutput,
+} from "./tools/validate-run-state.js";
 
 const server = new McpServer({
   name: "orchestrate",
-  version: "0.12.0",
+  version: "0.13.0",
 });
 
 /**
@@ -289,6 +312,12 @@ const RUN_TOOLS: {
   },
   { name: "run_build", title: "Run Build", verb: "build", run: runBuild },
   { name: "run_lint", title: "Run Lint", verb: "lint", run: runLint },
+  {
+    name: "run_integration",
+    title: "Run Integration Suite",
+    verb: "integration",
+    run: runIntegration,
+  },
 ];
 
 for (const tool of RUN_TOOLS) {
@@ -302,7 +331,11 @@ for (const tool of RUN_TOOLS) {
         `from that file — this tool never accepts a command string from the ` +
         `caller. Returns a discriminated status: 'passed' (exit 0), 'failed' ` +
         `(non-zero exit), 'not-configured' (no "${tool.verb}" command set), ` +
-        `or 'error' (invalid config, timeout, or spawn failure).`,
+        `or 'error' (invalid config, timeout, or spawn failure). When the ` +
+        `command exits non-zero and the project's commands.json sets a ` +
+        `"knownFailures" pattern list, the result also carries ` +
+        `knownFailureMatches.matched / .unmatched — a best-effort ` +
+        `baseline-failure hint, not a zero-new-failures guarantee.`,
       inputSchema: runCommandInputSchema.shape,
       outputSchema: runCommandOutputSchema.shape,
     },
@@ -311,6 +344,62 @@ for (const tool of RUN_TOOLS) {
     handleRun(tool.run) as unknown as AnyToolHandler
   );
 }
+
+// ─── run_install ──────────────────────────────────────────────────────────────
+// The mutating dependency-resolve setup verb. InstallResult has no `capability`
+// field (install is a setup verb, not one of the four capability verbs), so
+// `summarizeRun` cannot be reused — this needs its own summarizer.
+
+function summarizeInstall(r: InstallResult): string {
+  switch (r.status) {
+    case "installed":
+      return `install passed (exit 0, ${r.durationMs} ms).`;
+    case "failed":
+      return `install failed (exit ${r.exitCode}, ${r.durationMs} ms).`;
+    case "not-configured":
+      return `install is not configured: ${r.reason}`;
+    case "error":
+      return `install could not run [${r.errorCode}]: ${r.errorMessage}`;
+  }
+}
+
+const handleRunInstall: ToolHandler<RunCommandInput, InstallResult> = async (
+  input
+) => {
+  const result = await runInstall(input);
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text: summarizeInstall(result) }],
+  };
+};
+
+registerTool(
+  "run_install",
+  {
+    title: "Run Install",
+    description:
+      "Runs the project's `install` setup command — the mutating " +
+      "dependency-resolve step (e.g. `pnpm install` / `npm install`) — exactly " +
+      "as configured in .orchestrate/commands.json. It never accepts a command " +
+      "string from the caller: the argv is fixed by config. Orchestrator- and " +
+      "subagent-callable on ANY checkout: a subagent that edits a manifest " +
+      "(package.json/Cargo.toml/pyproject.toml) to add a new dependency calls " +
+      "this to fetch it BEFORE re-running run_build/run_tests, because a fresh " +
+      "worktree checks out only tracked files and so lacks the new dependency. " +
+      "Returns a discriminated status: 'installed' (exit 0), 'failed' " +
+      "(non-zero exit), 'not-configured' (no `install` command set — a clean, " +
+      "expected state, NOT a failure), or 'error' (invalid config, timeout, or " +
+      "spawn failure — a missing package manager surfaces here as EXEC_ERROR, " +
+      "never a silent PM switch). install is the mutating form, so it rewrites " +
+      "the lockfile; the caller must include the changed lockfile in the slice " +
+      "diff.",
+    inputSchema: runCommandInputSchema.shape,
+    outputSchema: runInstallOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRunInstall as unknown as AnyToolHandler
+);
 
 // ─── plan_waves ────────────────────────────────────────────────────────────────
 
@@ -366,7 +455,8 @@ const handleResolveRouting: ToolHandler<
     text =
       `Routing for tier '${result.tier}': ${inv}, ` +
       `implementer ${r.implementer.effort}/${r.implementer.model}, ` +
-      `reviewer ${r.reviewer.effort}/${r.reviewer.model}.`;
+      `reviewer ${r.reviewer.effort}/${r.reviewer.model}, ` +
+      `continuation budget ${result.continuationBudget}.`;
   } else {
     text = `Routing resolution failed [${result.errorCode}]: ${result.errorMessage}`;
   }
@@ -385,7 +475,10 @@ registerTool(
       "investigator, implementer, reviewer, conflict-resolver — given an " +
       "issue's assessed complexity tier. Reads the tier-to-role mapping from " +
       ".orchestrate/routing.json. A null investigator means that tier skips " +
-      "the investigation pass. Returns a discriminated `status` of 'ok' or " +
+      "the investigation pass. Also echoes the resolved run-wide " +
+      "`continuationBudget` — how many times the orchestrator may re-spawn the " +
+      "implementer in the same worktree after an 'incomplete' envelope " +
+      "(default 2). Returns a discriminated `status` of 'ok' or " +
       "'error' (routing.json missing or malformed).",
     inputSchema: resolveRoutingInputSchema.shape,
     outputSchema: resolveRoutingOutputSchema.shape,
@@ -661,8 +754,14 @@ registerTool(
       "(a well-formed envelope matching the role, with the parsed `envelope`), " +
       "'invalid' (an envelope was attempted but is truncated, malformed, or " +
       "off-schema — a truncated envelope is ALWAYS invalid, never silently " +
-      "accepted), or 'missing' (no envelope block was found). The orchestrator " +
-      "uses this instead of parsing subagent prose for status or changed files.",
+      "accepted), or 'missing' (no envelope block was found). A failure outcome " +
+      "(implementer 'blocked', reviewer 'failed') must also carry a labelled " +
+      "`rootCause` (verified|hypothesis) or it is reported invalid. An " +
+      "implementer 'incomplete' envelope must carry a non-empty `remainingWork` " +
+      "handoff (the note the orchestrator forwards to the continuation in the " +
+      "same worktree) or it is reported invalid. The " +
+      "orchestrator uses this instead of parsing subagent prose for status or " +
+      "changed files.",
     inputSchema: validateEnvelopeInputSchema.shape,
     outputSchema: validateEnvelopeOutputSchema.shape,
   },
@@ -696,7 +795,7 @@ registerTool(
     title: "Recover Changed Files From a Worktree",
     description:
       "Recovers the changed-file set of a slice worktree by inspecting it " +
-      "directly with 'git status --porcelain -z' — the orchestrator's fallback " +
+      "directly with 'git status --porcelain -z --untracked-files=all' — the orchestrator's fallback " +
       "for when a subagent's result envelope is missing or invalid and its " +
       "`filesChanged` list cannot be trusted. Returns ALL changes (tracked, " +
       "staged, and untracked alike — build artifacts NOT filtered); a rename " +
@@ -728,6 +827,32 @@ const handleCleanRuns: ToolHandler<CleanRunsInput, CleanRunsOutput> = async (
       `${removed} removed, ${preserved} preserved, ${skipped} skipped.`;
   } else {
     text = `Run cleanup failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+// ─── reclaim_run ──────────────────────────────────────────────────────────────
+
+const handleReclaimRun: ToolHandler<ReclaimRunInput, ReclaimRunOutput> = async (
+  input
+) => {
+  const result = await reclaimRun(input);
+  let text: string;
+  if (result.status === "ok") {
+    const r = result.report!;
+    if (r.reason === "failed-run-reclaimed") {
+      text =
+        `Reclaimed run ${r.runId}: removed ${r.removedWorktrees.length} ` +
+        `worktree(s), ${r.removedBranches.length} branch(es); run dir ` +
+        `removed: ${r.runDirRemoved}.`;
+    } else {
+      text = `Run ${r.runId} not reclaimed (${r.reason}); nothing removed.`;
+    }
+  } else {
+    text = `Run reclaim failed [${result.errorCode}]: ${result.errorMessage}`;
   }
   return {
     structuredContent: result,
@@ -801,8 +926,9 @@ registerTool(
       "run directory. The merged/open/closed-unmerged verdict is GitHub state " +
       "and is NOT read by this tool: the orchestrator resolves each run's " +
       "verdict with `gh pr view` and passes a per-run `verdicts` map; this " +
-      "tool is purely git + filesystem. A run absent from the map, or one " +
-      "whose run-state is not `completed`, is left strictly intact. Failed-" +
+      "tool is purely git + filesystem. A run absent from the map, one " +
+      "whose run-state is not `completed`, or whose `finalPullRequest` is " +
+      "null, is left strictly intact. Failed-" +
       "slice worktrees are preserved (and the run directory kept) unless " +
       "`force` is set. Every removal is best-effort and idempotent — an " +
       "already-absent resource is success, not error. Never throws.",
@@ -815,12 +941,39 @@ registerTool(
 );
 
 registerTool(
+  "reclaim_run",
+  {
+    title: "Reclaim a Single Crashed or Abandoned Run",
+    description:
+      "Removes the complete on-disk and git footprint of ONE named run — all " +
+      "its worktrees (passed AND failed), its umbrella branch and every slice " +
+      "branch (local and remote), and its run directory. Takes a REQUIRED " +
+      "single `runId`. Unlike `clean_runs`, this tool BYPASSES the " +
+      "`status === 'completed'` cross-run isolation gate by design: it is the " +
+      "one sanctioned exception in ADR-0012, the human-gated reclaim path for a " +
+      "crashed or abandoned run that looks `in-progress` forever (there is no " +
+      "`failed` run status). It is scoped by construction to that single " +
+      "`.orchestrate/runs/<runId>/` and the branches embedding that runId, so " +
+      "it can never touch any other run. The mandatory interactive confirmation " +
+      "that authorizes the deletion lives in the SKILL, not here — this tool is " +
+      "non-interactive execution only. A valid runId with no run directory on " +
+      "disk is the clean `run-not-found` no-op (so a re-reclaim is idempotent). " +
+      "Every removal is best-effort. Never throws.",
+    inputSchema: reclaimRunInputSchema.shape,
+    outputSchema: reclaimRunOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleReclaimRun as unknown as AnyToolHandler
+);
+
+registerTool(
   "verify_changeset",
   {
     title: "Verify a Worktree Changeset Against the Declared File Set",
     description:
       "Compares a slice worktree's ACTUAL changeset — inspected with " +
-      "'git status --porcelain -z' — against the changed-file set the " +
+      "'git status --porcelain -z --untracked-files=all' — against the changed-file set the " +
       "implementer DECLARED in its result envelope. The orchestrator calls " +
       "this after every implementer returns, before trusting a 'completed' " +
       "envelope. The comparison is a cheap set comparison, not a semantic " +
@@ -845,8 +998,10 @@ registerTool(
     description:
       "Sets up a repository's .orchestrate/ configuration for a first-ever " +
       "orchestrate run. Detects the project type and writes a project-aware " +
-      "commands.json (with `install` for npm only, empty for an unrecognized " +
-      "project), writes routing.json from the shipped defaults, and writes " +
+      "commands.json (with a PM-aware mutating `install` command for " +
+      "npm/cargo/python projects — keyed on the JS lockfile for the npm " +
+      "ecosystem — empty for an unrecognized project), writes routing.json " +
+      "from the shipped defaults, and writes " +
       "handoff.json with a context-window size derived from the running model " +
       "— pass the model id (or an explicit contextWindowTokens) as input; the " +
       "MCP process cannot see the calling LLM's model. An unknown or absent " +
@@ -860,6 +1015,89 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleBootstrapConfig as unknown as AnyToolHandler
+);
+
+// ─── push_and_verify ──────────────────────────────────────────────────────────
+
+const handlePushAndVerify: ToolHandler<
+  PushAndVerifyInput,
+  PushAndVerifyOutput
+> = async (input) => {
+  const result = await pushAndVerify(input);
+  let text: string;
+  if (result.status === "ok") {
+    text = `Pushed ${result.branch} to ${result.remote} and confirmed landed at ${result.sha} (${result.attempts} verify attempt(s)).`;
+  } else {
+    text = `push_and_verify failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "push_and_verify",
+  {
+    title: "Push a Branch and Verify It Landed",
+    description:
+      "Pushes `branch` to `remote`, then confirms via 'git ls-remote --heads' " +
+      "that the remote ref matches the local tip SHA — a presence-only check is " +
+      "insufficient, because a stale ref left from a prior push would pass it. " +
+      "Uses bounded exponential backoff for both the push retry and the landing " +
+      "poll, and fails loud with `BRANCH_NOT_ON_REMOTE` when a successful-exit " +
+      "push never lands at the expected SHA (the silent-failure mode). Git-only " +
+      "— it never shells `gh`; the orchestrator owns forge operations. Returns a " +
+      "discriminated `status` of 'ok' or 'error' and never throws.",
+    inputSchema: pushAndVerifyInputSchema.shape,
+    outputSchema: pushAndVerifyOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handlePushAndVerify as unknown as AnyToolHandler
+);
+
+// ─── validate_run_state ───────────────────────────────────────────────────────
+
+const handleValidateRunState: ToolHandler<
+  ValidateRunStateInput,
+  ValidateRunStateOutput
+> = async (input) => {
+  const result = await validateRunState(input);
+  let text: string;
+  if (result.status === "valid") {
+    text = `Valid run-state for \`${input.runId}\`.`;
+  } else {
+    text = `Invalid run-state [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "validate_run_state",
+  {
+    title: "Validate Run-State Checkpoint",
+    description:
+      "Validates `.orchestrate/runs/<runId>/run-state.json` against the " +
+      "canonical run-state schema — the same schema the render tools validate " +
+      "against. It is the orchestrator's fast-fail guard: call it right after " +
+      "writing the first run-state checkpoint and on every resume read, so a " +
+      "mis-shaped checkpoint fails in seconds rather than after expensive " +
+      "subagent work. It specifically catches a `slices` value shaped as an " +
+      "ARRAY instead of a MAP keyed by issue-id string — the latent trap of " +
+      "passing the `partition_backlog` array straight through into run-state. " +
+      "Reads only; writes nothing. Returns a discriminated `status` of 'valid' " +
+      "or 'invalid' (with `RUN_ID_INVALID`, `RUN_STATE_NOT_FOUND`, or " +
+      "`RUN_STATE_INVALID`).",
+    inputSchema: validateRunStateInputSchema.shape,
+    outputSchema: validateRunStateOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleValidateRunState as unknown as AnyToolHandler
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────

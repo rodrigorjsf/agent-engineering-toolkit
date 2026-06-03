@@ -88,8 +88,16 @@ The envelope object has exactly these fields:
   "passed" | "failed" | "not-configured" }`.
 - **notes** — a string: what you fixed and why; or, if `failed`, the exact
   blocker, why it is unsafe to fix inline, and what you tried.
+- **rootCause** — an object `{ "status": "verified" | "hypothesis", "claim":
+  string, "evidence"?: string }` analysing *why* the slice fails review.
+  **Required when `status` is `"failed"`** — a `failed` envelope without it is
+  rejected as invalid. Label `claim` as either `"verified"` (confirmed
+  empirically by a command and its output — cite that command and output in
+  `evidence`) or `"hypothesis"` (an unproven inference you could not confirm
+  within your turn; omit `evidence`). Choose consciously — never present a guess
+  as a fact. Omit entirely for `"passed"`.
 
-Example:
+Example (`passed` — no `rootCause`):
 
 ```orchestrate-envelope
 {
@@ -101,5 +109,24 @@ Example:
     { "capability": "tests", "result": "passed" }
   ],
   "notes": "Fixed a naming inconsistency inline; acceptance criteria met."
+}
+```
+
+Example (`failed` — carries a verified `rootCause`):
+
+```orchestrate-envelope
+{
+  "role": "reviewer",
+  "status": "failed",
+  "filesChanged": [],
+  "verification": [
+    { "capability": "tests", "result": "failed" }
+  ],
+  "notes": "Unsafe to fix inline — the failing case reveals a wrong invariant in the core algorithm.",
+  "rootCause": {
+    "status": "verified",
+    "claim": "The implementation drops the last element when the input length is odd.",
+    "evidence": "run_tests → \"chunk([1,2,3]) expected [[1,2],[3]] but got [[1,2]]\"."
+  }
 }
 ```

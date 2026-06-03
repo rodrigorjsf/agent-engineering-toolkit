@@ -2981,7 +2981,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve2.call(this, root, ref);
+      let _sch = resolve3.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3008,7 +3008,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve2(root, ref) {
+    function resolve3(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3639,7 +3639,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve2(baseURI, relativeURI, options) {
+    function resolve3(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -3897,7 +3897,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve2,
+      resolve: resolve3,
       resolveComponent,
       equal,
       serialize,
@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs11, exportName) {
+    function addFormats(ajv, list, fs13, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs11[f]);
+        ajv.addFormat(f, fs13[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -18980,7 +18980,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+        await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -18997,7 +18997,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -19075,7 +19075,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve2(parseResult.data);
+            resolve3(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -19336,12 +19336,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve2, interval);
+      const timeoutId = setTimeout(resolve3, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -20441,7 +20441,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+      await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -21090,12 +21090,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve2) => {
+    return new Promise((resolve3) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve2();
+        resolve3();
       } else {
-        this._stdout.once("drain", resolve2);
+        this._stdout.once("drain", resolve3);
       }
     });
   }
@@ -21176,14 +21176,14 @@ function optionInjectionError(field, value) {
 }
 function cleanGitError(err) {
   if (err instanceof GitExecError && err.stderr.trim().length > 0) {
-    const firstLine9 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-    if (firstLine9) {
-      return firstLine9;
+    const firstLine10 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+    if (firstLine10) {
+      return firstLine10;
     }
   }
   const message = err instanceof Error ? err.message : String(err);
-  const firstLine8 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-  return firstLine8 ?? "Unknown git error";
+  const firstLine9 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return firstLine9 ?? "Unknown git error";
 }
 
 // src/tools/run-command.ts
@@ -21200,18 +21200,20 @@ var commandsConfigSchema = external_exports.object({
   typecheck: external_exports.array(external_exports.string().min(1)).optional(),
   build: external_exports.array(external_exports.string().min(1)).optional(),
   lint: external_exports.array(external_exports.string().min(1)).optional(),
-  install: external_exports.array(external_exports.string().min(1)).optional()
+  integration: external_exports.array(external_exports.string().min(1)).optional(),
+  install: external_exports.array(external_exports.string().min(1)).optional(),
+  knownFailures: external_exports.array(external_exports.string().min(1)).optional()
 });
 var runCommandInputSchema = external_exports.object({
   repoPath: external_exports.string().optional().describe(
-    "Path to the project root that holds the .orchestrate/commands.json configuration file. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default, which is not guaranteed to be the project root."
+    "The execution directory \u2014 the slice worktree (or project root) the command runs in (cwd). The .orchestrate/commands.json config is NOT read from here: it is resolved from the MAIN repository root derived from this path (via `git rev-parse --git-common-dir`), so a fresh worktree \u2014 which checks out only tracked files and so lacks .orchestrate/ \u2014 still finds config. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default, which is not guaranteed to be the project root."
   )
 });
 var runCommandOutputSchema = external_exports.object({
   status: external_exports.enum(["passed", "failed", "not-configured", "error"]).describe(
     "Outcome discriminant. 'passed' = command exited 0; 'failed' = command exited non-zero; 'not-configured' = no command is configured for this verb (a clear, expected state \u2014 not a failure); 'error' = the command could not be run (invalid config, timeout, or spawn failure)."
   ),
-  capability: external_exports.enum(["tests", "typecheck", "build", "lint"]).describe("The capability verb this result is for. Always present."),
+  capability: external_exports.enum(["tests", "typecheck", "build", "lint", "integration"]).describe("The capability verb this result is for. Always present."),
   command: external_exports.array(external_exports.string()).optional().describe(
     "The exact argv array that was executed, read verbatim from .orchestrate/commands.json. Present when status is 'passed' or 'failed'. The caller never supplies this \u2014 it is fixed by config."
   ),
@@ -21226,6 +21228,12 @@ var runCommandOutputSchema = external_exports.object({
   ),
   truncated: external_exports.boolean().optional().describe(
     "True when `stdout` or `stderr` was truncated to fit the size cap. Present whenever `stdout`/`stderr` are present."
+  ),
+  knownFailureMatches: external_exports.object({
+    matched: external_exports.array(external_exports.string()),
+    unmatched: external_exports.array(external_exports.string())
+  }).optional().describe(
+    "Baseline-failure annotation, present only when the command exited non-zero AND `knownFailures` is configured in commands.json. `matched` = the configured patterns that appeared in the captured output; `unmatched` = the configured patterns that did NOT appear. This is a best-effort L1 hint, NOT a guarantee of 'zero new failures': run_tests returns capped exit-code output, not a structured test-result list, so an unmatched failure indicator in the output still warrants a spot-check by the orchestrator."
   ),
   durationMs: external_exports.number().optional().describe(
     "Wall-clock duration of the command in milliseconds. Present whenever a command was actually executed \u2014 status 'passed' or 'failed', or a 'TIMEOUT' / 'EXEC_ERROR' error. Absent for config-level failures."
@@ -21254,6 +21262,25 @@ function capOutput(s) {
 ${tail}`,
     truncated: true
   };
+}
+function annotateKnownFailures(patterns, rawStdout, rawStderr) {
+  if (!patterns || patterns.length === 0) {
+    return void 0;
+  }
+  const rawCombined = `${rawStdout}
+${rawStderr}`;
+  const matched = [];
+  const unmatched = [];
+  for (const pattern of patterns) {
+    let present;
+    try {
+      present = new RegExp(pattern).test(rawCombined);
+    } catch {
+      present = rawCombined.includes(pattern);
+    }
+    (present ? matched : unmatched).push(pattern);
+  }
+  return { matched, unmatched };
 }
 async function execCommand(argv, cwd, timeoutMs) {
   const start = Date.now();
@@ -21307,6 +21334,18 @@ async function execCommand(argv, cwd, timeoutMs) {
     };
   }
 }
+async function resolveConfigRoot(execCwd) {
+  try {
+    const { stdout } = await execFileAsync2(
+      "git",
+      ["rev-parse", "--git-common-dir"],
+      { cwd: execCwd, encoding: "utf8" }
+    );
+    return path.dirname(path.resolve(execCwd, stdout.trim()));
+  } catch {
+    return execCwd;
+  }
+}
 function loadCommandsConfig(cwd) {
   const configPath = path.join(cwd, ".orchestrate", "commands.json");
   let raw;
@@ -21340,9 +21379,10 @@ function loadCommandsConfig(cwd) {
   return { kind: "loaded", config: config2.data };
 }
 async function runConfiguredCommand(verb, input, opts = {}) {
-  const cwd = input.repoPath ?? process.cwd();
+  const execCwd = input.repoPath ?? process.cwd();
+  const configRoot = await resolveConfigRoot(execCwd);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const loaded = loadCommandsConfig(cwd);
+  const loaded = loadCommandsConfig(configRoot);
   if (loaded.kind === "not-configured") {
     return { status: "not-configured", capability: verb, reason: loaded.reason };
   }
@@ -21362,7 +21402,7 @@ async function runConfiguredCommand(verb, input, opts = {}) {
       reason: `No "${verb}" command is configured in .orchestrate/commands.json.`
     };
   }
-  const exec = await execCommand(argv, cwd, timeoutMs);
+  const exec = await execCommand(argv, execCwd, timeoutMs);
   if (exec.kind === "timeout") {
     const out2 = capOutput(exec.stdout);
     const errOut2 = capOutput(exec.stderr);
@@ -21388,6 +21428,11 @@ async function runConfiguredCommand(verb, input, opts = {}) {
   }
   const out = capOutput(exec.stdout);
   const errOut = capOutput(exec.stderr);
+  const knownFailureMatches = exec.exitCode === 0 ? void 0 : annotateKnownFailures(
+    loaded.config.knownFailures,
+    exec.stdout,
+    exec.stderr
+  );
   return {
     status: exec.exitCode === 0 ? "passed" : "failed",
     capability: verb,
@@ -21396,6 +21441,7 @@ async function runConfiguredCommand(verb, input, opts = {}) {
     stdout: out.text,
     stderr: errOut.text,
     truncated: out.truncated || errOut.truncated,
+    ...knownFailureMatches ? { knownFailureMatches } : {},
     durationMs: exec.durationMs
   };
 }
@@ -21403,10 +21449,44 @@ var runTests = (input, opts) => runConfiguredCommand("tests", input, opts);
 var runTypecheck = (input, opts) => runConfiguredCommand("typecheck", input, opts);
 var runBuild = (input, opts) => runConfiguredCommand("build", input, opts);
 var runLint = (input, opts) => runConfiguredCommand("lint", input, opts);
+var runIntegration = (input, opts) => runConfiguredCommand("integration", input, opts);
+var runInstallOutputSchema = external_exports.object({
+  status: external_exports.enum(["installed", "not-configured", "failed", "error"]).describe(
+    "Outcome discriminant. 'installed' = the install command exited 0; 'failed' = it exited non-zero; 'not-configured' = no `install` command is set (a clean, expected state \u2014 a project that needs no install simply omits the key); 'error' = the command could not be run (invalid config, timeout, or spawn failure)."
+  ),
+  command: external_exports.array(external_exports.string()).optional().describe(
+    "The exact argv array that was executed, read verbatim from .orchestrate/commands.json. Present when status is 'installed' or 'failed'. The caller never supplies this \u2014 it is fixed by config."
+  ),
+  exitCode: external_exports.number().optional().describe(
+    "Process exit code. 0 for 'installed', non-zero for 'failed'. Present when status is 'installed' or 'failed'."
+  ),
+  stdout: external_exports.string().optional().describe(
+    "Captured standard output, tail-truncated to 64,000 characters. Present when status is 'installed' or 'failed', and on a 'TIMEOUT' error (the output captured before the command was killed). See `truncated`."
+  ),
+  stderr: external_exports.string().optional().describe(
+    "Captured standard error, tail-truncated to 64,000 characters. Present when status is 'installed' or 'failed', and on a 'TIMEOUT' error. See `truncated`."
+  ),
+  truncated: external_exports.boolean().optional().describe(
+    "True when `stdout` or `stderr` was truncated to fit the size cap. Present whenever `stdout`/`stderr` are present."
+  ),
+  durationMs: external_exports.number().optional().describe(
+    "Wall-clock duration of the command in milliseconds. Present whenever the install command was actually executed \u2014 status 'installed' or 'failed', or a 'TIMEOUT' / 'EXEC_ERROR' error. Absent for config-level failures."
+  ),
+  reason: external_exports.string().optional().describe(
+    "Human-readable explanation of why no install ran. Present when status is 'not-configured'."
+  ),
+  errorCode: external_exports.enum(["CONFIG_INVALID", "EXEC_ERROR", "TIMEOUT"]).optional().describe(
+    "Machine-readable failure category. Present when status is 'error'. 'CONFIG_INVALID' = commands.json is malformed JSON or the wrong shape; 'EXEC_ERROR' = the install binary could not be spawned (e.g. a missing `pnpm` \u2014 there is no silent npm fallback); 'TIMEOUT' = the command exceeded the time limit and was killed."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status is 'error'."
+  )
+});
 async function runInstall(input, opts = {}) {
-  const cwd = input.repoPath ?? process.cwd();
+  const execCwd = input.repoPath ?? process.cwd();
+  const configRoot = await resolveConfigRoot(execCwd);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const loaded = loadCommandsConfig(cwd);
+  const loaded = loadCommandsConfig(configRoot);
   if (loaded.kind === "not-configured") {
     return { status: "not-configured", reason: loaded.reason };
   }
@@ -21424,7 +21504,7 @@ async function runInstall(input, opts = {}) {
       reason: `No "install" command is configured in .orchestrate/commands.json.`
     };
   }
-  const exec = await execCommand(argv, cwd, timeoutMs);
+  const exec = await execCommand(argv, execCwd, timeoutMs);
   if (exec.kind === "timeout") {
     const out2 = capOutput(exec.stdout);
     const errOut2 = capOutput(exec.stderr);
@@ -21887,7 +21967,13 @@ var tierRoutingSchema = external_exports.object({
 var routingConfigSchema = external_exports.object({
   trivial: tierRoutingSchema,
   standard: tierRoutingSchema,
-  complex: tierRoutingSchema
+  complex: tierRoutingSchema,
+  intraWaveConcurrency: external_exports.enum(["parallel", "sequential"]).optional().default("parallel").describe(
+    "Run-wide policy: how to process the independent slices within one wave. 'parallel' (default) spawns all processable slices at once and integrates them sequentially. 'sequential' processes slices one at a time in issue-id ascending order, refreshing the umbrella base between each so slice N branches from base+slice1..N-1 \u2014 guaranteed conflict-free, at the cost of serializing the wave. Optional; the three tier blocks remain required."
+  ),
+  continuationBudget: external_exports.number().int().min(0).default(2).describe(
+    "How many times the orchestrator may re-spawn the implementer in the same worktree after an 'incomplete' envelope (re-spawns BEYOND the initial run). 0 disables continuation (incomplete FAILs immediately, the legacy behavior). Defaults to 2."
+  )
 });
 var resolveRoutingInputSchema = external_exports.object({
   tier: external_exports.enum(COMPLEXITY_TIERS).describe(
@@ -21910,6 +21996,9 @@ var resolveRoutingOutputSchema = external_exports.object({
   ),
   errorMessage: external_exports.string().optional().describe(
     "Cleaned, human-readable failure description. Present when status='error'."
+  ),
+  continuationBudget: external_exports.number().int().min(0).optional().describe(
+    "The resolved continuation budget for this run \u2014 how many implementer re-spawns are allowed after an 'incomplete' envelope. Present when status='ok'."
   )
 });
 function resolveRouting(tier, config2) {
@@ -21956,7 +22045,8 @@ function resolveRoutingFromConfig(input) {
   return {
     status: "ok",
     tier: input.tier,
-    routing: resolveRouting(input.tier, config2.data)
+    routing: resolveRouting(input.tier, config2.data),
+    continuationBudget: config2.data.continuationBudget
   };
 }
 
@@ -22723,6 +22813,9 @@ function loadHandoffConfig(repoPath) {
 var spawnSuccessorInputSchema = external_exports.object({
   repoPath: external_exports.string().optional().describe(
     "Path to the repository root \u2014 the directory holding .orchestrate/. The successor session opens here and re-discovers the active run from .orchestrate/runs/*/run-state.json to resume. Defaults to the MCP server process's current working directory; callers should pass it explicitly."
+  ),
+  resumePrompt: external_exports.string().optional().describe(
+    "Optional resume invocation for the successor, derived by the orchestrator from the run's partition: '/orchestrate <N>' for a 'prd<N>-' run, '/orchestrate' for a 'backlog-' run. Overrides handoff.json's successor.resumePrompt, which remains the fallback for manual/legacy launches."
   )
 });
 var launchAttemptSchema = external_exports.object({
@@ -22769,7 +22862,7 @@ function buildLaunchArgv(entry, subs) {
 }
 var SPAWN_GRACE_MS = 300;
 function trySpawn(argv) {
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     let child;
     try {
       child = (0, import_child_process3.spawn)(argv[0], argv.slice(1), {
@@ -22777,7 +22870,7 @@ function trySpawn(argv) {
         stdio: "ignore"
       });
     } catch (err) {
-      resolve2({
+      resolve3({
         ok: false,
         error: firstLine5(err instanceof Error ? err.message : String(err))
       });
@@ -22787,20 +22880,23 @@ function trySpawn(argv) {
     child.once("error", (err) => {
       if (settled) return;
       settled = true;
-      resolve2({ ok: false, error: firstLine5(err.message) });
+      resolve3({ ok: false, error: firstLine5(err.message) });
     });
     setTimeout(() => {
       if (settled) return;
       settled = true;
       child.unref();
-      resolve2({ ok: true });
+      resolve3({ ok: true });
     }, SPAWN_GRACE_MS);
   });
 }
 async function spawnSuccessor(input) {
   const repoPath = input.repoPath ?? process.cwd();
   const { config: config2, warning } = loadHandoffConfig(repoPath);
-  const successor = config2.successor;
+  const successor = {
+    ...config2.successor,
+    resumePrompt: input.resumePrompt ?? config2.successor.resumePrompt
+  };
   const configWarning = warning ?? void 0;
   if (successor.terminals.length === 0) {
     return {
@@ -23082,6 +23178,15 @@ var verificationEntrySchema = external_exports.object({
     "Outcome of that run. 'not-configured' means the verb has no command set."
   )
 });
+var rootCauseSchema = external_exports.object({
+  status: external_exports.enum(["verified", "hypothesis"]).describe(
+    "Epistemic label for the root-cause analysis. 'verified' = confirmed empirically by a command and its output (cite it in `evidence`); 'hypothesis' = an unproven inference the subagent could not confirm within its turn. The subagent must consciously pick one \u2014 never present a guess as a fact."
+  ),
+  claim: external_exports.string().describe("The root-cause statement itself \u2014 what actually went wrong."),
+  evidence: external_exports.string().optional().describe(
+    "The command run and the relevant output that proves the claim. Required in spirit when status='verified'; omit for a 'hypothesis'."
+  )
+});
 var implementerEnvelopeSchema = external_exports.object({
   role: external_exports.literal("implementer").describe("Discriminant \u2014 the implementer role."),
   status: external_exports.enum(["completed", "incomplete", "blocked"]).describe(
@@ -23093,6 +23198,12 @@ var implementerEnvelopeSchema = external_exports.object({
   verification: external_exports.array(verificationEntrySchema).describe("Each capability tool the implementer ran and its result."),
   notes: external_exports.string().describe(
     "Free-form notes for the orchestrator or a later reviewer \u2014 assumptions, partial work, or, when blocked, exactly what stopped the implementer."
+  ),
+  rootCause: rootCauseSchema.optional().describe(
+    "Root-cause analysis for a non-success outcome. REQUIRED when status='blocked' (label it verified|hypothesis and cite evidence when verified); optional for 'incomplete' (cause is definitionally turn-budget); omit for 'completed'."
+  ),
+  remainingWork: external_exports.string().optional().describe(
+    "Present and non-empty ONLY when status='incomplete'. The handoff note the orchestrator forwards to the continuation implementer: what is done, what is left, and how to resume in the same worktree. Required for an 'incomplete' envelope; absent or empty for 'completed'/'blocked'."
   )
 });
 var reviewerEnvelopeSchema = external_exports.object({
@@ -23106,6 +23217,9 @@ var reviewerEnvelopeSchema = external_exports.object({
   verification: external_exports.array(verificationEntrySchema).describe("Each capability tool the reviewer ran and its result."),
   notes: external_exports.string().describe(
     "Free-form notes \u2014 what was fixed and why, or, when failed, the exact blocker and why it is unsafe to fix inline."
+  ),
+  rootCause: rootCauseSchema.optional().describe(
+    "Root-cause analysis for a non-success outcome. REQUIRED when status='failed' (label it verified|hypothesis and cite evidence when verified); omit for 'passed'."
   )
 });
 var conflictResolverEnvelopeSchema = external_exports.object({
@@ -23140,7 +23254,15 @@ var envelopeSchema = external_exports.discriminatedUnion("role", [
   reviewerEnvelopeSchema,
   conflictResolverEnvelopeSchema,
   investigatorEnvelopeSchema
-]);
+]).superRefine((data, ctx) => {
+  if (data.role === "implementer" && data.status === "incomplete" && (data.remainingWork === void 0 || data.remainingWork.trim() === "")) {
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["remainingWork"],
+      message: "An 'incomplete' implementer envelope must carry a non-empty `remainingWork` handoff: what is done, what is left, and how to resume in the same worktree."
+    });
+  }
+});
 var ENVELOPE_ROLES = [
   "implementer",
   "reviewer",
@@ -23260,6 +23382,16 @@ function validateEnvelope(input) {
       errorMessage: `The envelope declares role "${result.data.role}" but the subagent was spawned as "${role}".`
     };
   }
+  const env = result.data;
+  const requiresRootCause = env.role === "implementer" && env.status === "blocked" || env.role === "reviewer" && env.status === "failed";
+  if (requiresRootCause && env.rootCause === void 0) {
+    return {
+      status: "invalid",
+      role,
+      errorCode: "SCHEMA_MISMATCH",
+      errorMessage: `A ${env.role} envelope with status "${env.status}" must include a rootCause object ({ status: "verified" | "hypothesis", claim, evidence? }). The subagent did not declare a root cause for the failure.`
+    };
+  }
   return {
     status: "valid",
     role,
@@ -23308,7 +23440,7 @@ async function recoverChangedFiles(input) {
   let porcelain;
   try {
     const { stdout } = await gitExecFile(
-      ["status", "--porcelain", "-z"],
+      ["status", "--porcelain", "-z", "--untracked-files=all"],
       worktreePath
     );
     porcelain = stdout;
@@ -23327,7 +23459,55 @@ async function recoverChangedFiles(input) {
 
 // src/tools/clean-runs.ts
 var path7 = __toESM(require("path"));
+var fs8 = __toESM(require("fs"));
+
+// src/run-state-guard.ts
 var fs7 = __toESM(require("fs"));
+function readRunState(runStatePath) {
+  if (!fs7.existsSync(runStatePath)) {
+    return { ok: false, reason: "missing-run-state" };
+  }
+  let raw;
+  try {
+    raw = fs7.readFileSync(runStatePath, "utf8");
+  } catch {
+    return { ok: false, reason: "malformed-run-state" };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, reason: "malformed-run-state" };
+  }
+  if (parsed === null || typeof parsed !== "object") {
+    return { ok: false, reason: "malformed-run-state" };
+  }
+  const obj = parsed;
+  return {
+    ok: true,
+    state: {
+      status: obj.status,
+      umbrellaBranch: obj.umbrellaBranch,
+      slices: obj.slices,
+      finalPullRequest: obj.finalPullRequest
+    }
+  };
+}
+function checkCrossRunMutationAllowed(runStatePath) {
+  const stateResult = readRunState(runStatePath);
+  if (!stateResult.ok) {
+    return { ok: false, reason: stateResult.reason };
+  }
+  if (stateResult.state.status !== "completed") {
+    return { ok: false, reason: "run-not-completed" };
+  }
+  if (stateResult.state.finalPullRequest == null) {
+    return { ok: false, reason: "final-pr-missing" };
+  }
+  return { ok: true, state: stateResult.state };
+}
+
+// src/tools/clean-runs.ts
 var runVerdictSchema = external_exports.enum([
   "merged",
   "open",
@@ -23350,15 +23530,23 @@ var runReasonSchema = external_exports.enum([
   // ── removed / preserved ──
   "merged-and-clean",
   "merged-with-preserved-worktrees",
+  // The reclaim_run override's success reason: a single named run's footprint
+  // (passed AND failed worktrees, umbrella + slice branches, run dir) removed
+  // after the human confirmed the deletion set, bypassing the status gate.
+  "failed-run-reclaimed",
   // ── skipped ──
   "final-pr-open",
   "final-pr-closed-unmerged",
   "verdict-unknown",
   "no-verdict-from-orchestrator",
   "run-not-completed",
+  "final-pr-missing",
   "malformed-run-state",
   "missing-run-state",
-  "invalid-run-id"
+  "invalid-run-id",
+  // reclaim_run only: a valid runId whose `runs/<runId>/` dir does not exist on
+  // disk — a structured skipped result, never a throw (idempotent re-reclaim).
+  "run-not-found"
 ]);
 var branchErrorSchema = external_exports.object({
   branch: external_exports.string().describe("The branch whose deletion failed."),
@@ -23393,6 +23581,28 @@ var cleanRunsOutputSchema = external_exports.object({
   ),
   runs: external_exports.array(runReportSchema).describe(
     "One report per run directory found under `.orchestrate/runs/`. Empty when no runs directory exists or it holds no run directories."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT", "FS_ERROR"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='error'."
+  )
+});
+var reclaimRunInputSchema = external_exports.object({
+  runId: external_exports.string().describe(
+    "The single run id (its `.orchestrate/runs/<runId>/` directory name) to reclaim. REQUIRED \u2014 there is no sweep form. This is the human-gated reclaim path for a crashed or abandoned run that looks `in-progress` forever (there is no `failed` run status). It BYPASSES the `status === 'completed'` cross-run isolation gate by design (the one sanctioned exception in ADR-0012), and is scoped by construction to this single `runs/<runId>/` and the branches embedding that runId, so it can never touch another run. The mandatory interactive confirmation that authorizes this deletion lives in the skill, not this tool."
+  ),
+  repoPath: external_exports.string().optional().describe(
+    "Path to the git repository whose `.orchestrate/runs/<runId>/` is reclaimed. Defaults to the current working directory."
+  )
+});
+var reclaimRunOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the reclaim ran (the run may still have been a no-op \u2014 e.g. `run-not-found` \u2014 see the report); 'error' = the reclaim could not run (invalid input)."
+  ),
+  report: runReportSchema.optional().describe(
+    "The single-run cleanup report. Present when status='ok'. NOT an array \u2014 reclaim_run acts on exactly one named run."
   ),
   errorCode: external_exports.enum(["INVALID_INPUT", "FS_ERROR"]).optional().describe(
     "Machine-readable failure category. Present when status='error'."
@@ -23479,35 +23689,6 @@ async function deleteBranch(branch, repoPath, report) {
     report.removedBranches.push(branch);
   }
 }
-function readRunState(runStatePath) {
-  if (!fs7.existsSync(runStatePath)) {
-    return { ok: false, reason: "missing-run-state" };
-  }
-  let raw;
-  try {
-    raw = fs7.readFileSync(runStatePath, "utf8");
-  } catch {
-    return { ok: false, reason: "malformed-run-state" };
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return { ok: false, reason: "malformed-run-state" };
-  }
-  if (parsed === null || typeof parsed !== "object") {
-    return { ok: false, reason: "malformed-run-state" };
-  }
-  const obj = parsed;
-  return {
-    ok: true,
-    state: {
-      status: obj.status,
-      umbrellaBranch: obj.umbrellaBranch,
-      slices: obj.slices
-    }
-  };
-}
 function skippedReport(runId, reason) {
   return {
     runId,
@@ -23520,10 +23701,13 @@ function skippedReport(runId, reason) {
     runDirRemoved: false
   };
 }
-async function cleanMergedRun(runId, runDir, state, repoPath, force) {
+async function removeRunFootprint(runId, runDir, state, repoPath, opts) {
+  const removeFailedWorktrees = opts.removeFailedWorktrees;
   const report = {
     runId,
     action: "removed",
+    // Mechanical placeholder — every caller overrides `reason` after this
+    // helper returns, keying it to the caller's own semantics.
     reason: "merged-and-clean",
     removedWorktrees: [],
     preservedWorktrees: [],
@@ -23537,7 +23721,7 @@ async function cleanMergedRun(runId, runDir, state, repoPath, force) {
     if (!slice.worktreePath) {
       continue;
     }
-    if (slice.state === "failed" && !force) {
+    if (slice.state === "failed" && !removeFailedWorktrees) {
       report.preservedWorktrees.push(slice.worktreePath);
       if (slice.sliceBranch) {
         preservedSliceBranches.add(slice.sliceBranch);
@@ -23571,20 +23755,25 @@ async function cleanMergedRun(runId, runDir, state, repoPath, force) {
     await deleteBranch(branch, repoPath, report);
   }
   const anyPreserved = report.preservedWorktrees.length > 0;
-  if (anyPreserved && !force) {
+  if (anyPreserved) {
     report.action = "preserved";
-    report.reason = "merged-with-preserved-worktrees";
     report.runDirRemoved = false;
   } else {
     try {
-      fs7.rmSync(runDir, { recursive: true, force: true });
+      fs8.rmSync(runDir, { recursive: true, force: true });
       report.runDirRemoved = true;
     } catch {
       report.runDirRemoved = false;
     }
     report.action = report.runDirRemoved ? "removed" : "preserved";
-    report.reason = "merged-and-clean";
   }
+  return report;
+}
+async function cleanMergedRun(runId, runDir, state, repoPath, force) {
+  const report = await removeRunFootprint(runId, runDir, state, repoPath, {
+    removeFailedWorktrees: force
+  });
+  report.reason = report.action === "preserved" ? "merged-with-preserved-worktrees" : "merged-and-clean";
   return report;
 }
 async function cleanRuns(input) {
@@ -23600,12 +23789,12 @@ async function cleanRuns(input) {
     };
   }
   const runsRoot = path7.join(repoPath, ".orchestrate", "runs");
-  if (!fs7.existsSync(runsRoot)) {
+  if (!fs8.existsSync(runsRoot)) {
     return { status: "ok", runs: [] };
   }
   let entries;
   try {
-    entries = fs7.readdirSync(runsRoot, { withFileTypes: true });
+    entries = fs8.readdirSync(runsRoot, { withFileTypes: true });
   } catch (err) {
     return {
       status: "error",
@@ -23643,24 +23832,14 @@ async function cleanRuns(input) {
       runs.push(skippedReport(runId, "verdict-unknown"));
       continue;
     }
-    const stateResult = readRunState(runStatePath);
-    if (!stateResult.ok) {
-      runs.push(skippedReport(runId, stateResult.reason));
-      continue;
-    }
-    if (stateResult.state.status !== "completed") {
-      runs.push(skippedReport(runId, "run-not-completed"));
+    const gate = checkCrossRunMutationAllowed(runStatePath);
+    if (!gate.ok) {
+      runs.push(skippedReport(runId, gate.reason));
       continue;
     }
     try {
       runs.push(
-        await cleanMergedRun(
-          runId,
-          runDir,
-          stateResult.state,
-          repoPath,
-          force
-        )
+        await cleanMergedRun(runId, runDir, gate.state, repoPath, force)
       );
     } catch (err) {
       runs.push(skippedReport(runId, "malformed-run-state"));
@@ -23669,9 +23848,57 @@ async function cleanRuns(input) {
   }
   return { status: "ok", runs };
 }
+async function reclaimRun(input) {
+  const repoPath = input.repoPath ?? process.cwd();
+  const repoGuardErr = optionInjectionError("repoPath", repoPath);
+  if (repoGuardErr) {
+    return {
+      status: "error",
+      errorCode: "INVALID_INPUT",
+      errorMessage: repoGuardErr
+    };
+  }
+  const runIdGuardErr = optionInjectionError("runId", input.runId);
+  if (runIdGuardErr) {
+    return {
+      status: "ok",
+      report: skippedReport(input.runId, "invalid-run-id")
+    };
+  }
+  if (!isValidRunId(input.runId)) {
+    return {
+      status: "ok",
+      report: skippedReport(input.runId, "invalid-run-id")
+    };
+  }
+  const runDir = path7.join(repoPath, ".orchestrate", "runs", input.runId);
+  if (!fs8.existsSync(runDir)) {
+    return {
+      status: "ok",
+      report: skippedReport(input.runId, "run-not-found")
+    };
+  }
+  const runStatePath = path7.join(runDir, "run-state.json");
+  const stateResult = readRunState(runStatePath);
+  if (!stateResult.ok) {
+    return {
+      status: "ok",
+      report: skippedReport(input.runId, stateResult.reason)
+    };
+  }
+  const report = await removeRunFootprint(
+    input.runId,
+    runDir,
+    stateResult.state,
+    repoPath,
+    { removeFailedWorktrees: true }
+  );
+  report.reason = "failed-run-reclaimed";
+  return { status: "ok", report };
+}
 
 // src/tools/verify-changeset.ts
-var fs8 = __toESM(require("fs"));
+var fs9 = __toESM(require("fs"));
 var verifyChangesetInputSchema = external_exports.object({
   worktreePath: external_exports.string().describe(
     "Absolute path to the slice worktree to inspect. The verification treats this worktree as the source of truth for what was actually changed."
@@ -23719,7 +23946,7 @@ async function verifyChangeset(input) {
       errorMessage: guardErr
     };
   }
-  if (!fs8.existsSync(worktreePath)) {
+  if (!fs9.existsSync(worktreePath)) {
     return {
       status: "error",
       errorCode: "PATH_NOT_FOUND",
@@ -23729,7 +23956,7 @@ async function verifyChangeset(input) {
   let porcelain;
   try {
     const { stdout } = await gitExecFile(
-      ["status", "--porcelain", "-z"],
+      ["status", "--porcelain", "-z", "--untracked-files=all"],
       worktreePath
     );
     porcelain = stdout;
@@ -23777,10 +24004,23 @@ function classifyMatch(declaredCount, actualCount, absentCount, undeclaredCount)
 
 // src/tools/bootstrap-config.ts
 var path8 = __toESM(require("path"));
-var fs10 = __toESM(require("fs"));
+var fs11 = __toESM(require("fs"));
 
 // src/tools/detect-project.ts
-var fs9 = __toESM(require("fs"));
+var fs10 = __toESM(require("fs"));
+function detectJsPackageManager(filesPresent) {
+  const present = new Set(filesPresent);
+  if (present.has("pnpm-lock.yaml")) {
+    return "pnpm";
+  }
+  if (present.has("yarn.lock")) {
+    return "yarn";
+  }
+  if (present.has("package-lock.json")) {
+    return "npm";
+  }
+  return "pnpm";
+}
 var DETECTION_RULES = [
   { manifest: "package.json", type: "npm" },
   { manifest: "Cargo.toml", type: "cargo" },
@@ -23788,31 +24028,38 @@ var DETECTION_RULES = [
   { manifest: "Makefile", type: "make" }
 ];
 var COMMAND_MAPS = {
-  npm: {
-    tests: ["npm", "test"],
-    typecheck: ["npm", "run", "typecheck"],
-    build: ["npm", "run", "build"],
-    lint: ["npm", "run", "lint"]
-  },
   cargo: {
     tests: ["cargo", "test"],
     typecheck: ["cargo", "check"],
     build: ["cargo", "build"],
-    lint: ["cargo", "clippy"]
+    lint: ["cargo", "clippy"],
+    install: ["cargo", "fetch"]
   },
   python: {
     tests: ["pytest"],
     typecheck: ["mypy", "."],
     build: ["python", "-m", "build"],
-    lint: ["ruff", "check", "."]
+    lint: ["ruff", "check", "."],
+    install: ["pip", "install", "-e", "."]
   },
   make: {
     tests: ["make", "test"],
     typecheck: ["make", "typecheck"],
     build: ["make", "build"],
     lint: ["make", "lint"]
+    // make has no install verb (ledger #4) — a thin Make wrapper's install
+    // step is unspecified, so the key is intentionally absent.
   }
 };
+function buildJsCommandMap(pm) {
+  return {
+    tests: [pm, "test"],
+    typecheck: [pm, "run", "typecheck"],
+    build: [pm, "run", "build"],
+    lint: [pm, "run", "lint"],
+    install: [pm, "install"]
+  };
+}
 function detectProjectType(manifestsPresent) {
   const present = new Set(manifestsPresent);
   for (const rule of DETECTION_RULES) {
@@ -23822,22 +24069,29 @@ function detectProjectType(manifestsPresent) {
   }
   return "none";
 }
-function buildCommandMap(type) {
+function buildCommandMap(type, jsPackageManager) {
   if (type === "none") {
     return {};
+  }
+  if (type === "npm") {
+    return buildJsCommandMap(jsPackageManager ?? "pnpm");
   }
   return { ...COMMAND_MAPS[type] };
 }
 function detectCommandMap(repoRoot) {
   let entries;
   try {
-    entries = fs9.readdirSync(repoRoot);
+    entries = fs10.readdirSync(repoRoot);
   } catch {
     return {};
   }
   const manifests = DETECTION_RULES.map((r) => r.manifest);
   const presentManifests = entries.filter((e) => manifests.includes(e));
   const projectType = detectProjectType(presentManifests);
+  if (projectType === "npm") {
+    const pm = detectJsPackageManager(entries);
+    return buildCommandMap(projectType, pm);
+  }
   return buildCommandMap(projectType);
 }
 
@@ -23871,7 +24125,9 @@ var DEFAULT_ROUTING_CONFIG = {
     implementer: { model: "opus", effort: "deep" },
     reviewer: { model: "opus", effort: "deep" },
     "conflict-resolver": { model: "opus", effort: "deep" }
-  }
+  },
+  intraWaveConcurrency: "parallel",
+  continuationBudget: 2
 };
 var RUNS_GITIGNORE_LINE = ".orchestrate/runs/";
 var bootstrapConfigInputSchema = external_exports.object({
@@ -23942,24 +24198,21 @@ function resolveContextWindow(input) {
 function buildCommandsConfig(repoRoot) {
   let entries;
   try {
-    entries = fs10.readdirSync(repoRoot);
+    entries = fs11.readdirSync(repoRoot);
   } catch {
     entries = [];
   }
   const projectType = detectProjectType(entries);
   const capabilities = detectCommandMap(repoRoot);
   const config2 = { ...capabilities };
-  if (projectType === "npm") {
-    config2.install = ["npm", "ci"];
-  }
   return { config: config2, projectType };
 }
 function writeIfAbsent(filePath, content) {
-  if (fs10.existsSync(filePath)) {
+  if (fs11.existsSync(filePath)) {
     return { kind: "already-present" };
   }
   try {
-    fs10.writeFileSync(filePath, content);
+    fs11.writeFileSync(filePath, content);
     return { kind: "written" };
   } catch (err) {
     return {
@@ -23972,13 +24225,13 @@ function ensureGitignoreEntry(repoRoot) {
   const gitignorePath = path8.join(repoRoot, ".gitignore");
   let existing;
   try {
-    existing = fs10.readFileSync(gitignorePath, "utf8");
+    existing = fs11.readFileSync(gitignorePath, "utf8");
   } catch {
     existing = null;
   }
   if (existing === null) {
     try {
-      fs10.writeFileSync(gitignorePath, `${RUNS_GITIGNORE_LINE}
+      fs11.writeFileSync(gitignorePath, `${RUNS_GITIGNORE_LINE}
 `);
       return { kind: "created-with-line" };
     } catch (err) {
@@ -23994,7 +24247,7 @@ function ensureGitignoreEntry(repoRoot) {
   }
   const separator = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
   try {
-    fs10.appendFileSync(
+    fs11.appendFileSync(
       gitignorePath,
       `${separator}${RUNS_GITIGNORE_LINE}
 `
@@ -24011,9 +24264,9 @@ function bootstrapConfig(input) {
   const repoRoot = input.repoPath ?? process.cwd();
   const orchestrateDir = path8.join(repoRoot, ".orchestrate");
   const runsDir = path8.join(orchestrateDir, "runs");
-  const runsDirExisted = fs10.existsSync(runsDir);
+  const runsDirExisted = fs11.existsSync(runsDir);
   try {
-    fs10.mkdirSync(runsDir, { recursive: true });
+    fs11.mkdirSync(runsDir, { recursive: true });
   } catch (err) {
     return {
       status: "error",
@@ -24125,10 +24378,251 @@ function bootstrapConfig(input) {
   };
 }
 
+// src/tools/push-and-verify.ts
+var pushAndVerifyInputSchema = external_exports.object({
+  repoPath: external_exports.string().describe(
+    "Absolute path the git push runs in. For a slice push this is the slice **worktree** path (the orchestrator otherwise runs `git -C <worktree-path> push`), not the main repo root."
+  ),
+  branch: external_exports.string().describe(
+    "Name of the local branch to push and then verify landed on the remote (e.g. `orchestrate/slice-7`)."
+  ),
+  remote: external_exports.string().optional().default("origin").describe("Remote to push to and verify against. Defaults to `origin`."),
+  setUpstream: external_exports.boolean().optional().default(true).describe(
+    "When true, push with `-u` to set the upstream tracking ref (the first push of a new slice branch). Default true."
+  )
+});
+var pushAndVerifyOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the branch was pushed AND confirmed on the remote at the expected commit; 'error' = push failed, the branch never landed, or input was rejected."
+  ),
+  branch: external_exports.string().optional().describe("The branch that was verified. Present when status='ok'."),
+  remote: external_exports.string().optional().describe("The remote it landed on. Present when status='ok'."),
+  sha: external_exports.string().optional().describe(
+    "The commit SHA confirmed on the remote (matches the local branch tip). Present when status='ok'."
+  ),
+  attempts: external_exports.number().optional().describe(
+    "How many landing-verification polls ran before the remote ref matched (>=1). Present when status='ok'."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT", "PUSH_FAILED", "BRANCH_NOT_ON_REMOTE", "GIT_ERROR"]).optional().describe(
+    "Machine-readable failure category. 'INVALID_INPUT' = branch/remote would be parsed by git as an option flag; 'PUSH_FAILED' = `git push` itself exited non-zero after all retries; 'BRANCH_NOT_ON_REMOTE' = push reported success but `git ls-remote` never showed the branch at the expected SHA within the backoff budget (the silent-failure mode); 'GIT_ERROR' = a git command could not run (e.g. not a git worktree, or local rev-parse failed)."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='error'."
+  )
+});
+var VERIFY_ATTEMPTS = 5;
+var VERIFY_BASE_DELAY_MS = 500;
+var VERIFY_BACKOFF_FACTOR = 2;
+var VERIFY_MAX_DELAY_MS = 8e3;
+var PUSH_ATTEMPTS = 3;
+var defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function verifyLanded(repoPath, remote, branch, expectedSha, opts) {
+  const attempts = opts?.attempts ?? VERIFY_ATTEMPTS;
+  const baseDelayMs = opts?.baseDelayMs ?? VERIFY_BASE_DELAY_MS;
+  const factor = opts?.factor ?? VERIFY_BACKOFF_FACTOR;
+  const maxDelayMs = opts?.maxDelayMs ?? VERIFY_MAX_DELAY_MS;
+  const sleep = opts?.sleep ?? defaultSleep;
+  const refName = `refs/heads/${branch}`;
+  for (let i = 1; i <= attempts; i++) {
+    let remoteSha = null;
+    try {
+      const { stdout } = await gitExecFile(
+        ["ls-remote", "--heads", remote, branch],
+        repoPath
+      );
+      for (const line of stdout.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed.length === 0) continue;
+        const [sha, ref] = trimmed.split(/\s+/);
+        if (ref === refName) {
+          remoteSha = sha;
+          break;
+        }
+      }
+    } catch {
+      remoteSha = null;
+    }
+    if (remoteSha !== null && remoteSha === expectedSha) {
+      return { landed: true, attempts: i };
+    }
+    if (i < attempts) {
+      const delay = Math.min(
+        baseDelayMs * Math.pow(factor, i - 1),
+        maxDelayMs
+      );
+      await sleep(delay);
+    }
+  }
+  return { landed: false, attempts };
+}
+async function pushAndVerify(input, opts) {
+  const { repoPath, branch, remote, setUpstream } = input;
+  const sleep = opts?.sleep ?? defaultSleep;
+  const baseDelayMs = opts?.baseDelayMs ?? VERIFY_BASE_DELAY_MS;
+  const factor = opts?.factor ?? VERIFY_BACKOFF_FACTOR;
+  const maxDelayMs = opts?.maxDelayMs ?? VERIFY_MAX_DELAY_MS;
+  const branchGuard = optionInjectionError("branch", branch);
+  if (branchGuard) {
+    return {
+      status: "error",
+      errorCode: "INVALID_INPUT",
+      errorMessage: branchGuard
+    };
+  }
+  const remoteGuard = optionInjectionError("remote", remote);
+  if (remoteGuard) {
+    return {
+      status: "error",
+      errorCode: "INVALID_INPUT",
+      errorMessage: remoteGuard
+    };
+  }
+  let expectedSha;
+  try {
+    const { stdout } = await gitExecFile(
+      ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`],
+      repoPath
+    );
+    expectedSha = stdout.trim();
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "GIT_ERROR",
+      errorMessage: cleanGitError(err)
+    };
+  }
+  if (expectedSha.length === 0) {
+    return {
+      status: "error",
+      errorCode: "GIT_ERROR",
+      errorMessage: `Local branch ${branch} does not exist \u2014 cannot verify a push of a missing branch.`
+    };
+  }
+  const pushArgs = [
+    "push",
+    ...setUpstream ? ["-u"] : [],
+    remote,
+    branch
+  ];
+  let lastPushErr = null;
+  let pushed = false;
+  for (let i = 1; i <= PUSH_ATTEMPTS; i++) {
+    try {
+      await gitExecFile(pushArgs, repoPath);
+      pushed = true;
+      break;
+    } catch (err) {
+      lastPushErr = err;
+      if (i < PUSH_ATTEMPTS) {
+        const delay = Math.min(
+          baseDelayMs * Math.pow(factor, i - 1),
+          maxDelayMs
+        );
+        await sleep(delay);
+      }
+    }
+  }
+  if (!pushed) {
+    return {
+      status: "error",
+      errorCode: "PUSH_FAILED",
+      errorMessage: cleanGitError(lastPushErr)
+    };
+  }
+  const { landed, attempts } = await verifyLanded(
+    repoPath,
+    remote,
+    branch,
+    expectedSha,
+    opts
+  );
+  if (!landed) {
+    return {
+      status: "error",
+      errorCode: "BRANCH_NOT_ON_REMOTE",
+      errorMessage: `git push reported success but branch ${branch} never appeared at ${expectedSha} on ${remote} after ${attempts} verification attempts \u2014 the push did not land.`
+    };
+  }
+  return {
+    status: "ok",
+    branch,
+    remote,
+    sha: expectedSha,
+    attempts
+  };
+}
+
+// src/tools/validate-run-state.ts
+var fs12 = __toESM(require("fs"));
+var validateRunStateInputSchema = external_exports.object({
+  runId: external_exports.string().describe(
+    "The orchestration run's id (its YYYYMMDD-HHMMSS timestamp, optionally prefixed `prd<N>-` or `backlog-`). It selects the per-run directory .orchestrate/runs/<runId>/, which holds that run's run-state.json. Required \u2014 every validate call happens after the run has a runId."
+  ),
+  repoPath: external_exports.string().optional().describe(
+    "Path to the project root that holds the .orchestrate/ directory. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default."
+  )
+});
+var validateRunStateOutputSchema = external_exports.object({
+  status: external_exports.enum(["valid", "invalid"]).describe(
+    "Outcome discriminant. 'valid' = run-state.json exists, is valid JSON, and matches the canonical run-state schema; 'invalid' = it could not be resolved, read, parsed, or it failed schema validation."
+  ),
+  errorCode: external_exports.enum(["RUN_ID_INVALID", "RUN_STATE_NOT_FOUND", "RUN_STATE_INVALID"]).optional().describe(
+    "Machine-readable failure category. Present when status='invalid'. 'RUN_ID_INVALID' = the runId is malformed and cannot resolve a run directory; 'RUN_STATE_NOT_FOUND' = no run-state.json under .orchestrate/runs/<runId>/; 'RUN_STATE_INVALID' = malformed JSON or a schema mismatch (e.g. `slices` shaped as an array instead of a map)."
+  ),
+  errorMessage: external_exports.string().optional().describe("Human-readable failure description. Present when status='invalid'.")
+});
+function firstLine8(message) {
+  const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return line ?? message.trim();
+}
+async function validateRunState(input) {
+  const repoPath = input.repoPath ?? process.cwd();
+  const resolved = resolveRunDir(repoPath, input.runId);
+  if (!resolved.ok) {
+    return {
+      status: "invalid",
+      errorCode: "RUN_ID_INVALID",
+      errorMessage: resolved.errorMessage
+    };
+  }
+  let raw;
+  try {
+    raw = fs12.readFileSync(resolved.paths.runStatePath, "utf8");
+  } catch {
+    return {
+      status: "invalid",
+      errorCode: "RUN_STATE_NOT_FOUND",
+      errorMessage: `No run-state.json found at ${resolved.paths.runStatePath}.`
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      status: "invalid",
+      errorCode: "RUN_STATE_INVALID",
+      errorMessage: `run-state.json is not valid JSON: ${firstLine8(
+        err instanceof Error ? err.message : String(err)
+      )}`
+    };
+  }
+  const result = runStateSchema.safeParse(parsed);
+  if (!result.success) {
+    const detail = result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+    return {
+      status: "invalid",
+      errorCode: "RUN_STATE_INVALID",
+      errorMessage: `run-state.json does not match the expected shape: ${detail}`
+    };
+  }
+  return { status: "valid" };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
-  version: "0.12.0"
+  version: "0.13.0"
 });
 var registerTool = server.registerTool.bind(server);
 var handleCreateWorktree = async (input) => {
@@ -24214,14 +24708,20 @@ var RUN_TOOLS = [
     run: runTypecheck
   },
   { name: "run_build", title: "Run Build", verb: "build", run: runBuild },
-  { name: "run_lint", title: "Run Lint", verb: "lint", run: runLint }
+  { name: "run_lint", title: "Run Lint", verb: "lint", run: runLint },
+  {
+    name: "run_integration",
+    title: "Run Integration Suite",
+    verb: "integration",
+    run: runIntegration
+  }
 ];
 for (const tool of RUN_TOOLS) {
   registerTool(
     tool.name,
     {
       title: tool.title,
-      description: `Runs the project's "${tool.verb}" command exactly as configured in .orchestrate/commands.json. The command is a fixed argv array read from that file \u2014 this tool never accepts a command string from the caller. Returns a discriminated status: 'passed' (exit 0), 'failed' (non-zero exit), 'not-configured' (no "${tool.verb}" command set), or 'error' (invalid config, timeout, or spawn failure).`,
+      description: `Runs the project's "${tool.verb}" command exactly as configured in .orchestrate/commands.json. The command is a fixed argv array read from that file \u2014 this tool never accepts a command string from the caller. Returns a discriminated status: 'passed' (exit 0), 'failed' (non-zero exit), 'not-configured' (no "${tool.verb}" command set), or 'error' (invalid config, timeout, or spawn failure). When the command exits non-zero and the project's commands.json sets a "knownFailures" pattern list, the result also carries knownFailureMatches.matched / .unmatched \u2014 a best-effort baseline-failure hint, not a zero-new-failures guarantee.`,
       inputSchema: runCommandInputSchema.shape,
       outputSchema: runCommandOutputSchema.shape
     },
@@ -24230,6 +24730,37 @@ for (const tool of RUN_TOOLS) {
     handleRun(tool.run)
   );
 }
+function summarizeInstall(r) {
+  switch (r.status) {
+    case "installed":
+      return `install passed (exit 0, ${r.durationMs} ms).`;
+    case "failed":
+      return `install failed (exit ${r.exitCode}, ${r.durationMs} ms).`;
+    case "not-configured":
+      return `install is not configured: ${r.reason}`;
+    case "error":
+      return `install could not run [${r.errorCode}]: ${r.errorMessage}`;
+  }
+}
+var handleRunInstall = async (input) => {
+  const result = await runInstall(input);
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text: summarizeInstall(result) }]
+  };
+};
+registerTool(
+  "run_install",
+  {
+    title: "Run Install",
+    description: "Runs the project's `install` setup command \u2014 the mutating dependency-resolve step (e.g. `pnpm install` / `npm install`) \u2014 exactly as configured in .orchestrate/commands.json. It never accepts a command string from the caller: the argv is fixed by config. Orchestrator- and subagent-callable on ANY checkout: a subagent that edits a manifest (package.json/Cargo.toml/pyproject.toml) to add a new dependency calls this to fetch it BEFORE re-running run_build/run_tests, because a fresh worktree checks out only tracked files and so lacks the new dependency. Returns a discriminated status: 'installed' (exit 0), 'failed' (non-zero exit), 'not-configured' (no `install` command set \u2014 a clean, expected state, NOT a failure), or 'error' (invalid config, timeout, or spawn failure \u2014 a missing package manager surfaces here as EXEC_ERROR, never a silent PM switch). install is the mutating form, so it rewrites the lockfile; the caller must include the changed lockfile in the slice diff.",
+    inputSchema: runCommandInputSchema.shape,
+    outputSchema: runInstallOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRunInstall
+);
 var handlePlanWaves = async (input) => {
   const result = planWaves(input);
   let text;
@@ -24262,7 +24793,7 @@ var handleResolveRouting = async (input) => {
   if (result.status === "ok") {
     const r = result.routing;
     const inv = r.investigator ? `investigator ${r.investigator.effort}` : "no investigator";
-    text = `Routing for tier '${result.tier}': ${inv}, implementer ${r.implementer.effort}/${r.implementer.model}, reviewer ${r.reviewer.effort}/${r.reviewer.model}.`;
+    text = `Routing for tier '${result.tier}': ${inv}, implementer ${r.implementer.effort}/${r.implementer.model}, reviewer ${r.reviewer.effort}/${r.reviewer.model}, continuation budget ${result.continuationBudget}.`;
   } else {
     text = `Routing resolution failed [${result.errorCode}]: ${result.errorMessage}`;
   }
@@ -24275,7 +24806,7 @@ registerTool(
   "resolve_routing",
   {
     title: "Resolve Complexity Routing",
-    description: "Resolves which model and effort variant to spawn for each role \u2014 investigator, implementer, reviewer, conflict-resolver \u2014 given an issue's assessed complexity tier. Reads the tier-to-role mapping from .orchestrate/routing.json. A null investigator means that tier skips the investigation pass. Returns a discriminated `status` of 'ok' or 'error' (routing.json missing or malformed).",
+    description: "Resolves which model and effort variant to spawn for each role \u2014 investigator, implementer, reviewer, conflict-resolver \u2014 given an issue's assessed complexity tier. Reads the tier-to-role mapping from .orchestrate/routing.json. A null investigator means that tier skips the investigation pass. Also echoes the resolved run-wide `continuationBudget` \u2014 how many times the orchestrator may re-spawn the implementer in the same worktree after an 'incomplete' envelope (default 2). Returns a discriminated `status` of 'ok' or 'error' (routing.json missing or malformed).",
     inputSchema: resolveRoutingInputSchema.shape,
     outputSchema: resolveRoutingOutputSchema.shape
   },
@@ -24441,7 +24972,7 @@ registerTool(
   "validate_envelope",
   {
     title: "Validate Subagent Result Envelope",
-    description: "Validates a subagent's result envelope \u2014 the ```orchestrate-envelope fenced JSON block a subagent emits as its final message \u2014 against the defined schema for its role. Returns a discriminated `status`: 'valid' (a well-formed envelope matching the role, with the parsed `envelope`), 'invalid' (an envelope was attempted but is truncated, malformed, or off-schema \u2014 a truncated envelope is ALWAYS invalid, never silently accepted), or 'missing' (no envelope block was found). The orchestrator uses this instead of parsing subagent prose for status or changed files.",
+    description: "Validates a subagent's result envelope \u2014 the ```orchestrate-envelope fenced JSON block a subagent emits as its final message \u2014 against the defined schema for its role. Returns a discriminated `status`: 'valid' (a well-formed envelope matching the role, with the parsed `envelope`), 'invalid' (an envelope was attempted but is truncated, malformed, or off-schema \u2014 a truncated envelope is ALWAYS invalid, never silently accepted), or 'missing' (no envelope block was found). A failure outcome (implementer 'blocked', reviewer 'failed') must also carry a labelled `rootCause` (verified|hypothesis) or it is reported invalid. An implementer 'incomplete' envelope must carry a non-empty `remainingWork` handoff (the note the orchestrator forwards to the continuation in the same worktree) or it is reported invalid. The orchestrator uses this instead of parsing subagent prose for status or changed files.",
     inputSchema: validateEnvelopeInputSchema.shape,
     outputSchema: validateEnvelopeOutputSchema.shape
   },
@@ -24466,7 +24997,7 @@ registerTool(
   "recover_changed_files",
   {
     title: "Recover Changed Files From a Worktree",
-    description: "Recovers the changed-file set of a slice worktree by inspecting it directly with 'git status --porcelain -z' \u2014 the orchestrator's fallback for when a subagent's result envelope is missing or invalid and its `filesChanged` list cannot be trusted. Returns ALL changes (tracked, staged, and untracked alike \u2014 build artifacts NOT filtered); a rename emits both real paths, never an 'old -> new' composite. Discriminated `status` of 'ok' or 'error'.",
+    description: "Recovers the changed-file set of a slice worktree by inspecting it directly with 'git status --porcelain -z --untracked-files=all' \u2014 the orchestrator's fallback for when a subagent's result envelope is missing or invalid and its `filesChanged` list cannot be trusted. Returns ALL changes (tracked, staged, and untracked alike \u2014 build artifacts NOT filtered); a rename emits both real paths, never an 'old -> new' composite. Discriminated `status` of 'ok' or 'error'.",
     inputSchema: recoverChangedFilesInputSchema.shape,
     outputSchema: recoverChangedFilesOutputSchema.shape
   },
@@ -24486,6 +25017,24 @@ var handleCleanRuns = async (input) => {
     text = `Cleanup swept ${result.runs.length} run(s): ${removed} removed, ${preserved} preserved, ${skipped} skipped.`;
   } else {
     text = `Run cleanup failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+var handleReclaimRun = async (input) => {
+  const result = await reclaimRun(input);
+  let text;
+  if (result.status === "ok") {
+    const r = result.report;
+    if (r.reason === "failed-run-reclaimed") {
+      text = `Reclaimed run ${r.runId}: removed ${r.removedWorktrees.length} worktree(s), ${r.removedBranches.length} branch(es); run dir removed: ${r.runDirRemoved}.`;
+    } else {
+      text = `Run ${r.runId} not reclaimed (${r.reason}); nothing removed.`;
+    }
+  } else {
+    text = `Run reclaim failed [${result.errorCode}]: ${result.errorMessage}`;
   }
   return {
     structuredContent: result,
@@ -24530,7 +25079,7 @@ registerTool(
   "clean_runs",
   {
     title: "Clean Up Concluded Runs",
-    description: "Sweeps `.orchestrate/runs/` and removes the on-disk and git footprint of every run whose final integration pull request has merged \u2014 its worktrees, its umbrella and slice branches (local and remote), and its run directory. The merged/open/closed-unmerged verdict is GitHub state and is NOT read by this tool: the orchestrator resolves each run's verdict with `gh pr view` and passes a per-run `verdicts` map; this tool is purely git + filesystem. A run absent from the map, or one whose run-state is not `completed`, is left strictly intact. Failed-slice worktrees are preserved (and the run directory kept) unless `force` is set. Every removal is best-effort and idempotent \u2014 an already-absent resource is success, not error. Never throws.",
+    description: "Sweeps `.orchestrate/runs/` and removes the on-disk and git footprint of every run whose final integration pull request has merged \u2014 its worktrees, its umbrella and slice branches (local and remote), and its run directory. The merged/open/closed-unmerged verdict is GitHub state and is NOT read by this tool: the orchestrator resolves each run's verdict with `gh pr view` and passes a per-run `verdicts` map; this tool is purely git + filesystem. A run absent from the map, one whose run-state is not `completed`, or whose `finalPullRequest` is null, is left strictly intact. Failed-slice worktrees are preserved (and the run directory kept) unless `force` is set. Every removal is best-effort and idempotent \u2014 an already-absent resource is success, not error. Never throws.",
     inputSchema: cleanRunsInputSchema.shape,
     outputSchema: cleanRunsOutputSchema.shape
   },
@@ -24539,10 +25088,22 @@ registerTool(
   handleCleanRuns
 );
 registerTool(
+  "reclaim_run",
+  {
+    title: "Reclaim a Single Crashed or Abandoned Run",
+    description: "Removes the complete on-disk and git footprint of ONE named run \u2014 all its worktrees (passed AND failed), its umbrella branch and every slice branch (local and remote), and its run directory. Takes a REQUIRED single `runId`. Unlike `clean_runs`, this tool BYPASSES the `status === 'completed'` cross-run isolation gate by design: it is the one sanctioned exception in ADR-0012, the human-gated reclaim path for a crashed or abandoned run that looks `in-progress` forever (there is no `failed` run status). It is scoped by construction to that single `.orchestrate/runs/<runId>/` and the branches embedding that runId, so it can never touch any other run. The mandatory interactive confirmation that authorizes the deletion lives in the SKILL, not here \u2014 this tool is non-interactive execution only. A valid runId with no run directory on disk is the clean `run-not-found` no-op (so a re-reclaim is idempotent). Every removal is best-effort. Never throws.",
+    inputSchema: reclaimRunInputSchema.shape,
+    outputSchema: reclaimRunOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleReclaimRun
+);
+registerTool(
   "verify_changeset",
   {
     title: "Verify a Worktree Changeset Against the Declared File Set",
-    description: "Compares a slice worktree's ACTUAL changeset \u2014 inspected with 'git status --porcelain -z' \u2014 against the changed-file set the implementer DECLARED in its result envelope. The orchestrator calls this after every implementer returns, before trusting a 'completed' envelope. The comparison is a cheap set comparison, not a semantic scope check: order and duplicates are ignored, and the issue body is never parsed. Returns a `match` verdict \u2014 'matched', 'clean', 'mismatch', 'empty-but-declared' (edits never landed), or 'suspiciously-empty' (work under-reported) \u2014 plus the divergent paths in `declaredButAbsent` and `presentButUndeclared`. Discriminated `status` of 'ok' or 'error'.",
+    description: "Compares a slice worktree's ACTUAL changeset \u2014 inspected with 'git status --porcelain -z --untracked-files=all' \u2014 against the changed-file set the implementer DECLARED in its result envelope. The orchestrator calls this after every implementer returns, before trusting a 'completed' envelope. The comparison is a cheap set comparison, not a semantic scope check: order and duplicates are ignored, and the issue body is never parsed. Returns a `match` verdict \u2014 'matched', 'clean', 'mismatch', 'empty-but-declared' (edits never landed), or 'suspiciously-empty' (work under-reported) \u2014 plus the divergent paths in `declaredButAbsent` and `presentButUndeclared`. Discriminated `status` of 'ok' or 'error'.",
     inputSchema: verifyChangesetInputSchema.shape,
     outputSchema: verifyChangesetOutputSchema.shape
   },
@@ -24554,13 +25115,63 @@ registerTool(
   "bootstrap_config",
   {
     title: "Bootstrap Orchestrate Configuration",
-    description: "Sets up a repository's .orchestrate/ configuration for a first-ever orchestrate run. Detects the project type and writes a project-aware commands.json (with `install` for npm only, empty for an unrecognized project), writes routing.json from the shipped defaults, and writes handoff.json with a context-window size derived from the running model \u2014 pass the model id (or an explicit contextWindowTokens) as input; the MCP process cannot see the calling LLM's model. An unknown or absent model falls back to 200000. Creates .orchestrate/runs/ and idempotently adds it to the repository's .gitignore. Every step is idempotent: an existing config file is never overwritten and the .gitignore line is never duplicated. Returns a discriminated `status` of 'ok' or 'error'.",
+    description: "Sets up a repository's .orchestrate/ configuration for a first-ever orchestrate run. Detects the project type and writes a project-aware commands.json (with a PM-aware mutating `install` command for npm/cargo/python projects \u2014 keyed on the JS lockfile for the npm ecosystem \u2014 empty for an unrecognized project), writes routing.json from the shipped defaults, and writes handoff.json with a context-window size derived from the running model \u2014 pass the model id (or an explicit contextWindowTokens) as input; the MCP process cannot see the calling LLM's model. An unknown or absent model falls back to 200000. Creates .orchestrate/runs/ and idempotently adds it to the repository's .gitignore. Every step is idempotent: an existing config file is never overwritten and the .gitignore line is never duplicated. Returns a discriminated `status` of 'ok' or 'error'.",
     inputSchema: bootstrapConfigInputSchema.shape,
     outputSchema: bootstrapConfigOutputSchema.shape
   },
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleBootstrapConfig
+);
+var handlePushAndVerify = async (input) => {
+  const result = await pushAndVerify(input);
+  let text;
+  if (result.status === "ok") {
+    text = `Pushed ${result.branch} to ${result.remote} and confirmed landed at ${result.sha} (${result.attempts} verify attempt(s)).`;
+  } else {
+    text = `push_and_verify failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "push_and_verify",
+  {
+    title: "Push a Branch and Verify It Landed",
+    description: "Pushes `branch` to `remote`, then confirms via 'git ls-remote --heads' that the remote ref matches the local tip SHA \u2014 a presence-only check is insufficient, because a stale ref left from a prior push would pass it. Uses bounded exponential backoff for both the push retry and the landing poll, and fails loud with `BRANCH_NOT_ON_REMOTE` when a successful-exit push never lands at the expected SHA (the silent-failure mode). Git-only \u2014 it never shells `gh`; the orchestrator owns forge operations. Returns a discriminated `status` of 'ok' or 'error' and never throws.",
+    inputSchema: pushAndVerifyInputSchema.shape,
+    outputSchema: pushAndVerifyOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handlePushAndVerify
+);
+var handleValidateRunState = async (input) => {
+  const result = await validateRunState(input);
+  let text;
+  if (result.status === "valid") {
+    text = `Valid run-state for \`${input.runId}\`.`;
+  } else {
+    text = `Invalid run-state [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "validate_run_state",
+  {
+    title: "Validate Run-State Checkpoint",
+    description: "Validates `.orchestrate/runs/<runId>/run-state.json` against the canonical run-state schema \u2014 the same schema the render tools validate against. It is the orchestrator's fast-fail guard: call it right after writing the first run-state checkpoint and on every resume read, so a mis-shaped checkpoint fails in seconds rather than after expensive subagent work. It specifically catches a `slices` value shaped as an ARRAY instead of a MAP keyed by issue-id string \u2014 the latent trap of passing the `partition_backlog` array straight through into run-state. Reads only; writes nothing. Returns a discriminated `status` of 'valid' or 'invalid' (with `RUN_ID_INVALID`, `RUN_STATE_NOT_FOUND`, or `RUN_STATE_INVALID`).",
+    inputSchema: validateRunStateInputSchema.shape,
+    outputSchema: validateRunStateOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleValidateRunState
 );
 async function main() {
   const transport = new StdioServerTransport();
