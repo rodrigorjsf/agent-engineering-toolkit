@@ -99,8 +99,17 @@ The envelope object has exactly these fields:
 - **notes** — a string: anything the orchestrator or a later reviewer must know
   — assumptions you made, partial work, or, if `incomplete` or `blocked`,
   exactly what stopped you and what was tried.
+- **rootCause** — an object `{ "status": "verified" | "hypothesis", "claim":
+  string, "evidence"?: string }` analysing *why* the slice could not finish.
+  **Required when `status` is `"blocked"`** — a `blocked` envelope without it is
+  rejected as invalid. Label `claim` as either `"verified"` (confirmed
+  empirically by a command and its output — cite that command and output in
+  `evidence`) or `"hypothesis"` (an unproven inference you could not confirm
+  within your turn; omit `evidence`). Choose consciously — never present a guess
+  as a fact. Optional for `"incomplete"` (the cause is definitionally the turn
+  budget); omit entirely for `"completed"`.
 
-Example:
+Example (`completed` — no `rootCause`):
 
 ```orchestrate-envelope
 {
@@ -114,5 +123,24 @@ Example:
     { "capability": "lint", "result": "not-configured" }
   ],
   "notes": "Implemented per the acceptance criteria."
+}
+```
+
+Example (`blocked` — carries a verified `rootCause`):
+
+```orchestrate-envelope
+{
+  "role": "implementer",
+  "status": "blocked",
+  "filesChanged": ["src/foo.ts"],
+  "verification": [
+    { "capability": "build", "result": "failed" }
+  ],
+  "notes": "Cannot finish — the build fails on a missing peer dependency.",
+  "rootCause": {
+    "status": "verified",
+    "claim": "The build fails because the 'bar' peer dependency is not installed in the worktree.",
+    "evidence": "run_build → \"error: Cannot find module 'bar'\"; package.json lists no 'bar' dependency."
+  }
 }
 ```

@@ -764,6 +764,11 @@ FAILED slice's worktree is preserved) so the slice can be resumed.
 
 On a FAILED slice:
 
+- When the failure cause is a validated worker envelope with `status: "blocked"`
+  (implementer) or `status: "failed"` (reviewer), that envelope now carries a
+  validated `rootCause` (`verified` | `hypothesis` + `claim` + optional
+  `evidence`) — surface it in the failure artifact alongside the `failureReason`
+  so a developer reads the subagent's own labelled diagnosis.
 - Set its `state` to `failed` with a `failureReason`, checkpoint, and
   transition the issue's tracker label. For a slice that failed because the
   implementer reported `incomplete` — partial, resumable work — `needs-info`
