@@ -696,7 +696,7 @@ registerTool(
     title: "Recover Changed Files From a Worktree",
     description:
       "Recovers the changed-file set of a slice worktree by inspecting it " +
-      "directly with 'git status --porcelain -z' — the orchestrator's fallback " +
+      "directly with 'git status --porcelain -z --untracked-files=all' — the orchestrator's fallback " +
       "for when a subagent's result envelope is missing or invalid and its " +
       "`filesChanged` list cannot be trusted. Returns ALL changes (tracked, " +
       "staged, and untracked alike — build artifacts NOT filtered); a rename " +
@@ -820,7 +820,7 @@ registerTool(
     title: "Verify a Worktree Changeset Against the Declared File Set",
     description:
       "Compares a slice worktree's ACTUAL changeset — inspected with " +
-      "'git status --porcelain -z' — against the changed-file set the " +
+      "'git status --porcelain -z --untracked-files=all' — against the changed-file set the " +
       "implementer DECLARED in its result envelope. The orchestrator calls " +
       "this after every implementer returns, before trusting a 'completed' " +
       "envelope. The comparison is a cheap set comparison, not a semantic " +

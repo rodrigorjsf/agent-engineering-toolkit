@@ -76,6 +76,15 @@ describe("verify_changeset — matching changesets", () => {
     expect(r.presentButUndeclared).toEqual([]);
   });
 
+  it("matches a declared deep path inside a new untracked directory", async () => {
+    fs.mkdirSync(path.join(repoPath, "subdir", "nested"), { recursive: true });
+    fs.writeFileSync(path.join(repoPath, "subdir", "nested", "file.ts"), "export const x = 1;\n");
+    const r = await verifyChangeset({ worktreePath: repoPath, declaredFiles: ["subdir/nested/file.ts"] });
+    expect(r.status).toBe("ok");
+    expect(r.match).toBe("matched");
+    expect(r.actualFiles).toContain("subdir/nested/file.ts");
+  });
+
   it("treats declared-file order as irrelevant to a 'matched' result", async () => {
     fs.writeFileSync(path.join(repoPath, "a.ts"), "a\n");
     fs.writeFileSync(path.join(repoPath, "b.ts"), "b\n");

@@ -62,7 +62,7 @@ export type RecoverChangedFilesOutput = z.infer<
 
 /**
  * Recovers the changed-file set of a slice worktree by inspecting it directly
- * with `git status --porcelain -z` — the orchestrator's fallback for when a
+ * with `git status --porcelain -z --untracked-files=all` — the orchestrator's fallback for when a
  * subagent's result envelope is missing or invalid and its `filesChanged` list
  * therefore cannot be trusted. The worktree is the source of truth.
  *
@@ -100,10 +100,11 @@ export async function recoverChangedFiles(
 
   // `-z` emits NUL-terminated records with no C-style quoting; rename/copy
   // entries split cleanly into both real paths via parsePorcelainZ.
+  // --untracked-files=all enumerates files inside a new untracked dir (default -unormal collapses them to one 'dir/' entry); gitignored paths stay excluded.
   let porcelain: string;
   try {
     const { stdout } = await gitExecFile(
-      ["status", "--porcelain", "-z"],
+      ["status", "--porcelain", "-z", "--untracked-files=all"],
       worktreePath
     );
     porcelain = stdout;

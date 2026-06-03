@@ -23322,7 +23322,7 @@ async function recoverChangedFiles(input) {
   let porcelain;
   try {
     const { stdout } = await gitExecFile(
-      ["status", "--porcelain", "-z"],
+      ["status", "--porcelain", "-z", "--untracked-files=all"],
       worktreePath
     );
     porcelain = stdout;
@@ -23743,7 +23743,7 @@ async function verifyChangeset(input) {
   let porcelain;
   try {
     const { stdout } = await gitExecFile(
-      ["status", "--porcelain", "-z"],
+      ["status", "--porcelain", "-z", "--untracked-files=all"],
       worktreePath
     );
     porcelain = stdout;
@@ -24480,7 +24480,7 @@ registerTool(
   "recover_changed_files",
   {
     title: "Recover Changed Files From a Worktree",
-    description: "Recovers the changed-file set of a slice worktree by inspecting it directly with 'git status --porcelain -z' \u2014 the orchestrator's fallback for when a subagent's result envelope is missing or invalid and its `filesChanged` list cannot be trusted. Returns ALL changes (tracked, staged, and untracked alike \u2014 build artifacts NOT filtered); a rename emits both real paths, never an 'old -> new' composite. Discriminated `status` of 'ok' or 'error'.",
+    description: "Recovers the changed-file set of a slice worktree by inspecting it directly with 'git status --porcelain -z --untracked-files=all' \u2014 the orchestrator's fallback for when a subagent's result envelope is missing or invalid and its `filesChanged` list cannot be trusted. Returns ALL changes (tracked, staged, and untracked alike \u2014 build artifacts NOT filtered); a rename emits both real paths, never an 'old -> new' composite. Discriminated `status` of 'ok' or 'error'.",
     inputSchema: recoverChangedFilesInputSchema.shape,
     outputSchema: recoverChangedFilesOutputSchema.shape
   },
@@ -24556,7 +24556,7 @@ registerTool(
   "verify_changeset",
   {
     title: "Verify a Worktree Changeset Against the Declared File Set",
-    description: "Compares a slice worktree's ACTUAL changeset \u2014 inspected with 'git status --porcelain -z' \u2014 against the changed-file set the implementer DECLARED in its result envelope. The orchestrator calls this after every implementer returns, before trusting a 'completed' envelope. The comparison is a cheap set comparison, not a semantic scope check: order and duplicates are ignored, and the issue body is never parsed. Returns a `match` verdict \u2014 'matched', 'clean', 'mismatch', 'empty-but-declared' (edits never landed), or 'suspiciously-empty' (work under-reported) \u2014 plus the divergent paths in `declaredButAbsent` and `presentButUndeclared`. Discriminated `status` of 'ok' or 'error'.",
+    description: "Compares a slice worktree's ACTUAL changeset \u2014 inspected with 'git status --porcelain -z --untracked-files=all' \u2014 against the changed-file set the implementer DECLARED in its result envelope. The orchestrator calls this after every implementer returns, before trusting a 'completed' envelope. The comparison is a cheap set comparison, not a semantic scope check: order and duplicates are ignored, and the issue body is never parsed. Returns a `match` verdict \u2014 'matched', 'clean', 'mismatch', 'empty-but-declared' (edits never landed), or 'suspiciously-empty' (work under-reported) \u2014 plus the divergent paths in `declaredButAbsent` and `presentButUndeclared`. Discriminated `status` of 'ok' or 'error'.",
     inputSchema: verifyChangesetInputSchema.shape,
     outputSchema: verifyChangesetOutputSchema.shape
   },
