@@ -620,6 +620,37 @@ subagent's verbatim returned text and its `role`:
    `invalid` or `missing` envelope also means the slice has **FAILED**. On a
    `passed` envelope, set the slice's `subState` to `reviewed` and checkpoint
    `run-state.json` before proceeding to step 6.
+5a. **Pre-merge capability gate.** After the reviewer returns `passed` (step 5),
+   and **before any commit, push, or GitHub state exists**, the orchestrator
+   independently runs the correctness capability tools on the slice worktree —
+   this is the pre-merge capability gate. It does **not** trust the reviewer's
+   envelope `verification`: the reviewer's re-run is a subagent self-report;
+   this step is the orchestrator's own deterministic check, the last link in the
+   `implementer → reviewer → orchestrator` trust chain.
+
+   Call the `run_build` and `run_tests` MCP tools with the slice's
+   `<worktree-path>` as `repoPath` (the same pattern step 8a.3 uses). Each tool
+   returns a `status` enum (`passed | failed | not-configured | error`); handle
+   all four:
+   - `passed` on **both** verbs → proceed to step 6.
+   - `not-configured` (either verb) → **tolerated**, treated as a pass for that
+     verb (consistent with the prerequisites note that a missing-command
+     `not-configured` is tolerated). The gate must not fail a project that has
+     not configured `build`/`tests`.
+   - `failed` or `error` (either verb) → the slice has **FAILED** (the existing
+     FAILED semantics defined throughout section 3 — no new failure handling).
+
+   The verb set is exactly `run_build` + `run_tests` — a deliberate subset:
+   build+test is the correctness trust boundary, while `typecheck`/`lint` remain
+   the reviewer's quality remit and are intentionally **not** re-run here. The
+   step 8a.3 (post-conflict) re-verify running all four
+   `run_tests`/`run_typecheck`/`run_build`/`run_lint` verbs is a **known,
+   intentional asymmetry** — and is left unchanged: this pre-merge gate is
+   focused correctness on a worktree the reviewer already saw, whereas the
+   conflict re-verify is max-confidence on a never-before-tested merged
+   combination. "Pre-merge" names what the gate controls (whether the merge
+   proceeds); mechanically it runs pre-commit, on the same worktree state the
+   reviewer validated.
 6. **Commit and push.** Stage only the files the subagents reported changing —
    the union of the `filesChanged` arrays from the validated implementer and
    reviewer envelopes. Never `git add -A`: the capability tools leave untracked
