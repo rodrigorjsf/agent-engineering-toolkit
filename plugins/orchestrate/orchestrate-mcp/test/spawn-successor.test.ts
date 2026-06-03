@@ -224,4 +224,44 @@ describe("spawnSuccessor", () => {
     expect(result.attempts).toHaveLength(1);
     expect(result.attempts![0].outcome).toBe("launched");
   });
+
+  it("flows an injected resumePrompt through to the launched argv", async () => {
+    // A bogus terminal whose argv embeds {claudeCommand}: spawn fails (so no
+    // real session launches), but buildLaunchArgv still substitutes the
+    // claudeCommand built from the (overridden) resumePrompt — proving the
+    // input override reached buildClaudeArgv *through the tool*, not just the
+    // pure builder.
+    const dir = project({
+      successor: {
+        terminals: [
+          {
+            name: "bogus",
+            argv: ["orchestrate-nonexistent-binary-resume", "{claudeCommand}"],
+          },
+        ],
+      },
+    });
+
+    const overridden = await spawnSuccessor({
+      repoPath: dir,
+      resumePrompt: "/orchestrate 195",
+    });
+    expect(overridden.status).toBe("error");
+    expect(overridden.errorCode).toBe("ALL_TERMINALS_FAILED");
+    // The claudeCommand is the last argv token; shellQuote wraps the prompt, so
+    // assert the partition-correct invocation is present (trailing quote means
+    // no exact-match / endsWith).
+    const overriddenArgv = overridden.attempts![0].argv;
+    expect(overriddenArgv[overriddenArgv.length - 1]).toContain(
+      "/orchestrate 195"
+    );
+
+    // Omitting resumePrompt falls back to the config/default "/orchestrate"; the
+    // partition-specific "195" must be absent.
+    const fallback = await spawnSuccessor({ repoPath: dir });
+    expect(fallback.status).toBe("error");
+    const fallbackArgv = fallback.attempts![0].argv;
+    expect(fallbackArgv[fallbackArgv.length - 1]).toContain("'/orchestrate'");
+    expect(fallbackArgv[fallbackArgv.length - 1]).not.toContain("195");
+  });
 });

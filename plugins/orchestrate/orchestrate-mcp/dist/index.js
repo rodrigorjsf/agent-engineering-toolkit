@@ -22737,6 +22737,9 @@ function loadHandoffConfig(repoPath) {
 var spawnSuccessorInputSchema = external_exports.object({
   repoPath: external_exports.string().optional().describe(
     "Path to the repository root \u2014 the directory holding .orchestrate/. The successor session opens here and re-discovers the active run from .orchestrate/runs/*/run-state.json to resume. Defaults to the MCP server process's current working directory; callers should pass it explicitly."
+  ),
+  resumePrompt: external_exports.string().optional().describe(
+    "Optional resume invocation for the successor, derived by the orchestrator from the run's partition: '/orchestrate <N>' for a 'prd<N>-' run, '/orchestrate' for a 'backlog-' run. Overrides handoff.json's successor.resumePrompt, which remains the fallback for manual/legacy launches."
   )
 });
 var launchAttemptSchema = external_exports.object({
@@ -22814,7 +22817,10 @@ function trySpawn(argv) {
 async function spawnSuccessor(input) {
   const repoPath = input.repoPath ?? process.cwd();
   const { config: config2, warning } = loadHandoffConfig(repoPath);
-  const successor = config2.successor;
+  const successor = {
+    ...config2.successor,
+    resumePrompt: input.resumePrompt ?? config2.successor.resumePrompt
+  };
   const configWarning = warning ?? void 0;
   if (successor.terminals.length === 0) {
     return {
