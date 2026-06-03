@@ -24139,6 +24139,180 @@ function bootstrapConfig(input) {
   };
 }
 
+// src/tools/push-and-verify.ts
+var pushAndVerifyInputSchema = external_exports.object({
+  repoPath: external_exports.string().describe(
+    "Absolute path the git push runs in. For a slice push this is the slice **worktree** path (the orchestrator otherwise runs `git -C <worktree-path> push`), not the main repo root."
+  ),
+  branch: external_exports.string().describe(
+    "Name of the local branch to push and then verify landed on the remote (e.g. `orchestrate/slice-7`)."
+  ),
+  remote: external_exports.string().optional().default("origin").describe("Remote to push to and verify against. Defaults to `origin`."),
+  setUpstream: external_exports.boolean().optional().default(true).describe(
+    "When true, push with `-u` to set the upstream tracking ref (the first push of a new slice branch). Default true."
+  )
+});
+var pushAndVerifyOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the branch was pushed AND confirmed on the remote at the expected commit; 'error' = push failed, the branch never landed, or input was rejected."
+  ),
+  branch: external_exports.string().optional().describe("The branch that was verified. Present when status='ok'."),
+  remote: external_exports.string().optional().describe("The remote it landed on. Present when status='ok'."),
+  sha: external_exports.string().optional().describe(
+    "The commit SHA confirmed on the remote (matches the local branch tip). Present when status='ok'."
+  ),
+  attempts: external_exports.number().optional().describe(
+    "How many landing-verification polls ran before the remote ref matched (>=1). Present when status='ok'."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT", "PUSH_FAILED", "BRANCH_NOT_ON_REMOTE", "GIT_ERROR"]).optional().describe(
+    "Machine-readable failure category. 'INVALID_INPUT' = branch/remote would be parsed by git as an option flag; 'PUSH_FAILED' = `git push` itself exited non-zero after all retries; 'BRANCH_NOT_ON_REMOTE' = push reported success but `git ls-remote` never showed the branch at the expected SHA within the backoff budget (the silent-failure mode); 'GIT_ERROR' = a git command could not run (e.g. not a git worktree, or local rev-parse failed)."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='error'."
+  )
+});
+var VERIFY_ATTEMPTS = 5;
+var VERIFY_BASE_DELAY_MS = 500;
+var VERIFY_BACKOFF_FACTOR = 2;
+var VERIFY_MAX_DELAY_MS = 8e3;
+var PUSH_ATTEMPTS = 3;
+var defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function verifyLanded(repoPath, remote, branch, expectedSha, opts) {
+  const attempts = opts?.attempts ?? VERIFY_ATTEMPTS;
+  const baseDelayMs = opts?.baseDelayMs ?? VERIFY_BASE_DELAY_MS;
+  const factor = opts?.factor ?? VERIFY_BACKOFF_FACTOR;
+  const maxDelayMs = opts?.maxDelayMs ?? VERIFY_MAX_DELAY_MS;
+  const sleep = opts?.sleep ?? defaultSleep;
+  const refName = `refs/heads/${branch}`;
+  for (let i = 1; i <= attempts; i++) {
+    let remoteSha = null;
+    try {
+      const { stdout } = await gitExecFile(
+        ["ls-remote", "--heads", remote, branch],
+        repoPath
+      );
+      for (const line of stdout.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed.length === 0) continue;
+        const [sha, ref] = trimmed.split(/\s+/);
+        if (ref === refName) {
+          remoteSha = sha;
+          break;
+        }
+      }
+    } catch {
+      remoteSha = null;
+    }
+    if (remoteSha !== null && remoteSha === expectedSha) {
+      return { landed: true, attempts: i };
+    }
+    if (i < attempts) {
+      const delay = Math.min(
+        baseDelayMs * Math.pow(factor, i - 1),
+        maxDelayMs
+      );
+      await sleep(delay);
+    }
+  }
+  return { landed: false, attempts };
+}
+async function pushAndVerify(input, opts) {
+  const { repoPath, branch, remote, setUpstream } = input;
+  const sleep = opts?.sleep ?? defaultSleep;
+  const baseDelayMs = opts?.baseDelayMs ?? VERIFY_BASE_DELAY_MS;
+  const factor = opts?.factor ?? VERIFY_BACKOFF_FACTOR;
+  const maxDelayMs = opts?.maxDelayMs ?? VERIFY_MAX_DELAY_MS;
+  const branchGuard = optionInjectionError("branch", branch);
+  if (branchGuard) {
+    return {
+      status: "error",
+      errorCode: "INVALID_INPUT",
+      errorMessage: branchGuard
+    };
+  }
+  const remoteGuard = optionInjectionError("remote", remote);
+  if (remoteGuard) {
+    return {
+      status: "error",
+      errorCode: "INVALID_INPUT",
+      errorMessage: remoteGuard
+    };
+  }
+  let expectedSha;
+  try {
+    const { stdout } = await gitExecFile(
+      ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`],
+      repoPath
+    );
+    expectedSha = stdout.trim();
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "GIT_ERROR",
+      errorMessage: cleanGitError(err)
+    };
+  }
+  if (expectedSha.length === 0) {
+    return {
+      status: "error",
+      errorCode: "GIT_ERROR",
+      errorMessage: `Local branch ${branch} does not exist \u2014 cannot verify a push of a missing branch.`
+    };
+  }
+  const pushArgs = [
+    "push",
+    ...setUpstream ? ["-u"] : [],
+    remote,
+    branch
+  ];
+  let lastPushErr = null;
+  let pushed = false;
+  for (let i = 1; i <= PUSH_ATTEMPTS; i++) {
+    try {
+      await gitExecFile(pushArgs, repoPath);
+      pushed = true;
+      break;
+    } catch (err) {
+      lastPushErr = err;
+      if (i < PUSH_ATTEMPTS) {
+        const delay = Math.min(
+          baseDelayMs * Math.pow(factor, i - 1),
+          maxDelayMs
+        );
+        await sleep(delay);
+      }
+    }
+  }
+  if (!pushed) {
+    return {
+      status: "error",
+      errorCode: "PUSH_FAILED",
+      errorMessage: cleanGitError(lastPushErr)
+    };
+  }
+  const { landed, attempts } = await verifyLanded(
+    repoPath,
+    remote,
+    branch,
+    expectedSha,
+    opts
+  );
+  if (!landed) {
+    return {
+      status: "error",
+      errorCode: "BRANCH_NOT_ON_REMOTE",
+      errorMessage: `git push reported success but branch ${branch} never appeared at ${expectedSha} on ${remote} after ${attempts} verification attempts \u2014 the push did not land.`
+    };
+  }
+  return {
+    status: "ok",
+    branch,
+    remote,
+    sha: expectedSha,
+    attempts
+  };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
@@ -24575,6 +24749,31 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleBootstrapConfig
+);
+var handlePushAndVerify = async (input) => {
+  const result = await pushAndVerify(input);
+  let text;
+  if (result.status === "ok") {
+    text = `Pushed ${result.branch} to ${result.remote} and confirmed landed at ${result.sha} (${result.attempts} verify attempt(s)).`;
+  } else {
+    text = `push_and_verify failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "push_and_verify",
+  {
+    title: "Push a Branch and Verify It Landed",
+    description: "Pushes `branch` to `remote`, then confirms via 'git ls-remote --heads' that the remote ref matches the local tip SHA \u2014 a presence-only check is insufficient, because a stale ref left from a prior push would pass it. Uses bounded exponential backoff for both the push retry and the landing poll, and fails loud with `BRANCH_NOT_ON_REMOTE` when a successful-exit push never lands at the expected SHA (the silent-failure mode). Git-only \u2014 it never shells `gh`; the orchestrator owns forge operations. Returns a discriminated `status` of 'ok' or 'error' and never throws.",
+    inputSchema: pushAndVerifyInputSchema.shape,
+    outputSchema: pushAndVerifyOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handlePushAndVerify
 );
 async function main() {
   const transport = new StdioServerTransport();
