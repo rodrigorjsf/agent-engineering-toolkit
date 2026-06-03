@@ -66,8 +66,17 @@ or committed ahead of time from the plugin's `templates/`. Without
 tolerated. When the project's capability commands need installed dependencies,
 `commands.json` must also set an `install` command — `create_worktree` runs it
 in every fresh worktree, which checks out only tracked files and so has no
-dependency directory of its own; the bootstrapper sets `install` automatically
-for an npm project. Without `routing.json` the `resolve_routing` tool errors
+dependency directory of its own, and the implementer/conflict-resolver
+subagents can re-run it via `run_install` to fetch a dependency they added. The
+bootstrapper sets a **PM-aware mutating** `install` automatically for
+npm/cargo/python projects — for the JS ecosystem the package manager is keyed
+on the lockfile (`pnpm-lock.yaml`→pnpm, `yarn.lock`→yarn,
+`package-lock.json`→npm, defaulting to **pnpm** with no lock), and the install
+is the mutating/resolving form (`pnpm install` / `npm install`, never
+`npm ci`). A project that overrides `install` with a strict reproducible form
+(`npm ci`, `--frozen-lockfile`) forfeits in-slice new-dependency support — a
+subagent has no shell to regenerate the lockfile. Without `routing.json` the
+`resolve_routing` tool errors
 and the run falls back to the `-standard` variant of every role with no model
 override.
 An optional `.orchestrate/handoff.json` tunes the context-watchdog threshold
@@ -724,9 +733,12 @@ subagent's verbatim returned text and its `role`:
    prompt must carry the issue number/title/body, the worktree path (every
    change goes there), the investigator's brief if one was produced, an
    instruction to verify with the capability tools using the worktree path as
-   `repoPath`, and a reminder not to commit, push, or run git. Validate its
-   returned text with `validate_envelope` (role `implementer`). On a `valid`
-   envelope, classify the envelope `status`:
+   `repoPath`, a note that it MAY call `run_install` (worktree path as
+   `repoPath`) to fetch a newly-added dependency before re-verifying — and that
+   any lockfile that install mutates MUST be reported in `filesChanged` so it
+   lands in the slice diff — and a reminder not to commit, push, or run git.
+   Validate its returned text with `validate_envelope` (role `implementer`). On
+   a `valid` envelope, classify the envelope `status`:
    - `completed` — proceed to the worktree scope check in step 4a.
    - `incomplete` — the implementer's graceful turn-budget self-report: it
      foresaw it could not finish within its remaining turns and stopped cleanly
@@ -834,7 +846,12 @@ subagent's verbatim returned text and its `role`:
 6. **Commit and push.** Stage only the files the subagents reported changing —
    the union of the `filesChanged` arrays from the validated implementer and
    reviewer envelopes. Never `git add -A`: the capability tools leave untracked
-   build artifacts in the worktree.
+   build artifacts in the worktree. When the implementer fetched a new
+   dependency with `run_install`, install ran **in its turn before this
+   commit** and mutated the lockfile (`pnpm-lock.yaml` / `package-lock.json` /
+   `Cargo.lock`); because the implementer declared that lockfile in
+   `filesChanged`, it is in this staged union and the commit captures it — so
+   the new dependency lands in the slice diff.
 
    ```
    git -C <worktree-path> add -- <file> <file> ...

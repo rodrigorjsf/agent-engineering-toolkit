@@ -21450,6 +21450,38 @@ var runTypecheck = (input, opts) => runConfiguredCommand("typecheck", input, opt
 var runBuild = (input, opts) => runConfiguredCommand("build", input, opts);
 var runLint = (input, opts) => runConfiguredCommand("lint", input, opts);
 var runIntegration = (input, opts) => runConfiguredCommand("integration", input, opts);
+var runInstallOutputSchema = external_exports.object({
+  status: external_exports.enum(["installed", "not-configured", "failed", "error"]).describe(
+    "Outcome discriminant. 'installed' = the install command exited 0; 'failed' = it exited non-zero; 'not-configured' = no `install` command is set (a clean, expected state \u2014 a project that needs no install simply omits the key); 'error' = the command could not be run (invalid config, timeout, or spawn failure)."
+  ),
+  command: external_exports.array(external_exports.string()).optional().describe(
+    "The exact argv array that was executed, read verbatim from .orchestrate/commands.json. Present when status is 'installed' or 'failed'. The caller never supplies this \u2014 it is fixed by config."
+  ),
+  exitCode: external_exports.number().optional().describe(
+    "Process exit code. 0 for 'installed', non-zero for 'failed'. Present when status is 'installed' or 'failed'."
+  ),
+  stdout: external_exports.string().optional().describe(
+    "Captured standard output, tail-truncated to 64,000 characters. Present when status is 'installed' or 'failed', and on a 'TIMEOUT' error (the output captured before the command was killed). See `truncated`."
+  ),
+  stderr: external_exports.string().optional().describe(
+    "Captured standard error, tail-truncated to 64,000 characters. Present when status is 'installed' or 'failed', and on a 'TIMEOUT' error. See `truncated`."
+  ),
+  truncated: external_exports.boolean().optional().describe(
+    "True when `stdout` or `stderr` was truncated to fit the size cap. Present whenever `stdout`/`stderr` are present."
+  ),
+  durationMs: external_exports.number().optional().describe(
+    "Wall-clock duration of the command in milliseconds. Present whenever the install command was actually executed \u2014 status 'installed' or 'failed', or a 'TIMEOUT' / 'EXEC_ERROR' error. Absent for config-level failures."
+  ),
+  reason: external_exports.string().optional().describe(
+    "Human-readable explanation of why no install ran. Present when status is 'not-configured'."
+  ),
+  errorCode: external_exports.enum(["CONFIG_INVALID", "EXEC_ERROR", "TIMEOUT"]).optional().describe(
+    "Machine-readable failure category. Present when status is 'error'. 'CONFIG_INVALID' = commands.json is malformed JSON or the wrong shape; 'EXEC_ERROR' = the install binary could not be spawned (e.g. a missing `pnpm` \u2014 there is no silent npm fallback); 'TIMEOUT' = the command exceeded the time limit and was killed."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status is 'error'."
+  )
+});
 async function runInstall(input, opts = {}) {
   const execCwd = input.repoPath ?? process.cwd();
   const configRoot = await resolveConfigRoot(execCwd);
@@ -23958,6 +23990,19 @@ var fs11 = __toESM(require("fs"));
 
 // src/tools/detect-project.ts
 var fs10 = __toESM(require("fs"));
+function detectJsPackageManager(filesPresent) {
+  const present = new Set(filesPresent);
+  if (present.has("pnpm-lock.yaml")) {
+    return "pnpm";
+  }
+  if (present.has("yarn.lock")) {
+    return "yarn";
+  }
+  if (present.has("package-lock.json")) {
+    return "npm";
+  }
+  return "pnpm";
+}
 var DETECTION_RULES = [
   { manifest: "package.json", type: "npm" },
   { manifest: "Cargo.toml", type: "cargo" },
@@ -23965,31 +24010,38 @@ var DETECTION_RULES = [
   { manifest: "Makefile", type: "make" }
 ];
 var COMMAND_MAPS = {
-  npm: {
-    tests: ["npm", "test"],
-    typecheck: ["npm", "run", "typecheck"],
-    build: ["npm", "run", "build"],
-    lint: ["npm", "run", "lint"]
-  },
   cargo: {
     tests: ["cargo", "test"],
     typecheck: ["cargo", "check"],
     build: ["cargo", "build"],
-    lint: ["cargo", "clippy"]
+    lint: ["cargo", "clippy"],
+    install: ["cargo", "fetch"]
   },
   python: {
     tests: ["pytest"],
     typecheck: ["mypy", "."],
     build: ["python", "-m", "build"],
-    lint: ["ruff", "check", "."]
+    lint: ["ruff", "check", "."],
+    install: ["pip", "install", "-e", "."]
   },
   make: {
     tests: ["make", "test"],
     typecheck: ["make", "typecheck"],
     build: ["make", "build"],
     lint: ["make", "lint"]
+    // make has no install verb (ledger #4) — a thin Make wrapper's install
+    // step is unspecified, so the key is intentionally absent.
   }
 };
+function buildJsCommandMap(pm) {
+  return {
+    tests: [pm, "test"],
+    typecheck: [pm, "run", "typecheck"],
+    build: [pm, "run", "build"],
+    lint: [pm, "run", "lint"],
+    install: [pm, "install"]
+  };
+}
 function detectProjectType(manifestsPresent) {
   const present = new Set(manifestsPresent);
   for (const rule of DETECTION_RULES) {
@@ -23999,9 +24051,12 @@ function detectProjectType(manifestsPresent) {
   }
   return "none";
 }
-function buildCommandMap(type) {
+function buildCommandMap(type, jsPackageManager) {
   if (type === "none") {
     return {};
+  }
+  if (type === "npm") {
+    return buildJsCommandMap(jsPackageManager ?? "pnpm");
   }
   return { ...COMMAND_MAPS[type] };
 }
@@ -24015,6 +24070,10 @@ function detectCommandMap(repoRoot) {
   const manifests = DETECTION_RULES.map((r) => r.manifest);
   const presentManifests = entries.filter((e) => manifests.includes(e));
   const projectType = detectProjectType(presentManifests);
+  if (projectType === "npm") {
+    const pm = detectJsPackageManager(entries);
+    return buildCommandMap(projectType, pm);
+  }
   return buildCommandMap(projectType);
 }
 
@@ -24127,9 +24186,6 @@ function buildCommandsConfig(repoRoot) {
   const projectType = detectProjectType(entries);
   const capabilities = detectCommandMap(repoRoot);
   const config2 = { ...capabilities };
-  if (projectType === "npm") {
-    config2.install = ["npm", "ci"];
-  }
   return { config: config2, projectType };
 }
 function writeIfAbsent(filePath, content) {
@@ -24655,6 +24711,37 @@ for (const tool of RUN_TOOLS) {
     handleRun(tool.run)
   );
 }
+function summarizeInstall(r) {
+  switch (r.status) {
+    case "installed":
+      return `install passed (exit 0, ${r.durationMs} ms).`;
+    case "failed":
+      return `install failed (exit ${r.exitCode}, ${r.durationMs} ms).`;
+    case "not-configured":
+      return `install is not configured: ${r.reason}`;
+    case "error":
+      return `install could not run [${r.errorCode}]: ${r.errorMessage}`;
+  }
+}
+var handleRunInstall = async (input) => {
+  const result = await runInstall(input);
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text: summarizeInstall(result) }]
+  };
+};
+registerTool(
+  "run_install",
+  {
+    title: "Run Install",
+    description: "Runs the project's `install` setup command \u2014 the mutating dependency-resolve step (e.g. `pnpm install` / `npm install`) \u2014 exactly as configured in .orchestrate/commands.json. It never accepts a command string from the caller: the argv is fixed by config. Orchestrator- and subagent-callable on ANY checkout: a subagent that edits a manifest (package.json/Cargo.toml/pyproject.toml) to add a new dependency calls this to fetch it BEFORE re-running run_build/run_tests, because a fresh worktree checks out only tracked files and so lacks the new dependency. Returns a discriminated status: 'installed' (exit 0), 'failed' (non-zero exit), 'not-configured' (no `install` command set \u2014 a clean, expected state, NOT a failure), or 'error' (invalid config, timeout, or spawn failure \u2014 a missing package manager surfaces here as EXEC_ERROR, never a silent PM switch). install is the mutating form, so it rewrites the lockfile; the caller must include the changed lockfile in the slice diff.",
+    inputSchema: runCommandInputSchema.shape,
+    outputSchema: runInstallOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRunInstall
+);
 var handlePlanWaves = async (input) => {
   const result = planWaves(input);
   let text;
@@ -25009,7 +25096,7 @@ registerTool(
   "bootstrap_config",
   {
     title: "Bootstrap Orchestrate Configuration",
-    description: "Sets up a repository's .orchestrate/ configuration for a first-ever orchestrate run. Detects the project type and writes a project-aware commands.json (with `install` for npm only, empty for an unrecognized project), writes routing.json from the shipped defaults, and writes handoff.json with a context-window size derived from the running model \u2014 pass the model id (or an explicit contextWindowTokens) as input; the MCP process cannot see the calling LLM's model. An unknown or absent model falls back to 200000. Creates .orchestrate/runs/ and idempotently adds it to the repository's .gitignore. Every step is idempotent: an existing config file is never overwritten and the .gitignore line is never duplicated. Returns a discriminated `status` of 'ok' or 'error'.",
+    description: "Sets up a repository's .orchestrate/ configuration for a first-ever orchestrate run. Detects the project type and writes a project-aware commands.json (with a PM-aware mutating `install` command for npm/cargo/python projects \u2014 keyed on the JS lockfile for the npm ecosystem \u2014 empty for an unrecognized project), writes routing.json from the shipped defaults, and writes handoff.json with a context-window size derived from the running model \u2014 pass the model id (or an explicit contextWindowTokens) as input; the MCP process cannot see the calling LLM's model. An unknown or absent model falls back to 200000. Creates .orchestrate/runs/ and idempotently adds it to the repository's .gitignore. Every step is idempotent: an existing config file is never overwritten and the .gitignore line is never duplicated. Returns a discriminated `status` of 'ok' or 'error'.",
     inputSchema: bootstrapConfigInputSchema.shape,
     outputSchema: bootstrapConfigOutputSchema.shape
   },

@@ -13,6 +13,7 @@ import {
   runConfiguredCommand,
   runCommandInputSchema,
   runCommandOutputSchema,
+  runInstallOutputSchema,
   commandsConfigSchema,
 } from "../src/tools/run-command.js";
 
@@ -475,6 +476,26 @@ describe("runInstall", () => {
     },
     10_000
   );
+
+  it("a runInstall result satisfies runInstallOutputSchema (schema↔result parity)", async () => {
+    // The schema is the single source of truth — InstallResult is its z.infer.
+    // Exercise representative discriminants and confirm each parses cleanly.
+    const installed = await runInstall({
+      repoPath: project({ install: ["node", "-e", "process.exit(0)"] }),
+    });
+    expect(runInstallOutputSchema.safeParse(installed).success).toBe(true);
+
+    const failed = await runInstall({
+      repoPath: project({ install: ["node", "-e", "process.exit(3)"] }),
+    });
+    expect(runInstallOutputSchema.safeParse(failed).success).toBe(true);
+
+    const notConfigured = await runInstall({ repoPath: project(null) });
+    expect(runInstallOutputSchema.safeParse(notConfigured).success).toBe(true);
+
+    const errored = await runInstall({ repoPath: project("{ not valid json") });
+    expect(runInstallOutputSchema.safeParse(errored).success).toBe(true);
+  });
 });
 
 // ─── #237: config resolved from the main repository root ──────────────────────
