@@ -21901,7 +21901,10 @@ var tierRoutingSchema = external_exports.object({
 var routingConfigSchema = external_exports.object({
   trivial: tierRoutingSchema,
   standard: tierRoutingSchema,
-  complex: tierRoutingSchema
+  complex: tierRoutingSchema,
+  intraWaveConcurrency: external_exports.enum(["parallel", "sequential"]).optional().default("parallel").describe(
+    "Run-wide policy: how to process the independent slices within one wave. 'parallel' (default) spawns all processable slices at once and integrates them sequentially. 'sequential' processes slices one at a time in issue-id ascending order, refreshing the umbrella base between each so slice N branches from base+slice1..N-1 \u2014 guaranteed conflict-free, at the cost of serializing the wave. Optional; the three tier blocks remain required."
+  )
 });
 var resolveRoutingInputSchema = external_exports.object({
   tier: external_exports.enum(COMPLEXITY_TIERS).describe(
@@ -23916,7 +23919,8 @@ var DEFAULT_ROUTING_CONFIG = {
     implementer: { model: "opus", effort: "deep" },
     reviewer: { model: "opus", effort: "deep" },
     "conflict-resolver": { model: "opus", effort: "deep" }
-  }
+  },
+  intraWaveConcurrency: "parallel"
 };
 var RUNS_GITIGNORE_LINE = ".orchestrate/runs/";
 var bootstrapConfigInputSchema = external_exports.object({

@@ -18,7 +18,10 @@ the per-run layout is the structural foundation for concurrent runs.
 
 The committed config files — `commands.json`, `routing.json`, and
 `handoff.json` — stay flat at the `.orchestrate/` top level; they are
-configuration, not run state, and are shared across runs. The run's
+configuration, not run state, and are shared across runs. `routing.json` carries
+both per-tier subagent routing **and** run-wide run policy (the optional
+`intraWaveConcurrency` knob — `"parallel" | "sequential"`, default `parallel`);
+the run-policy keys are optional, the three tier blocks remain required. The run's
 `run-state.json` lives at `.orchestrate/runs/<runId>/run-state.json`; it is run
 metadata, not source — the target project should gitignore
 `.orchestrate/runs/`.
@@ -26,7 +29,7 @@ metadata, not source — the target project should gitignore
 ```text
 .orchestrate/
 ├── commands.json                      # committed config (flat, shared)
-├── routing.json                       # committed config (flat, shared)
+├── routing.json                       # committed config (flat, shared) — per-tier routing + run-wide run policy
 ├── handoff.json                       # committed config (flat, shared)
 └── runs/
     ├── prd195-20260521-015143/         # a partitioned run (PRD #195's children)

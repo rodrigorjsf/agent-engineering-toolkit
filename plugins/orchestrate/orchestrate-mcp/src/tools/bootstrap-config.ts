@@ -78,6 +78,7 @@ const DEFAULT_ROUTING_CONFIG = {
     reviewer: { model: "opus", effort: "deep" },
     "conflict-resolver": { model: "opus", effort: "deep" },
   },
+  intraWaveConcurrency: "parallel",
 } as const;
 
 /** The `.gitignore` entry covering every run's ephemeral per-run directory. */
