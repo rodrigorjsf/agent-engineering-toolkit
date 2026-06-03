@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs12, exportName) {
+    function addFormats(ajv, list, fs13, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs12[f]);
+        ajv.addFormat(f, fs13[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -23407,7 +23407,55 @@ async function recoverChangedFiles(input) {
 
 // src/tools/clean-runs.ts
 var path7 = __toESM(require("path"));
+var fs8 = __toESM(require("fs"));
+
+// src/run-state-guard.ts
 var fs7 = __toESM(require("fs"));
+function readRunState(runStatePath) {
+  if (!fs7.existsSync(runStatePath)) {
+    return { ok: false, reason: "missing-run-state" };
+  }
+  let raw;
+  try {
+    raw = fs7.readFileSync(runStatePath, "utf8");
+  } catch {
+    return { ok: false, reason: "malformed-run-state" };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, reason: "malformed-run-state" };
+  }
+  if (parsed === null || typeof parsed !== "object") {
+    return { ok: false, reason: "malformed-run-state" };
+  }
+  const obj = parsed;
+  return {
+    ok: true,
+    state: {
+      status: obj.status,
+      umbrellaBranch: obj.umbrellaBranch,
+      slices: obj.slices,
+      finalPullRequest: obj.finalPullRequest
+    }
+  };
+}
+function checkCrossRunMutationAllowed(runStatePath) {
+  const stateResult = readRunState(runStatePath);
+  if (!stateResult.ok) {
+    return { ok: false, reason: stateResult.reason };
+  }
+  if (stateResult.state.status !== "completed") {
+    return { ok: false, reason: "run-not-completed" };
+  }
+  if (stateResult.state.finalPullRequest == null) {
+    return { ok: false, reason: "final-pr-missing" };
+  }
+  return { ok: true, state: stateResult.state };
+}
+
+// src/tools/clean-runs.ts
 var runVerdictSchema = external_exports.enum([
   "merged",
   "open",
@@ -23436,6 +23484,7 @@ var runReasonSchema = external_exports.enum([
   "verdict-unknown",
   "no-verdict-from-orchestrator",
   "run-not-completed",
+  "final-pr-missing",
   "malformed-run-state",
   "missing-run-state",
   "invalid-run-id"
@@ -23559,35 +23608,6 @@ async function deleteBranch(branch, repoPath, report) {
     report.removedBranches.push(branch);
   }
 }
-function readRunState(runStatePath) {
-  if (!fs7.existsSync(runStatePath)) {
-    return { ok: false, reason: "missing-run-state" };
-  }
-  let raw;
-  try {
-    raw = fs7.readFileSync(runStatePath, "utf8");
-  } catch {
-    return { ok: false, reason: "malformed-run-state" };
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return { ok: false, reason: "malformed-run-state" };
-  }
-  if (parsed === null || typeof parsed !== "object") {
-    return { ok: false, reason: "malformed-run-state" };
-  }
-  const obj = parsed;
-  return {
-    ok: true,
-    state: {
-      status: obj.status,
-      umbrellaBranch: obj.umbrellaBranch,
-      slices: obj.slices
-    }
-  };
-}
 function skippedReport(runId, reason) {
   return {
     runId,
@@ -23657,7 +23677,7 @@ async function cleanMergedRun(runId, runDir, state, repoPath, force) {
     report.runDirRemoved = false;
   } else {
     try {
-      fs7.rmSync(runDir, { recursive: true, force: true });
+      fs8.rmSync(runDir, { recursive: true, force: true });
       report.runDirRemoved = true;
     } catch {
       report.runDirRemoved = false;
@@ -23680,12 +23700,12 @@ async function cleanRuns(input) {
     };
   }
   const runsRoot = path7.join(repoPath, ".orchestrate", "runs");
-  if (!fs7.existsSync(runsRoot)) {
+  if (!fs8.existsSync(runsRoot)) {
     return { status: "ok", runs: [] };
   }
   let entries;
   try {
-    entries = fs7.readdirSync(runsRoot, { withFileTypes: true });
+    entries = fs8.readdirSync(runsRoot, { withFileTypes: true });
   } catch (err) {
     return {
       status: "error",
@@ -23723,24 +23743,14 @@ async function cleanRuns(input) {
       runs.push(skippedReport(runId, "verdict-unknown"));
       continue;
     }
-    const stateResult = readRunState(runStatePath);
-    if (!stateResult.ok) {
-      runs.push(skippedReport(runId, stateResult.reason));
-      continue;
-    }
-    if (stateResult.state.status !== "completed") {
-      runs.push(skippedReport(runId, "run-not-completed"));
+    const gate = checkCrossRunMutationAllowed(runStatePath);
+    if (!gate.ok) {
+      runs.push(skippedReport(runId, gate.reason));
       continue;
     }
     try {
       runs.push(
-        await cleanMergedRun(
-          runId,
-          runDir,
-          stateResult.state,
-          repoPath,
-          force
-        )
+        await cleanMergedRun(runId, runDir, gate.state, repoPath, force)
       );
     } catch (err) {
       runs.push(skippedReport(runId, "malformed-run-state"));
@@ -23751,7 +23761,7 @@ async function cleanRuns(input) {
 }
 
 // src/tools/verify-changeset.ts
-var fs8 = __toESM(require("fs"));
+var fs9 = __toESM(require("fs"));
 var verifyChangesetInputSchema = external_exports.object({
   worktreePath: external_exports.string().describe(
     "Absolute path to the slice worktree to inspect. The verification treats this worktree as the source of truth for what was actually changed."
@@ -23799,7 +23809,7 @@ async function verifyChangeset(input) {
       errorMessage: guardErr
     };
   }
-  if (!fs8.existsSync(worktreePath)) {
+  if (!fs9.existsSync(worktreePath)) {
     return {
       status: "error",
       errorCode: "PATH_NOT_FOUND",
@@ -23857,10 +23867,10 @@ function classifyMatch(declaredCount, actualCount, absentCount, undeclaredCount)
 
 // src/tools/bootstrap-config.ts
 var path8 = __toESM(require("path"));
-var fs10 = __toESM(require("fs"));
+var fs11 = __toESM(require("fs"));
 
 // src/tools/detect-project.ts
-var fs9 = __toESM(require("fs"));
+var fs10 = __toESM(require("fs"));
 var DETECTION_RULES = [
   { manifest: "package.json", type: "npm" },
   { manifest: "Cargo.toml", type: "cargo" },
@@ -23911,7 +23921,7 @@ function buildCommandMap(type) {
 function detectCommandMap(repoRoot) {
   let entries;
   try {
-    entries = fs9.readdirSync(repoRoot);
+    entries = fs10.readdirSync(repoRoot);
   } catch {
     return {};
   }
@@ -24023,7 +24033,7 @@ function resolveContextWindow(input) {
 function buildCommandsConfig(repoRoot) {
   let entries;
   try {
-    entries = fs10.readdirSync(repoRoot);
+    entries = fs11.readdirSync(repoRoot);
   } catch {
     entries = [];
   }
@@ -24036,11 +24046,11 @@ function buildCommandsConfig(repoRoot) {
   return { config: config2, projectType };
 }
 function writeIfAbsent(filePath, content) {
-  if (fs10.existsSync(filePath)) {
+  if (fs11.existsSync(filePath)) {
     return { kind: "already-present" };
   }
   try {
-    fs10.writeFileSync(filePath, content);
+    fs11.writeFileSync(filePath, content);
     return { kind: "written" };
   } catch (err) {
     return {
@@ -24053,13 +24063,13 @@ function ensureGitignoreEntry(repoRoot) {
   const gitignorePath = path8.join(repoRoot, ".gitignore");
   let existing;
   try {
-    existing = fs10.readFileSync(gitignorePath, "utf8");
+    existing = fs11.readFileSync(gitignorePath, "utf8");
   } catch {
     existing = null;
   }
   if (existing === null) {
     try {
-      fs10.writeFileSync(gitignorePath, `${RUNS_GITIGNORE_LINE}
+      fs11.writeFileSync(gitignorePath, `${RUNS_GITIGNORE_LINE}
 `);
       return { kind: "created-with-line" };
     } catch (err) {
@@ -24075,7 +24085,7 @@ function ensureGitignoreEntry(repoRoot) {
   }
   const separator = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
   try {
-    fs10.appendFileSync(
+    fs11.appendFileSync(
       gitignorePath,
       `${separator}${RUNS_GITIGNORE_LINE}
 `
@@ -24092,9 +24102,9 @@ function bootstrapConfig(input) {
   const repoRoot = input.repoPath ?? process.cwd();
   const orchestrateDir = path8.join(repoRoot, ".orchestrate");
   const runsDir = path8.join(orchestrateDir, "runs");
-  const runsDirExisted = fs10.existsSync(runsDir);
+  const runsDirExisted = fs11.existsSync(runsDir);
   try {
-    fs10.mkdirSync(runsDir, { recursive: true });
+    fs11.mkdirSync(runsDir, { recursive: true });
   } catch (err) {
     return {
       status: "error",
@@ -24381,7 +24391,7 @@ async function pushAndVerify(input, opts) {
 }
 
 // src/tools/validate-run-state.ts
-var fs11 = __toESM(require("fs"));
+var fs12 = __toESM(require("fs"));
 var validateRunStateInputSchema = external_exports.object({
   runId: external_exports.string().describe(
     "The orchestration run's id (its YYYYMMDD-HHMMSS timestamp, optionally prefixed `prd<N>-` or `backlog-`). It selects the per-run directory .orchestrate/runs/<runId>/, which holds that run's run-state.json. Required \u2014 every validate call happens after the run has a runId."
@@ -24415,7 +24425,7 @@ async function validateRunState(input) {
   }
   let raw;
   try {
-    raw = fs11.readFileSync(resolved.paths.runStatePath, "utf8");
+    raw = fs12.readFileSync(resolved.paths.runStatePath, "utf8");
   } catch {
     return {
       status: "invalid",
@@ -24852,7 +24862,7 @@ registerTool(
   "clean_runs",
   {
     title: "Clean Up Concluded Runs",
-    description: "Sweeps `.orchestrate/runs/` and removes the on-disk and git footprint of every run whose final integration pull request has merged \u2014 its worktrees, its umbrella and slice branches (local and remote), and its run directory. The merged/open/closed-unmerged verdict is GitHub state and is NOT read by this tool: the orchestrator resolves each run's verdict with `gh pr view` and passes a per-run `verdicts` map; this tool is purely git + filesystem. A run absent from the map, or one whose run-state is not `completed`, is left strictly intact. Failed-slice worktrees are preserved (and the run directory kept) unless `force` is set. Every removal is best-effort and idempotent \u2014 an already-absent resource is success, not error. Never throws.",
+    description: "Sweeps `.orchestrate/runs/` and removes the on-disk and git footprint of every run whose final integration pull request has merged \u2014 its worktrees, its umbrella and slice branches (local and remote), and its run directory. The merged/open/closed-unmerged verdict is GitHub state and is NOT read by this tool: the orchestrator resolves each run's verdict with `gh pr view` and passes a per-run `verdicts` map; this tool is purely git + filesystem. A run absent from the map, one whose run-state is not `completed`, or whose `finalPullRequest` is null, is left strictly intact. Failed-slice worktrees are preserved (and the run directory kept) unless `force` is set. Every removal is best-effort and idempotent \u2014 an already-absent resource is success, not error. Never throws.",
     inputSchema: cleanRunsInputSchema.shape,
     outputSchema: cleanRunsOutputSchema.shape
   },

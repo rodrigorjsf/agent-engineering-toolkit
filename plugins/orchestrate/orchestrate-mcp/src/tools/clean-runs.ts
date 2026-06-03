@@ -3,6 +3,10 @@ import * as fs from "fs";
 import { z } from "zod";
 import { gitExecFile, optionInjectionError, cleanGitError } from "../git.js";
 import { isValidRunId } from "../run-dir.js";
+import {
+  checkCrossRunMutationAllowed,
+  type ParsedRunState,
+} from "../run-state-guard.js";
 import { removeWorktree } from "./worktree.js";
 
 // ─── clean_runs — run cleanup sweep ───────────────────────────────────────────
@@ -20,8 +24,13 @@ import { removeWorktree } from "./worktree.js";
 // the current run, or another concurrently-in-progress run).
 //
 // Defense-in-depth: even when the verdict map says `merged`, this tool re-reads
-// the run's `run-state.json` and refuses to act unless `status` is `completed`.
-// An `in-progress` run is never cleaned, whatever the verdict says.
+// the run's `run-state.json` and refuses to act unless `status` is `completed`
+// AND `finalPullRequest` is non-null. That re-check is the shared cross-run
+// mutation gate `checkCrossRunMutationAllowed` (in `../run-state-guard.js`, the
+// single chokepoint mandated by ADR-0012) — a tool-deterministic gate
+// independent of the orchestrator's verdict map. An `in-progress` run, or a
+// `completed` run with a null `finalPullRequest`, is never cleaned, whatever
+// the verdict says.
 //
 // Every removal is best-effort and independently reported: an already-absent
 // resource is success, not error, so the sweep is idempotent and one run's
@@ -83,6 +92,7 @@ export const runReasonSchema = z.enum([
   "verdict-unknown",
   "no-verdict-from-orchestrator",
   "run-not-completed",
+  "final-pr-missing",
   "malformed-run-state",
   "missing-run-state",
   "invalid-run-id",
@@ -177,12 +187,9 @@ export type BranchError = z.infer<typeof branchErrorSchema>;
 
 // ─── Internal types ───────────────────────────────────────────────────────────
 
-/** The subset of run-state fields the cleanup gate and removal steps read. */
-interface ParsedRunState {
-  status: unknown;
-  umbrellaBranch: unknown;
-  slices: unknown;
-}
+// `ParsedRunState` is imported from `../run-state-guard.js` — `cleanMergedRun`
+// still reads its `umbrellaBranch`/`slices` fields. The cleanup-eligibility gate
+// (status + finalPullRequest) lives entirely in that shared guard module.
 
 /** One slice's cleanup-relevant fields. */
 interface SliceInfo {
@@ -319,44 +326,6 @@ async function deleteBranch(
   if (!local && !remote) {
     report.removedBranches.push(branch);
   }
-}
-
-/**
- * Reads and JSON-parses a run's `run-state.json`. Returns a discriminated
- * result so the caller can map the failure modes to keyed reasons.
- */
-function readRunState(
-  runStatePath: string
-):
-  | { ok: true; state: ParsedRunState }
-  | { ok: false; reason: "missing-run-state" | "malformed-run-state" } {
-  if (!fs.existsSync(runStatePath)) {
-    return { ok: false, reason: "missing-run-state" };
-  }
-  let raw: string;
-  try {
-    raw = fs.readFileSync(runStatePath, "utf8");
-  } catch {
-    return { ok: false, reason: "malformed-run-state" };
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return { ok: false, reason: "malformed-run-state" };
-  }
-  if (parsed === null || typeof parsed !== "object") {
-    return { ok: false, reason: "malformed-run-state" };
-  }
-  const obj = parsed as Record<string, unknown>;
-  return {
-    ok: true,
-    state: {
-      status: obj.status,
-      umbrellaBranch: obj.umbrellaBranch,
-      slices: obj.slices,
-    },
-  };
 }
 
 /** Builds a `skipped` run report with no resources touched. */
@@ -570,18 +539,15 @@ export async function cleanRuns(
       continue;
     }
 
-    // verdict === "merged" — re-read run-state and gate on it.
-    const stateResult = readRunState(runStatePath);
-    if (!stateResult.ok) {
-      runs.push(skippedReport(runId, stateResult.reason));
-      continue;
-    }
-
-    // Defense-in-depth: never clean a run that is not `completed`, even when
-    // the orchestrator's verdict says `merged`. An `in-progress` run is still
-    // active — removing it would destroy a live run's worktrees and branches.
-    if (stateResult.state.status !== "completed") {
-      runs.push(skippedReport(runId, "run-not-completed"));
+    // verdict === "merged" — pass through the shared cross-run mutation gate.
+    // Defense-in-depth, independent of the verdict map: the gate re-reads
+    // run-state and refuses unless `status === "completed"` AND
+    // `finalPullRequest != null`. An `in-progress` run (run-not-completed) or a
+    // `completed` run with a null finalPR (final-pr-missing) is left strictly
+    // intact — removing it would destroy a live or unconcluded run's footprint.
+    const gate = checkCrossRunMutationAllowed(runStatePath);
+    if (!gate.ok) {
+      runs.push(skippedReport(runId, gate.reason));
       continue;
     }
 
@@ -589,13 +555,7 @@ export async function cleanRuns(
     // this run's report; the sweep continues with the next run.
     try {
       runs.push(
-        await cleanMergedRun(
-          runId,
-          runDir,
-          stateResult.state,
-          repoPath,
-          force
-        )
+        await cleanMergedRun(runId, runDir, gate.state, repoPath, force)
       );
     } catch (err) {
       // cleanMergedRun is best-effort and should not throw, but if some

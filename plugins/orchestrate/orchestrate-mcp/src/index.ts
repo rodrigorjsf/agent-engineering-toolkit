@@ -822,8 +822,9 @@ registerTool(
       "run directory. The merged/open/closed-unmerged verdict is GitHub state " +
       "and is NOT read by this tool: the orchestrator resolves each run's " +
       "verdict with `gh pr view` and passes a per-run `verdicts` map; this " +
-      "tool is purely git + filesystem. A run absent from the map, or one " +
-      "whose run-state is not `completed`, is left strictly intact. Failed-" +
+      "tool is purely git + filesystem. A run absent from the map, one " +
+      "whose run-state is not `completed`, or whose `finalPullRequest` is " +
+      "null, is left strictly intact. Failed-" +
       "slice worktrees are preserved (and the run directory kept) unless " +
       "`force` is set. Every removal is best-effort and idempotent — an " +
       "already-absent resource is success, not error. Never throws.",

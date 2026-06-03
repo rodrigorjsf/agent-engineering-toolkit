@@ -393,6 +393,129 @@ describe("clean_runs — in-progress defense", () => {
   });
 });
 
+// ─── defense-in-depth: completed run with a null finalPullRequest ─────────────
+
+describe("clean_runs — final-pr-missing gate", () => {
+  it("refuses to clean a completed run whose finalPullRequest is null, even with a merged verdict", async () => {
+    const runId = "20260522-155000";
+    const { umbrellaBranch, sliceBranch } = makeBranches(runId, "207", {
+      push: false,
+    });
+    const wtPath = makeWorktree(sliceBranch, "slice-207");
+    writeRunState(
+      repoPath,
+      runId,
+      buildRunState({
+        runId,
+        status: "completed",
+        umbrellaBranch,
+        finalPullRequest: null,
+        slices: { "207": { sliceBranch, worktreePath: wtPath, state: "passed" } },
+      })
+    );
+
+    const result = await cleanRuns({
+      repoPath,
+      verdicts: { [runId]: "merged" },
+    });
+
+    const run = result.runs.find((r) => r.runId === runId)!;
+    expect(run.action).toBe("skipped");
+    expect(run.reason).toBe("final-pr-missing");
+
+    // Nothing removed — the run never concluded (its final PR was never opened).
+    expect(fs.existsSync(wtPath)).toBe(true);
+    expect(fs.existsSync(runDirPath(repoPath, runId))).toBe(true);
+    expect(localBranchExists(umbrellaBranch, repoPath)).toBe(true);
+  });
+});
+
+// ─── cross-run isolation: a live sibling run is never touched ──────────────────
+
+describe("clean_runs — cross-run isolation", () => {
+  it("cleans a merged run while leaving a concurrent in-progress sibling completely untouched", async () => {
+    // Structural isolation is guaranteed by construction: `run-dir.ts`
+    // `isValidRunId`/`resolveRunDir` are pure functions of `(repoPath, runId)`,
+    // so two distinct valid run ids always resolve to disjoint
+    // `.orchestrate/runs/<runId>/` paths and disjoint runId-embedding branch
+    // names — no tool can write outside its own run's footprint. This test pins
+    // that empirically: even when BOTH runs carry a `merged` verdict, the
+    // status gate (`checkCrossRunMutationAllowed`) protects the in-progress
+    // sibling while the concluded run is cleaned.
+    withRemote();
+
+    // Run B — completed, non-null finalPR, merged verdict → cleaned.
+    const runB = "20260522-240000";
+    const { umbrellaBranch: umbrellaB, sliceBranch: sliceBranchB } =
+      makeBranches(runB, "801", { push: true });
+    const wtB = makeWorktree(sliceBranchB, "slice-801");
+    writeRunState(
+      repoPath,
+      runB,
+      buildRunState({
+        runId: runB,
+        status: "completed",
+        umbrellaBranch: umbrellaB,
+        finalPullRequest: "https://github.com/o/r/pull/20",
+        slices: {
+          "801": { sliceBranch: sliceBranchB, worktreePath: wtB, state: "passed" },
+        },
+      })
+    );
+
+    // Run A — in-progress, still live in another session. Distinct runId and
+    // slice issue so Run B's branch deletion can never coincidentally match.
+    // Its branches are pushed so the remote half is exercised too.
+    const runA = "20260522-250000";
+    const { umbrellaBranch: umbrellaA, sliceBranch: sliceBranchA } =
+      makeBranches(runA, "802", { push: true });
+    const wtA = makeWorktree(sliceBranchA, "slice-802");
+    writeRunState(
+      repoPath,
+      runA,
+      buildRunState({
+        runId: runA,
+        status: "in-progress",
+        umbrellaBranch: umbrellaA,
+        finalPullRequest: null,
+        slices: {
+          "802": { sliceBranch: sliceBranchA, worktreePath: wtA, state: "passed" },
+        },
+      })
+    );
+
+    // Both runs carry a `merged` verdict — the status gate is the only thing
+    // standing between Run A and deletion.
+    const result = await cleanRuns({
+      repoPath,
+      verdicts: { [runB]: "merged", [runA]: "merged" },
+    });
+
+    expect(result.status).toBe("ok");
+
+    // Run B is removed — worktree, branches (local + remote), and run dir gone.
+    const reportB = result.runs.find((r) => r.runId === runB)!;
+    expect(reportB.action).toBe("removed");
+    expect(reportB.runDirRemoved).toBe(true);
+    expect(fs.existsSync(wtB)).toBe(false);
+    expect(fs.existsSync(runDirPath(repoPath, runB))).toBe(false);
+    expect(localBranchExists(umbrellaB, repoPath)).toBe(false);
+    expect(remoteBranchExists(umbrellaB, repoPath)).toBe(false);
+
+    // Run A — the in-progress sibling — is COMPLETELY untouched.
+    const reportA = result.runs.find((r) => r.runId === runA)!;
+    expect(reportA.action).toBe("skipped");
+    expect(reportA.reason).toBe("run-not-completed");
+    // Its run dir, worktree, and branches (local AND remote) all still present.
+    expect(fs.existsSync(runDirPath(repoPath, runA))).toBe(true);
+    expect(fs.existsSync(wtA)).toBe(true);
+    expect(localBranchExists(umbrellaA, repoPath)).toBe(true);
+    expect(localBranchExists(sliceBranchA, repoPath)).toBe(true);
+    expect(remoteBranchExists(umbrellaA, repoPath)).toBe(true);
+    expect(remoteBranchExists(sliceBranchA, repoPath)).toBe(true);
+  });
+});
+
 // ─── failed-slice worktree preservation ───────────────────────────────────────
 
 describe("clean_runs — failed-slice worktree preservation", () => {
