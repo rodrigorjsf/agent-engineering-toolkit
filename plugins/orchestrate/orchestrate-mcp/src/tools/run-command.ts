@@ -56,10 +56,15 @@ export const runCommandInputSchema = z.object({
     .string()
     .optional()
     .describe(
-      "Path to the project root that holds the .orchestrate/commands.json " +
-        "configuration file. Defaults to the MCP server process's current " +
-        "working directory — callers should pass this explicitly rather than " +
-        "rely on the default, which is not guaranteed to be the project root."
+      "The execution directory — the slice worktree (or project root) the " +
+        "command runs in (cwd). The .orchestrate/commands.json config is NOT " +
+        "read from here: it is resolved from the MAIN repository root derived " +
+        "from this path (via `git rev-parse --git-common-dir`), so a fresh " +
+        "worktree — which checks out only tracked files and so lacks " +
+        ".orchestrate/ — still finds config. Defaults to the MCP server " +
+        "process's current working directory — callers should pass this " +
+        "explicitly rather than rely on the default, which is not guaranteed " +
+        "to be the project root."
     ),
 });
 
@@ -276,6 +281,27 @@ async function execCommand(
 }
 
 /**
+ * Resolves the main repository root for config lookup. In a linked worktree
+ * `git rev-parse --git-common-dir` points at the shared `.git` dir under the
+ * MAIN working tree; its parent IS that main tree (uniform for worktree and
+ * non-worktree invocations). The command still executes in `execCwd` (the
+ * worktree) — only config resolution moves to the main root. Falls back to
+ * `execCwd` on any git failure so non-git/test callers behave as before.
+ */
+async function resolveConfigRoot(execCwd: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["rev-parse", "--git-common-dir"],
+      { cwd: execCwd, encoding: "utf8" }
+    );
+    return path.dirname(path.resolve(execCwd, stdout.trim()));
+  } catch {
+    return execCwd;
+  }
+}
+
+/**
  * Outcome of loading and validating `.orchestrate/commands.json`. `runInstall`
  * and `runConfiguredCommand` share this loader so the file is read, parsed, and
  * shape-checked in exactly one place.
@@ -287,9 +313,11 @@ type LoadCommandsConfigResult =
 
 /**
  * Reads `<cwd>/.orchestrate/commands.json` and validates it against
- * {@link commandsConfigSchema}. A missing file is not an error — it means the
- * project has not configured orchestrate commands yet. Malformed JSON or a
- * wrong shape is a real misconfiguration. Never throws.
+ * {@link commandsConfigSchema}. The caller derives `cwd` — the config root —
+ * via {@link resolveConfigRoot} from the execution directory, so in a worktree
+ * this points at the main repository root, not the worktree. A missing file is
+ * not an error — it means the project has not configured orchestrate commands
+ * yet. Malformed JSON or a wrong shape is a real misconfiguration. Never throws.
  */
 function loadCommandsConfig(cwd: string): LoadCommandsConfigResult {
   const configPath = path.join(cwd, ".orchestrate", "commands.json");
@@ -337,20 +365,24 @@ function loadCommandsConfig(cwd: string): LoadCommandsConfigResult {
 /**
  * Runs the project's configured command for a single capability `verb`.
  *
- * Reads `<repoPath>/.orchestrate/commands.json`, looks up the argv array for
- * `verb`, and executes it with no shell. The caller supplies only `repoPath` —
- * never a command string. Every failure mode is a structured result; this
- * function does not throw.
+ * Reads `.orchestrate/commands.json` from the main repository root derived from
+ * `<repoPath>` (via {@link resolveConfigRoot}), looks up the argv array for
+ * `verb`, and executes it with no shell with `cwd = <repoPath>` (the slice
+ * worktree) — so a fresh worktree still finds config while the command runs
+ * against the worktree's code. The caller supplies only `repoPath` — never a
+ * command string. Every failure mode is a structured result; this function
+ * does not throw.
  */
 export async function runConfiguredCommand(
   verb: CapabilityVerb,
   input: RunCommandInput,
   opts: RunCommandOptions = {}
 ): Promise<RunCommandOutput> {
-  const cwd = input.repoPath ?? process.cwd();
+  const execCwd = input.repoPath ?? process.cwd();
+  const configRoot = await resolveConfigRoot(execCwd);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  const loaded = loadCommandsConfig(cwd);
+  const loaded = loadCommandsConfig(configRoot);
   if (loaded.kind === "not-configured") {
     return { status: "not-configured", capability: verb, reason: loaded.reason };
   }
@@ -373,7 +405,7 @@ export async function runConfiguredCommand(
     };
   }
 
-  const exec = await execCommand(argv, cwd, timeoutMs);
+  const exec = await execCommand(argv, execCwd, timeoutMs);
 
   if (exec.kind === "timeout") {
     // Surface the output captured before SIGKILL — a hung run is otherwise
@@ -465,19 +497,23 @@ export interface InstallResult {
  * Runs the project's configured `install` command — the dependency-install step
  * a freshly created worktree needs before any capability command can run.
  *
- * Reads `<repoPath>/.orchestrate/commands.json` and executes the `install` argv
- * with no shell. A missing file or absent `install` key is `not-configured`,
- * never an error. Every failure mode is a structured result; this function does
- * not throw.
+ * Reads `.orchestrate/commands.json` from the main repository root derived from
+ * `<repoPath>` (via {@link resolveConfigRoot}) and executes the `install` argv
+ * with no shell with `cwd = <repoPath>` — install MUST exec in the worktree
+ * because it materializes the `node_modules` the worktree needs to compile,
+ * while config is read from the main root. A missing file or absent `install`
+ * key is `not-configured`, never an error. Every failure mode is a structured
+ * result; this function does not throw.
  */
 export async function runInstall(
   input: RunCommandInput,
   opts: RunCommandOptions = {}
 ): Promise<InstallResult> {
-  const cwd = input.repoPath ?? process.cwd();
+  const execCwd = input.repoPath ?? process.cwd();
+  const configRoot = await resolveConfigRoot(execCwd);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  const loaded = loadCommandsConfig(cwd);
+  const loaded = loadCommandsConfig(configRoot);
   if (loaded.kind === "not-configured") {
     return { status: "not-configured", reason: loaded.reason };
   }
@@ -498,7 +534,7 @@ export async function runInstall(
     };
   }
 
-  const exec = await execCommand(argv, cwd, timeoutMs);
+  const exec = await execCommand(argv, execCwd, timeoutMs);
 
   if (exec.kind === "timeout") {
     const out = capOutput(exec.stdout);

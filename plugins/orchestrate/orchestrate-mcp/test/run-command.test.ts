@@ -2,12 +2,14 @@ import { describe, it, expect, afterEach } from "vitest";
 import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
+import { execFileSync } from "child_process";
 import {
   runTests,
   runTypecheck,
   runBuild,
   runLint,
   runInstall,
+  runConfiguredCommand,
   runCommandInputSchema,
 } from "../src/tools/run-command.js";
 
@@ -301,4 +303,125 @@ describe("runInstall", () => {
     },
     10_000
   );
+});
+
+// ─── #237: config resolved from the main repository root ──────────────────────
+// A fresh `git worktree` checks out only tracked files, so config that lives at
+// the main root (untracked or simply not in the worktree's HEAD tree) must still
+// resolve. These tests prove the read-cwd (main root) / exec-cwd (worktree) split.
+
+/** Runs a git subcommand in `cwd` with a fixed, non-interactive identity. */
+function git(cwd: string, ...args: string[]): string {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@t",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@t",
+    },
+  }).toString();
+}
+
+/**
+ * Builds a temp git repo with one committed file (so HEAD exists for
+ * `git worktree add`), writes `.orchestrate/commands.json` at the root but
+ * leaves it UNTRACKED, then adds a detached linked worktree. The untracked
+ * config is the load-bearing detail: a tracked config would be checked out into
+ * the worktree too, and `loadCommandsConfig(worktree)` would find it locally —
+ * making the keystone test pass WITHOUT the fix (vacuously green). Untracked, the
+ * worktree never sees it, so only the main-root resolution makes the test pass.
+ * Both the repo root and the worktree are registered for teardown.
+ */
+function makeWorktreeProject(commands: unknown): { root: string; worktree: string } {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-wt-root-"));
+  created.push(root);
+  git(root, "init", "-q");
+  fs.writeFileSync(path.join(root, "README.md"), "seed\n");
+  git(root, "add", "README.md");
+  git(root, "commit", "-q", "-m", "seed");
+
+  // Write config at the root and DELIBERATELY do not `git add` it — it stays
+  // untracked, so the linked worktree's HEAD checkout will not contain it.
+  fs.mkdirSync(path.join(root, ".orchestrate"));
+  fs.writeFileSync(
+    path.join(root, ".orchestrate", "commands.json"),
+    JSON.stringify(commands, null, 2)
+  );
+
+  const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-wt-tree-"));
+  fs.rmSync(worktree, { recursive: true, force: true }); // git worktree add wants a non-existent path
+  created.push(worktree);
+  git(root, "worktree", "add", "--detach", worktree, "HEAD");
+
+  return { root, worktree };
+}
+
+describe("#237 config resolution from the main repository root", () => {
+  // A verb argv that writes the process cwd into a sentinel file in cwd. The
+  // file's presence in the worktree (not the root) proves exec ran in the worktree.
+  const sentinelArgv = [
+    "node",
+    "-e",
+    "require('fs').writeFileSync('cwd.txt', process.cwd())",
+  ];
+
+  it("keystone: a linked worktree with config ONLY at the main root resolves config and execs in the worktree", async () => {
+    const { root, worktree } = makeWorktreeProject({ tests: sentinelArgv });
+
+    // Guard: the untracked config must NOT have leaked into the worktree —
+    // otherwise the test would pass via the worktree-local path, not the fix.
+    expect(fs.existsSync(path.join(worktree, ".orchestrate", "commands.json"))).toBe(
+      false
+    );
+
+    const r = await runConfiguredCommand("tests", { repoPath: worktree });
+
+    // (a) config was found via the main root — NOT not-configured.
+    expect(r.status).not.toBe("not-configured");
+    expect(r.status).toBe("passed");
+    // (b) the command executed in the worktree, not the main root.
+    expect(fs.existsSync(path.join(worktree, "cwd.txt"))).toBe(true);
+    expect(fs.existsSync(path.join(root, "cwd.txt"))).toBe(false);
+  });
+
+  it("install resolves config from the main root but execs in the worktree", async () => {
+    const { root, worktree } = makeWorktreeProject({ install: sentinelArgv });
+
+    const r = await runInstall({ repoPath: worktree });
+
+    expect(r.status).toBe("installed");
+    expect(fs.existsSync(path.join(worktree, "cwd.txt"))).toBe(true);
+    expect(fs.existsSync(path.join(root, "cwd.txt"))).toBe(false);
+  });
+
+  it("non-git fallback: a non-git repoPath still loads a local .orchestrate/commands.json", async () => {
+    // `project(...)` makes a plain temp dir (NOT a git repo) with config at root.
+    // resolveConfigRoot falls back to execCwd, so the existing path is unregressed.
+    const dir = project({ tests: ["node", "-e", "process.exit(0)"] });
+    const r = await runTests({ repoPath: dir });
+
+    expect(r.status).toBe("passed");
+  });
+
+  it("non-worktree-root invariant: a plain git repo root behaves byte-for-byte like pre-change", async () => {
+    // No linked worktree: repoPath IS the main root. --git-common-dir parent
+    // equals repoPath, so config-found behavior is identical to the old single-cwd path.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-plainrepo-"));
+    created.push(root);
+    git(root, "init", "-q");
+    fs.writeFileSync(path.join(root, "README.md"), "seed\n");
+    git(root, "add", "README.md");
+    git(root, "commit", "-q", "-m", "seed");
+    fs.mkdirSync(path.join(root, ".orchestrate"));
+    fs.writeFileSync(
+      path.join(root, ".orchestrate", "commands.json"),
+      JSON.stringify({ tests: ["node", "-e", "process.exit(0)"] }, null, 2)
+    );
+
+    const r = await runTests({ repoPath: root });
+    expect(r.status).toBe("passed");
+  });
 });

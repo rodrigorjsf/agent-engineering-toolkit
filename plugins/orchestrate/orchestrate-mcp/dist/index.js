@@ -2981,7 +2981,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve2.call(this, root, ref);
+      let _sch = resolve3.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3008,7 +3008,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve2(root, ref) {
+    function resolve3(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3639,7 +3639,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve2(baseURI, relativeURI, options) {
+    function resolve3(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -3897,7 +3897,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve2,
+      resolve: resolve3,
       resolveComponent,
       equal,
       serialize,
@@ -18980,7 +18980,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+        await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -18997,7 +18997,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -19075,7 +19075,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve2(parseResult.data);
+            resolve3(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -19336,12 +19336,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve2, interval);
+      const timeoutId = setTimeout(resolve3, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -20441,7 +20441,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+      await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -21090,12 +21090,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve2) => {
+    return new Promise((resolve3) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve2();
+        resolve3();
       } else {
-        this._stdout.once("drain", resolve2);
+        this._stdout.once("drain", resolve3);
       }
     });
   }
@@ -21204,7 +21204,7 @@ var commandsConfigSchema = external_exports.object({
 });
 var runCommandInputSchema = external_exports.object({
   repoPath: external_exports.string().optional().describe(
-    "Path to the project root that holds the .orchestrate/commands.json configuration file. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default, which is not guaranteed to be the project root."
+    "The execution directory \u2014 the slice worktree (or project root) the command runs in (cwd). The .orchestrate/commands.json config is NOT read from here: it is resolved from the MAIN repository root derived from this path (via `git rev-parse --git-common-dir`), so a fresh worktree \u2014 which checks out only tracked files and so lacks .orchestrate/ \u2014 still finds config. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default, which is not guaranteed to be the project root."
   )
 });
 var runCommandOutputSchema = external_exports.object({
@@ -21307,6 +21307,18 @@ async function execCommand(argv, cwd, timeoutMs) {
     };
   }
 }
+async function resolveConfigRoot(execCwd) {
+  try {
+    const { stdout } = await execFileAsync2(
+      "git",
+      ["rev-parse", "--git-common-dir"],
+      { cwd: execCwd, encoding: "utf8" }
+    );
+    return path.dirname(path.resolve(execCwd, stdout.trim()));
+  } catch {
+    return execCwd;
+  }
+}
 function loadCommandsConfig(cwd) {
   const configPath = path.join(cwd, ".orchestrate", "commands.json");
   let raw;
@@ -21340,9 +21352,10 @@ function loadCommandsConfig(cwd) {
   return { kind: "loaded", config: config2.data };
 }
 async function runConfiguredCommand(verb, input, opts = {}) {
-  const cwd = input.repoPath ?? process.cwd();
+  const execCwd = input.repoPath ?? process.cwd();
+  const configRoot = await resolveConfigRoot(execCwd);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const loaded = loadCommandsConfig(cwd);
+  const loaded = loadCommandsConfig(configRoot);
   if (loaded.kind === "not-configured") {
     return { status: "not-configured", capability: verb, reason: loaded.reason };
   }
@@ -21362,7 +21375,7 @@ async function runConfiguredCommand(verb, input, opts = {}) {
       reason: `No "${verb}" command is configured in .orchestrate/commands.json.`
     };
   }
-  const exec = await execCommand(argv, cwd, timeoutMs);
+  const exec = await execCommand(argv, execCwd, timeoutMs);
   if (exec.kind === "timeout") {
     const out2 = capOutput(exec.stdout);
     const errOut2 = capOutput(exec.stderr);
@@ -21404,9 +21417,10 @@ var runTypecheck = (input, opts) => runConfiguredCommand("typecheck", input, opt
 var runBuild = (input, opts) => runConfiguredCommand("build", input, opts);
 var runLint = (input, opts) => runConfiguredCommand("lint", input, opts);
 async function runInstall(input, opts = {}) {
-  const cwd = input.repoPath ?? process.cwd();
+  const execCwd = input.repoPath ?? process.cwd();
+  const configRoot = await resolveConfigRoot(execCwd);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const loaded = loadCommandsConfig(cwd);
+  const loaded = loadCommandsConfig(configRoot);
   if (loaded.kind === "not-configured") {
     return { status: "not-configured", reason: loaded.reason };
   }
@@ -21424,7 +21438,7 @@ async function runInstall(input, opts = {}) {
       reason: `No "install" command is configured in .orchestrate/commands.json.`
     };
   }
-  const exec = await execCommand(argv, cwd, timeoutMs);
+  const exec = await execCommand(argv, execCwd, timeoutMs);
   if (exec.kind === "timeout") {
     const out2 = capOutput(exec.stdout);
     const errOut2 = capOutput(exec.stderr);
@@ -22769,7 +22783,7 @@ function buildLaunchArgv(entry, subs) {
 }
 var SPAWN_GRACE_MS = 300;
 function trySpawn(argv) {
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     let child;
     try {
       child = (0, import_child_process3.spawn)(argv[0], argv.slice(1), {
@@ -22777,7 +22791,7 @@ function trySpawn(argv) {
         stdio: "ignore"
       });
     } catch (err) {
-      resolve2({
+      resolve3({
         ok: false,
         error: firstLine5(err instanceof Error ? err.message : String(err))
       });
@@ -22787,13 +22801,13 @@ function trySpawn(argv) {
     child.once("error", (err) => {
       if (settled) return;
       settled = true;
-      resolve2({ ok: false, error: firstLine5(err.message) });
+      resolve3({ ok: false, error: firstLine5(err.message) });
     });
     setTimeout(() => {
       if (settled) return;
       settled = true;
       child.unref();
-      resolve2({ ok: true });
+      resolve3({ ok: true });
     }, SPAWN_GRACE_MS);
   });
 }
