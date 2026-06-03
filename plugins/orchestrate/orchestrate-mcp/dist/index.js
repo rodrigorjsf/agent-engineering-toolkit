@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs11, exportName) {
+    function addFormats(ajv, list, fs12, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs11[f]);
+        ajv.addFormat(f, fs12[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -21176,14 +21176,14 @@ function optionInjectionError(field, value) {
 }
 function cleanGitError(err) {
   if (err instanceof GitExecError && err.stderr.trim().length > 0) {
-    const firstLine9 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-    if (firstLine9) {
-      return firstLine9;
+    const firstLine10 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+    if (firstLine10) {
+      return firstLine10;
     }
   }
   const message = err instanceof Error ? err.message : String(err);
-  const firstLine8 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-  return firstLine8 ?? "Unknown git error";
+  const firstLine9 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return firstLine9 ?? "Unknown git error";
 }
 
 // src/tools/run-command.ts
@@ -24380,10 +24380,77 @@ async function pushAndVerify(input, opts) {
   };
 }
 
+// src/tools/validate-run-state.ts
+var fs11 = __toESM(require("fs"));
+var validateRunStateInputSchema = external_exports.object({
+  runId: external_exports.string().describe(
+    "The orchestration run's id (its YYYYMMDD-HHMMSS timestamp, optionally prefixed `prd<N>-` or `backlog-`). It selects the per-run directory .orchestrate/runs/<runId>/, which holds that run's run-state.json. Required \u2014 every validate call happens after the run has a runId."
+  ),
+  repoPath: external_exports.string().optional().describe(
+    "Path to the project root that holds the .orchestrate/ directory. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default."
+  )
+});
+var validateRunStateOutputSchema = external_exports.object({
+  status: external_exports.enum(["valid", "invalid"]).describe(
+    "Outcome discriminant. 'valid' = run-state.json exists, is valid JSON, and matches the canonical run-state schema; 'invalid' = it could not be resolved, read, parsed, or it failed schema validation."
+  ),
+  errorCode: external_exports.enum(["RUN_ID_INVALID", "RUN_STATE_NOT_FOUND", "RUN_STATE_INVALID"]).optional().describe(
+    "Machine-readable failure category. Present when status='invalid'. 'RUN_ID_INVALID' = the runId is malformed and cannot resolve a run directory; 'RUN_STATE_NOT_FOUND' = no run-state.json under .orchestrate/runs/<runId>/; 'RUN_STATE_INVALID' = malformed JSON or a schema mismatch (e.g. `slices` shaped as an array instead of a map)."
+  ),
+  errorMessage: external_exports.string().optional().describe("Human-readable failure description. Present when status='invalid'.")
+});
+function firstLine8(message) {
+  const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return line ?? message.trim();
+}
+async function validateRunState(input) {
+  const repoPath = input.repoPath ?? process.cwd();
+  const resolved = resolveRunDir(repoPath, input.runId);
+  if (!resolved.ok) {
+    return {
+      status: "invalid",
+      errorCode: "RUN_ID_INVALID",
+      errorMessage: resolved.errorMessage
+    };
+  }
+  let raw;
+  try {
+    raw = fs11.readFileSync(resolved.paths.runStatePath, "utf8");
+  } catch {
+    return {
+      status: "invalid",
+      errorCode: "RUN_STATE_NOT_FOUND",
+      errorMessage: `No run-state.json found at ${resolved.paths.runStatePath}.`
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      status: "invalid",
+      errorCode: "RUN_STATE_INVALID",
+      errorMessage: `run-state.json is not valid JSON: ${firstLine8(
+        err instanceof Error ? err.message : String(err)
+      )}`
+    };
+  }
+  const result = runStateSchema.safeParse(parsed);
+  if (!result.success) {
+    const detail = result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+    return {
+      status: "invalid",
+      errorCode: "RUN_STATE_INVALID",
+      errorMessage: `run-state.json does not match the expected shape: ${detail}`
+    };
+  }
+  return { status: "valid" };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
-  version: "0.12.0"
+  version: "0.13.0"
 });
 var registerTool = server.registerTool.bind(server);
 var handleCreateWorktree = async (input) => {
@@ -24841,6 +24908,31 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handlePushAndVerify
+);
+var handleValidateRunState = async (input) => {
+  const result = await validateRunState(input);
+  let text;
+  if (result.status === "valid") {
+    text = `Valid run-state for \`${input.runId}\`.`;
+  } else {
+    text = `Invalid run-state [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "validate_run_state",
+  {
+    title: "Validate Run-State Checkpoint",
+    description: "Validates `.orchestrate/runs/<runId>/run-state.json` against the canonical run-state schema \u2014 the same schema the render tools validate against. It is the orchestrator's fast-fail guard: call it right after writing the first run-state checkpoint and on every resume read, so a mis-shaped checkpoint fails in seconds rather than after expensive subagent work. It specifically catches a `slices` value shaped as an ARRAY instead of a MAP keyed by issue-id string \u2014 the latent trap of passing the `partition_backlog` array straight through into run-state. Reads only; writes nothing. Returns a discriminated `status` of 'valid' or 'invalid' (with `RUN_ID_INVALID`, `RUN_STATE_NOT_FOUND`, or `RUN_STATE_INVALID`).",
+    inputSchema: validateRunStateInputSchema.shape,
+    outputSchema: validateRunStateOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleValidateRunState
 );
 async function main() {
   const transport = new StdioServerTransport();

@@ -92,14 +92,15 @@ metadata, not source — the target project should gitignore
   the `runId` (`orchestrate/umbrella-<runId>`), so two runs never collide on it.
 - `integrationBase` — the branch the umbrella was cut from (always `development`).
 - `parentIssue` — the parent PRD issue number the run reports progress to, or
-  `null` if the backlog issues name no parent. For a partitioned run it is the
-  invoked `<PRD#>`, hard-set by the skill, not re-detected from the slice set.
+  `null` if none. For a partitioned run it is the invoked `<PRD#>`, hard-set by
+  the skill, not re-detected from the slice set.
 - `startedAt` / `updatedAt` — ISO-8601 UTC timestamps.
-- `waves` — the `plan_waves` output: an ordered array of waves, each an array of
-  issue-id strings.
+- `waves` — the `plan_waves` output: an ordered array of waves of issue-id strings.
 - `completedWaves` — the count of waves fully processed; resume continues here.
 - `finalPullRequest` — the umbrella-to-`development` PR URL; `null` until done.
-- `slices` — a map keyed by issue-id string; one entry per backlog issue.
+- `slices` — a map keyed by issue-id string; one entry per backlog issue. The
+  `validate_run_state` MCP tool enforces this shape against the canonical schema
+  right after the first write and on resume — an array-shaped `slices` is rejected.
 
 ### Slice fields
 

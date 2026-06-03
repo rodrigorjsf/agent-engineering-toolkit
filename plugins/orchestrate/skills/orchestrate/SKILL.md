@@ -214,7 +214,11 @@ prefixes are the only match keys. Then act on the count of matches:
   session hand off immediately (section 2, step 4). Then load the whole
   `run-state.json`, preserving every top-level field — `runId`,
   `umbrellaBranch`, `parentIssue`, `waves`, `completedWaves`,
-  `finalPullRequest`, and `slices`. **Refresh the `driverSessionId` field** —
+  `finalPullRequest`, and `slices`. **Validate the loaded checkpoint before
+  acting on it** — call the `validate_run_state` MCP tool against it; on
+  `status: "invalid"` (e.g. a legacy array-shaped `slices`), **stop loudly**
+  rather than resume from a malformed checkpoint. **Refresh the
+  `driverSessionId` field** —
   this resuming session is a new Claude Code session with a *new* `session_id`,
   so overwrite `driverSessionId` with the current `$ORCHESTRATE_SESSION_ID`
   (or `null` if it is empty or unset — applying the same operator notice as the
@@ -401,6 +405,19 @@ prefixes are the only match keys. Then act on the count of matches:
      `waves`), `tier`, `blockedBy`, `state: "pending"`, `sliceBranch:
      "orchestrate/slice-<N>"`, `worktreePath: null`, `pullRequest: null`,
      `failureReason: null`, and `updatedAt`.
+
+   **`slices` is a MAP keyed by the issue-id string, not an array.**
+   `partition_backlog` returns `slices` as an **array**; do **not** write that
+   array straight into `run-state.json`. Transform it into a map by keying each
+   slice on its issue id, e.g. `"slices": { "25": { "issue": 25, … } }`. An
+   array-shaped `slices` fails the canonical run-state schema.
+
+   **Validate the checkpoint immediately.** Right after writing this first
+   `run-state.json`, call the `validate_run_state` MCP tool with the repository
+   root as `repoPath` and the run's `runId`. On `status: "invalid"`, **stop
+   loudly** and report the `errorMessage` before creating any worktree or
+   spawning any subagent — a mis-shaped checkpoint must fail here, in seconds,
+   not after expensive subagent work.
 
 ## 2. The wave loop
 
