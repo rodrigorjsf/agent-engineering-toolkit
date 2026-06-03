@@ -573,10 +573,15 @@ subagent's verbatim returned text and its `role`:
    gh pr view <pr-number> --json mergeable,mergeStateStatus
    ```
 
+   The gate is the `mergeable` field; `mergeStateStatus` is informational
+   context, not a separate gate.
+
    - `UNKNOWN` — GitHub is still computing; wait a moment and re-check, up to a
      few attempts. If it never resolves, the slice has **FAILED**.
-   - `MERGEABLE` — merge it, squashing to one commit per slice on the umbrella
-     branch: `gh pr merge <pr-number> --squash`.
+   - `MERGEABLE` — merge it even when `mergeStateStatus` is `UNSTABLE` (a
+     non-required check is failing or still running, but no required check
+     blocks the merge). Squash to one commit per slice on the umbrella branch:
+     `gh pr merge <pr-number> --squash`.
    - `CONFLICTING` — resolve the conflict once, per step 8a. Do not FAIL a
      slice on a conflict without attempting resolution.
 
