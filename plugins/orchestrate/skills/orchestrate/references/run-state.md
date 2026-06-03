@@ -7,23 +7,21 @@ reads it on startup to resume an interrupted run instead of restarting.
 ## The per-run directory
 
 Every run keeps its ephemeral state in a **per-run directory**,
-`.orchestrate/runs/<runId>/`. The `<runId>` is the run's identifier in one of
-two minted forms: `prd<N>-<timestamp>` for a **partitioned run** scoped to one
-parent PRD's children (`/orchestrate <PRD#>`), and `backlog-<timestamp>` for a
-**whole-backlog run** (`/orchestrate` with no argument). That directory holds
-the run's `run-state.json`, its `context-flag.json` (the context-handoff
-signal), and the rendered HTML artifacts (`dashboard.html`, `graph.html`,
-`report.html`). Two distinct runs never share a directory, so their ephemeral
-state never collides — the per-run layout is the structural foundation for
-concurrent runs.
+`.orchestrate/runs/<runId>/`. The `<runId>` is minted in one of two forms:
+`prd<N>-<timestamp>` for a **partitioned run** scoped to one parent PRD's
+children (`/orchestrate <PRD#>`), and `backlog-<timestamp>` for a **whole-backlog
+run** (`/orchestrate` with no argument). That directory holds the run's
+`run-state.json`, its `context-flag.json` (the context-handoff signal), and the
+rendered HTML artifacts (`dashboard.html`, `graph.html`, `report.html`). Two
+distinct runs never share a directory, so their ephemeral state never collides —
+the per-run layout is the structural foundation for concurrent runs.
 
 The committed config files — `commands.json`, `routing.json`, and
 `handoff.json` — stay flat at the `.orchestrate/` top level; they are
-configuration, not run state, and are shared across runs.
-
-The run's `run-state.json` therefore lives at
-`.orchestrate/runs/<runId>/run-state.json`. It is run metadata, not source —
-the target project should gitignore the `.orchestrate/runs/` directory.
+configuration, not run state, and are shared across runs. The run's
+`run-state.json` lives at `.orchestrate/runs/<runId>/run-state.json`; it is run
+metadata, not source — the target project should gitignore
+`.orchestrate/runs/`.
 
 ```text
 .orchestrate/
@@ -34,9 +32,7 @@ the target project should gitignore the `.orchestrate/runs/` directory.
     ├── prd195-20260521-015143/         # a partitioned run (PRD #195's children)
     │   ├── run-state.json              # the run checkpoint
     │   ├── context-flag.json           # the context-handoff signal (when raised)
-    │   ├── dashboard.html              # rendered artifact
-    │   ├── graph.html                  # rendered artifact
-    │   └── report.html                 # rendered artifact
+    │   └── dashboard.html, graph.html, report.html   # rendered artifacts
     └── backlog-20260521-022540/        # a concurrent whole-backlog run
         └── run-state.json
 ```
@@ -64,6 +60,7 @@ the target project should gitignore the `.orchestrate/runs/` directory.
       "tier": "standard",
       "blockedBy": ["155"],
       "state": "passed",
+      "subState": "merged",
       "sliceBranch": "orchestrate/slice-157",
       "worktreePath": "/abs/path/.orchestrate-worktrees/prd153-20260521-015143/slice-157",
       "pullRequest": "https://github.com/owner/repo/pull/200",
@@ -76,35 +73,29 @@ the target project should gitignore the `.orchestrate/runs/` directory.
 
 ### Top-level fields
 
-- `runId` — the run's identifier, also embedded in the umbrella branch name. It
-  is `prd<N>-<timestamp>` for a partitioned run (`/orchestrate <PRD#>`) and
-  `backlog-<timestamp>` for a whole-backlog run (`/orchestrate` with no
-  argument). The `prd<N>-` / `backlog-` prefix is the match key the startup
-  scan parses to decide whether a new invocation resumes this run.
+- `runId` — the run's identifier, also embedded in the umbrella branch name:
+  `prd<N>-<timestamp>` for a partitioned run, `backlog-<timestamp>` for a
+  whole-backlog run. The `prd<N>-` / `backlog-` prefix is the match key the
+  startup scan parses to decide whether a new invocation resumes this run.
 - `status` — `in-progress` while waves remain, `completed` when the run finishes.
 - `driverSessionId` — the Claude Code `session_id` of the session executing
   this run's orchestrator. Written on run start from `$ORCHESTRATE_SESSION_ID`
-  (set by the `SessionStart` hook) and **refreshed on resume** — a successor
-  session resumes under a new `session_id`, so the field is overwritten when
-  the run is picked up. It binds the global `context-watchdog` to the correct
-  run when several runs proceed concurrently. May be **absent** on a legacy
-  checkpoint or when the orchestrator could not read its own session identity;
-  the watchdog degrades to a safe no-op rather than crashing when it is missing.
+  (set by the `SessionStart` hook) and **refreshed on resume**, since a
+  successor session resumes under a new `session_id`. It binds the global
+  `context-watchdog` to the correct run when several runs proceed concurrently.
+  May be **absent** on a legacy checkpoint or when the session identity could
+  not be read; the watchdog degrades to a safe no-op rather than crashing.
 - `umbrellaBranch` — the branch all slice pull requests merge into. It carries
-  the `runId` (`orchestrate/umbrella-<runId>`), so two concurrent runs never
-  collide on a branch name.
+  the `runId` (`orchestrate/umbrella-<runId>`), so two runs never collide on it.
 - `integrationBase` — the branch the umbrella was cut from (always `development`).
 - `parentIssue` — the parent PRD issue number the run reports progress to, or
   `null` if the backlog issues name no parent. For a partitioned run it is the
-  invoked `<PRD#>`, hard-set by the skill rather than re-detected from the
-  already-filtered slice set.
+  invoked `<PRD#>`, hard-set by the skill, not re-detected from the slice set.
 - `startedAt` / `updatedAt` — ISO-8601 UTC timestamps.
 - `waves` — the `plan_waves` output: an ordered array of waves, each an array of
   issue-id strings.
-- `completedWaves` — the count of waves fully processed; resume continues from
-  this index.
-- `finalPullRequest` — the umbrella-to-`development` pull request URL, set when
-  the run completes; `null` until then.
+- `completedWaves` — the count of waves fully processed; resume continues here.
+- `finalPullRequest` — the umbrella-to-`development` PR URL; `null` until done.
 - `slices` — a map keyed by issue-id string; one entry per backlog issue.
 
 ### Slice fields
@@ -112,16 +103,22 @@ the target project should gitignore the `.orchestrate/runs/` directory.
 - `issue` — the GitHub issue number.
 - `title` — the issue title.
 - `wave` — the zero-based index of the wave this slice belongs to.
-- `tier` — the assessed complexity tier (`trivial`, `standard`, or `complex`),
-  which drives per-role subagent routing.
+- `tier` — complexity tier (`trivial`/`standard`/`complex`); drives routing.
 - `blockedBy` — issue-id strings this slice depends on (drives the graph view).
 - `state` — see *Slice states* below.
+- `subState` — fine-grained position **within** §3 processing of an
+  `in-progress` slice, one of
+  `implemented|verified|reviewed|pushed|pr-open|merged`, written at every §3
+  transition; `null`/absent before §3 step 4 completes. It is the **resume
+  anchor** for an interrupted in-progress slice (see *Resume*). `pushed` is
+  recorded **only after** `git ls-remote` confirms the branch landed; `merged`
+  (slice PR squash-merged into the umbrella, step 8) precedes the slice reaching
+  coarse `state: passed` (step 9).
 - `sliceBranch` — the slice's branch name (`orchestrate/slice-<issue>`).
 - `worktreePath` — absolute path of the slice's worktree; a `failed` slice keeps
-  its worktree on disk for inspection.
+  it on disk for inspection.
 - `pullRequest` — the slice pull request URL, or `null` before it is opened.
-- `failureReason` — a short explanation when `state` is `failed` or `skipped`;
-  `null` otherwise.
+- `failureReason` — a short explanation when `state` is `failed`/`skipped`; else `null`.
 - `updatedAt` — when this slice last changed state.
 
 ## Slice states
@@ -130,38 +127,44 @@ the target project should gitignore the `.orchestrate/runs/` directory.
 - `in-progress` — currently being implemented or reviewed.
 - `passed` — implemented, reviewed, and merged into the umbrella branch.
 - `failed` — the implementer was blocked, the reviewer failed it, the merge
-  conflicted, or it produced no changes. Its worktree is preserved.
-- `skipped` — not attempted because one of its blockers did not reach `passed`.
+  conflicted, or it produced no changes; its worktree is preserved.
+- `skipped` — not attempted because a blocker did not reach `passed`.
 
-`passed`, `failed`, and `skipped` are terminal. `pending` and `in-progress` are
-re-processed on resume.
+`passed`, `failed`, and `skipped` are terminal. A `pending` slice is processed
+from the start on resume; an `in-progress` slice is **resumed from its
+`subState`**, not re-processed from scratch (see *Resume*).
 
 ## Resume
 
 On startup the orchestrator scans **every** `.orchestrate/runs/*/run-state.json`
 whose `status` is `in-progress` and parses each run's match key from its `runId`
-prefix — `prd<N>-` names a partitioned run for PRD `<N>`, `backlog-` names a
-whole-backlog run. It then matches against the current invocation:
-`/orchestrate <PRD#>` matches in-progress runs whose `runId` starts `prd<N>-`
-for the invoked `<N>`; `/orchestrate` with no argument matches in-progress runs
-whose `runId` starts `backlog-`. A bare-timestamp `runId` from before this
-scheme matches neither and is ignored.
+prefix, then matches against the current invocation: `/orchestrate <PRD#>`
+matches an `in-progress` run whose `runId` starts `prd<N>-` for the invoked
+`<N>`; `/orchestrate` with no argument matches one whose `runId` starts
+`backlog-`. A bare-timestamp `runId` from before this scheme matches neither and
+is ignored.
 
 - **Zero matches** — a fresh run starts.
-- **Exactly one match** — that run resumes. Every slice already in a terminal
-  state is left untouched; every `in-progress` slice has its partial artifacts
-  discarded (worktree removed, slice branch deleted) and is coerced back to
-  `pending` before re-processing — it is not merely continued. Resume reloads
-  **only** the matched run's persisted `slices` and `waves`; it never re-fetches
-  the backlog or re-derives the partition, so a resumed run never widens its own
-  scope.
+- **Exactly one match** — that run resumes. Every terminal-state slice is left
+  untouched. Every `in-progress` slice **continues from its recorded
+  `subState`**: its worktree and slice branch are **preserved**, its changed-file
+  set is reconstructed from the worktree via `recover_changed_files`, the resume
+  point is re-validated cheaply (the capability gate for pre-push subStates;
+  `git ls-remote` for the push landing check), and processing resumes at the next
+  uncompleted §3 step **without** re-spawning subagents whose work is already
+  captured. An in-progress slice with **no `subState`** — a legacy checkpoint
+  written before this scheme — instead falls back to the old discard path: remove
+  its worktree, delete its slice branch, and coerce it to `pending` (the same
+  graceful degradation as an absent `driverSessionId`). Resume reloads **only**
+  the matched run's persisted `slices` and `waves`; it never re-fetches the
+  backlog or re-derives the partition, so a resumed run never widens its scope.
 - **Two or more matches** — a loud error. Two in-progress runs for the same PRD
   (or two in-progress whole-backlog runs) is never resolved by a silent pick;
   the orchestrator reports every matching `runId` and stops.
 
-This per-PRD match is what keeps two concurrent runs disjoint: each owns one
-parent PRD's children, recorded in its own run directory, and a re-invocation
-resumes the right one instead of duplicating it.
+This per-PRD match keeps two concurrent runs disjoint: each owns one parent
+PRD's children in its own run directory, and a re-invocation resumes the right
+one instead of duplicating it.
 
 ## Cleanup lifecycle
 

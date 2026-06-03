@@ -199,14 +199,42 @@ prefixes are the only match keys. Then act on the count of matches:
   `partition_backlog`: a resumed run never widens or re-derives its own scope.
   Every slice in a terminal state (`passed`, `failed`, `skipped`) is left
   untouched — completed work is never redone. Every slice still `in-progress`
-  was interrupted before finishing: discard its partial artifacts so it
-  re-processes cleanly — if it has a `worktreePath`, call `remove_worktree`
+  was interrupted before finishing; resume it **from its recorded `subState`**
+  (section 3 writes this at every per-slice transition) rather than re-processing
+  from scratch. **Preserve** its `worktreePath` and `sliceBranch`; reconstruct
+  its changed-file set by calling `recover_changed_files` on the `worktreePath`;
+  **re-validate** the resume point per the resume matrix below; then resume
+  section 3 at the next uncompleted step, **without** re-spawning the subagents
+  whose work the recorded `subState` already captures. An in-progress slice with
+  **no `subState`** — a legacy checkpoint written before this scheme — instead
+  uses the old discard path: if it has a `worktreePath`, call `remove_worktree`
   (`force: true`); delete its `sliceBranch` if it exists (locally, and on the
   remote if it was pushed) — deleting the remote branch also auto-closes any
-  orphaned slice pull request GitHub opened for it, so re-processing produces a
-  clean branch and PR with no manual PR cleanup needed — then coerce that slice
-  back to `pending`. Checkpoint the refreshed `run-state.json`, then skip to
-  section 2.
+  orphaned slice pull request GitHub opened for it; then coerce it back to
+  `pending` (the same graceful degradation as an absent `driverSessionId`).
+  Checkpoint the refreshed `run-state.json`, then skip to section 2.
+
+  **Resume re-validate matrix** — per the recorded `subState`; the worktree is
+  always preserved and the changed-file set always reconstructed via
+  `recover_changed_files` (accurate under #236's `-uall` recovery):
+
+  | Recorded `subState` | Skip these subagents | Re-validate (cheap) | Resume at |
+  |---|---|---|---|
+  | (absent / legacy) | — | — | discard worktree+branch, coerce to `pending`, reprocess |
+  | `implemented` | investigator, implementer | run the capability gate (may have crashed mid-run) | step 5 (reviewer) after the `verified` gate |
+  | `verified` | investigator, implementer | re-run the capability gate (confirms worktree intact) | step 5 (reviewer) |
+  | `reviewed` | investigator, implementer, reviewer | re-run the capability gate | step 6 (commit + push) |
+  | `pushed` | implementer, reviewer | `git ls-remote --heads origin orchestrate/slice-<N>` confirms the branch | step 7 (open PR) |
+  | `pr-open` | implementer, reviewer | `gh pr view` confirms the PR; `git ls-remote` confirms the branch | step 8 (merge) |
+  | `merged` | all subagents | — (merge already landed in umbrella) | step 9 only (label transition + `remove_worktree`) |
+
+  On resume the implementer's *declared* `filesChanged` is gone, so the
+  reconstructed `recover_changed_files` set feeds the reviewer prompt and the
+  step-6 commit staging exactly as the live path uses the declared set. Do
+  **not** route reconstruction through `verify_changeset` (it needs a
+  `declaredFiles` argument that no longer exists on resume). For pre-push
+  subStates the capability gate is the re-validate; for `pushed`/`pr-open` it is
+  `git ls-remote` / `gh pr view`.
 - **Two or more matches** — a **loud error**. Two in-progress runs for the same
   PRD (or two in-progress whole-backlog runs) must never be silently resolved
   by picking one. Report every matching `runId` and stop. The operator resolves
@@ -530,6 +558,14 @@ subagent's verbatim returned text and its `role`:
      (`declaredButAbsent` / `presentButUndeclared`) so the reviewer sees it.
    - `status: "error"` — the worktree could not be inspected; the slice has
      **FAILED**.
+
+   Once the changed-file set is established (a `matched`/`clean`/`mismatch`
+   verdict), set the slice's `subState` to `implemented` and checkpoint
+   `run-state.json`; the completed implementer envelope also satisfies the
+   pre-review gate, so set `subState` to `verified` and checkpoint again before
+   spawning the reviewer. (These two adjacent checkpoints differ only in
+   resume granularity — the resume matrix in section 1 re-runs the capability
+   gate for both.)
 5. **Run the reviewer.** Spawn the `orchestrate:reviewer-<effort>` subagent —
    `<effort>` and the `model` override from `routing.reviewer` — in the same
    worktree. Its prompt must carry the issue, the worktree path, the
@@ -539,7 +575,9 @@ subagent's verbatim returned text and its `role`:
    investigator's brief if one was produced. Validate its returned text with
    `validate_envelope` (role `reviewer`). On a `valid` envelope, an envelope
    `status` of `failed` means the slice has **FAILED**; `passed` proceeds. An
-   `invalid` or `missing` envelope also means the slice has **FAILED**.
+   `invalid` or `missing` envelope also means the slice has **FAILED**. On a
+   `passed` envelope, set the slice's `subState` to `reviewed` and checkpoint
+   `run-state.json` before proceeding to step 6.
 6. **Commit and push.** Stage only the files the subagents reported changing —
    the union of the `filesChanged` arrays from the validated implementer and
    reviewer envelopes. Never `git add -A`: the capability tools leave untracked
@@ -560,10 +598,15 @@ subagent's verbatim returned text and its `role`:
 
    Call the **`push_and_verify` MCP tool** with `repoPath` = the slice
    `worktreePath`, `branch` = `orchestrate/slice-<N>`, `remote` = `origin`,
-   `setUpstream: true`. On `status: "ok"` proceed to step 7. On
-   `status: "error"` (any `errorCode` — `PUSH_FAILED`,
-   `BRANCH_NOT_ON_REMOTE`, `INVALID_INPUT`, `GIT_ERROR`) the slice has
-   **FAILED**, the same wiring as every other MCP-tool error in this section.
+   `setUpstream: true`. On `status: "ok"` — and **only** then, because that
+   status means `push_and_verify`'s SHA-matched `git ls-remote` has confirmed the
+   branch actually landed on the remote — set the slice's `subState` to `pushed`,
+   checkpoint `run-state.json`, and proceed to step 7. Never write
+   `subState: pushed` on a bare `git push` exit-0; the landing check is what the
+   `pushed` checkpoint attests to (and what the section-1 resume re-validates).
+   On `status: "error"` (any `errorCode` — `PUSH_FAILED`, `BRANCH_NOT_ON_REMOTE`,
+   `INVALID_INPUT`, `GIT_ERROR`) the slice has **FAILED**, the same wiring as
+   every other MCP-tool error in this section.
 
    `push_and_verify` gates step 7's `gh pr create`: it pushes the branch and
    then confirms via SHA-matched `git ls-remote` that it actually landed on the
@@ -578,7 +621,8 @@ subagent's verbatim returned text and its `role`:
      --title "<issue title>" --body "Implements #<N>. <summary>"
    ```
 
-   Record the pull request URL in the slice's `run-state.json` entry.
+   Record the pull request URL in the slice's `run-state.json` entry, set its
+   `subState` to `pr-open`, and checkpoint.
 8. **Merge the slice.** GitHub computes mergeability asynchronously — check it
    before merging:
 
@@ -645,7 +689,14 @@ subagent's verbatim returned text and its `role`:
       gh pr merge <pr-number> --squash
       ```
 
-9. **Finish the slice.** Set the slice `state` to `passed` and transition the
+9. **Finish the slice.** Once any of step 8's `gh pr merge --squash` paths
+   (`MERGEABLE`, the clean-textual-merge 8a.3 path, or the conflict-resolved
+   8a.6 path) has succeeded — the slice PR is now squash-merged into the
+   umbrella — set the slice's `subState` to `merged` and checkpoint
+   `run-state.json` **before** the label transition and worktree removal below.
+   `merged` is the integration-boundary anchor: a run resumed at
+   `subState: merged` skips every subagent and re-enters here at step 9 only,
+   never re-merging. Then set the slice `state` to `passed` and transition the
    issue's tracker label — it is done and awaiting human review:
    `gh issue edit <N> --remove-label ready-for-agent --add-label ready-for-human`.
    Then remove its worktree with the `remove_worktree` MCP tool (`worktreePath`,
@@ -773,8 +824,13 @@ together they close #230.
 ## Checkpointing
 
 Write the run's `run-state.json` — at `.orchestrate/runs/<runId>/run-state.json`
-— after every slice state change and after every wave. Every write refreshes
-the top-level `updatedAt`, and a slice's own `updatedAt` whenever its entry
-changes, so an artifact rendered from the file has accurate timestamps. The
-checkpoint is what makes a run resumable: an interrupted run, re-invoked, skips
-every terminal-state slice and continues.
+— after every slice state change and after every wave. In addition, write a
+slice's `subState` at **every** section-3 per-slice transition
+(`implemented` → `verified` → `reviewed` → `pushed` → `pr-open` → `merged`);
+that fine-grained checkpoint is the **resume anchor** an interrupted in-progress
+slice continues from (section 1), alongside the coarse-`state` and wave
+checkpoints. Every write refreshes the top-level `updatedAt`, and a slice's own
+`updatedAt` whenever its entry changes, so an artifact rendered from the file
+has accurate timestamps. The checkpoint is what makes a run resumable: an
+interrupted run, re-invoked, skips every terminal-state slice and resumes every
+in-progress slice from its recorded `subState`.
