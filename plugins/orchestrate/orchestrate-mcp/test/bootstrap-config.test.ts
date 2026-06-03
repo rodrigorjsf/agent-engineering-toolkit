@@ -102,8 +102,9 @@ describe("bootstrapConfig — fresh run", () => {
 // ─── Project-type-aware commands.json ─────────────────────────────────────────
 
 describe("bootstrapConfig — commands.json per project type", () => {
-  it("derives npm commands and includes install for an npm project", () => {
+  it("derives npm-prefixed commands + mutating install for an npm project with a package-lock", () => {
     const dir = repo("package.json");
+    fs.writeFileSync(path.join(dir, "package-lock.json"), "{}");
     const r = bootstrapConfig({ repoPath: dir });
 
     expect(r.projectType).toBe("npm");
@@ -112,27 +113,38 @@ describe("bootstrapConfig — commands.json per project type", () => {
     expect(cmds.typecheck).toEqual(["npm", "run", "typecheck"]);
     expect(cmds.build).toEqual(["npm", "run", "build"]);
     expect(cmds.lint).toEqual(["npm", "run", "lint"]);
-    expect(cmds.install).toEqual(["npm", "ci"]);
+    // mutating/resolving install keyed on the npm lockfile — never `npm ci`
+    expect(cmds.install).toEqual(["npm", "install"]);
   });
 
-  it("derives cargo commands and omits install for a cargo project", () => {
+  it("defaults a lockfile-less npm project to the pnpm verb set + 'pnpm install'", () => {
+    const dir = repo("package.json");
+    const r = bootstrapConfig({ repoPath: dir });
+
+    expect(r.projectType).toBe("npm");
+    const cmds = readConfig(dir, "commands.json") as Record<string, unknown>;
+    expect(cmds.tests).toEqual(["pnpm", "test"]);
+    expect(cmds.install).toEqual(["pnpm", "install"]);
+  });
+
+  it("derives cargo commands with a 'cargo fetch' install for a cargo project", () => {
     const dir = repo("Cargo.toml");
     const r = bootstrapConfig({ repoPath: dir });
 
     expect(r.projectType).toBe("cargo");
     const cmds = readConfig(dir, "commands.json") as Record<string, unknown>;
     expect(cmds.tests).toEqual(["cargo", "test"]);
-    expect(cmds.install).toBeUndefined();
+    expect(cmds.install).toEqual(["cargo", "fetch"]);
   });
 
-  it("derives python commands and omits install for a python project", () => {
+  it("derives python commands with an editable install for a python project", () => {
     const dir = repo("pyproject.toml");
     const r = bootstrapConfig({ repoPath: dir });
 
     expect(r.projectType).toBe("python");
     const cmds = readConfig(dir, "commands.json") as Record<string, unknown>;
     expect(cmds.tests).toEqual(["pytest"]);
-    expect(cmds.install).toBeUndefined();
+    expect(cmds.install).toEqual(["pip", "install", "-e", "."]);
   });
 
   it("derives make commands and omits install for a make project", () => {

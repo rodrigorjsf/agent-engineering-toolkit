@@ -18,10 +18,13 @@ import {
   runBuild,
   runLint,
   runIntegration,
+  runInstall,
   runCommandInputSchema,
   runCommandOutputSchema,
+  runInstallOutputSchema,
   type RunCommandInput,
   type RunCommandOutput,
+  type InstallResult,
 } from "./tools/run-command.js";
 import {
   planWaves,
@@ -341,6 +344,62 @@ for (const tool of RUN_TOOLS) {
     handleRun(tool.run) as unknown as AnyToolHandler
   );
 }
+
+// ─── run_install ──────────────────────────────────────────────────────────────
+// The mutating dependency-resolve setup verb. InstallResult has no `capability`
+// field (install is a setup verb, not one of the four capability verbs), so
+// `summarizeRun` cannot be reused — this needs its own summarizer.
+
+function summarizeInstall(r: InstallResult): string {
+  switch (r.status) {
+    case "installed":
+      return `install passed (exit 0, ${r.durationMs} ms).`;
+    case "failed":
+      return `install failed (exit ${r.exitCode}, ${r.durationMs} ms).`;
+    case "not-configured":
+      return `install is not configured: ${r.reason}`;
+    case "error":
+      return `install could not run [${r.errorCode}]: ${r.errorMessage}`;
+  }
+}
+
+const handleRunInstall: ToolHandler<RunCommandInput, InstallResult> = async (
+  input
+) => {
+  const result = await runInstall(input);
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text: summarizeInstall(result) }],
+  };
+};
+
+registerTool(
+  "run_install",
+  {
+    title: "Run Install",
+    description:
+      "Runs the project's `install` setup command — the mutating " +
+      "dependency-resolve step (e.g. `pnpm install` / `npm install`) — exactly " +
+      "as configured in .orchestrate/commands.json. It never accepts a command " +
+      "string from the caller: the argv is fixed by config. Orchestrator- and " +
+      "subagent-callable on ANY checkout: a subagent that edits a manifest " +
+      "(package.json/Cargo.toml/pyproject.toml) to add a new dependency calls " +
+      "this to fetch it BEFORE re-running run_build/run_tests, because a fresh " +
+      "worktree checks out only tracked files and so lacks the new dependency. " +
+      "Returns a discriminated status: 'installed' (exit 0), 'failed' " +
+      "(non-zero exit), 'not-configured' (no `install` command set — a clean, " +
+      "expected state, NOT a failure), or 'error' (invalid config, timeout, or " +
+      "spawn failure — a missing package manager surfaces here as EXEC_ERROR, " +
+      "never a silent PM switch). install is the mutating form, so it rewrites " +
+      "the lockfile; the caller must include the changed lockfile in the slice " +
+      "diff.",
+    inputSchema: runCommandInputSchema.shape,
+    outputSchema: runInstallOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRunInstall as unknown as AnyToolHandler
+);
 
 // ─── plan_waves ────────────────────────────────────────────────────────────────
 
@@ -932,8 +991,10 @@ registerTool(
     description:
       "Sets up a repository's .orchestrate/ configuration for a first-ever " +
       "orchestrate run. Detects the project type and writes a project-aware " +
-      "commands.json (with `install` for npm only, empty for an unrecognized " +
-      "project), writes routing.json from the shipped defaults, and writes " +
+      "commands.json (with a PM-aware mutating `install` command for " +
+      "npm/cargo/python projects — keyed on the JS lockfile for the npm " +
+      "ecosystem — empty for an unrecognized project), writes routing.json " +
+      "from the shipped defaults, and writes " +
       "handoff.json with a context-window size derived from the running model " +
       "— pass the model id (or an explicit contextWindowTokens) as input; the " +
       "MCP process cannot see the calling LLM's model. An unknown or absent " +

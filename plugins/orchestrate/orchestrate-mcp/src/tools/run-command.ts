@@ -570,12 +570,107 @@ export const runIntegration = (
 // ─── Install (setup verb) ─────────────────────────────────────────────────────
 
 /**
- * Result of running the configured `install` command.
+ * Output schema for the `run_install` MCP tool (and the internal `runInstall`
+ * return). The single source of truth — `InstallResult` is its `z.infer`.
  *
- * Not an MCP tool output — `runInstall` is internal, called by `create_worktree`
- * after a worktree is created. Mirrors the shape of {@link RunCommandOutput}
- * minus `capability`: `install` is a setup verb, not one of the four capability
- * verbs.
+ * Mirrors the shape of {@link runCommandOutputSchema} minus `capability`:
+ * `install` is the mutating dependency-resolve setup verb (`pnpm install` /
+ * `npm install`), not one of the four capability verbs. `run_install` is
+ * orchestrator- and subagent-callable on any checkout; a subagent calls it
+ * after editing a manifest to fetch a newly-added dependency before re-running
+ * the capability tools.
+ */
+export const runInstallOutputSchema = z.object({
+  status: z
+    .enum(["installed", "not-configured", "failed", "error"])
+    .describe(
+      "Outcome discriminant. 'installed' = the install command exited 0; " +
+        "'failed' = it exited non-zero; 'not-configured' = no `install` " +
+        "command is set (a clean, expected state — a project that needs no " +
+        "install simply omits the key); 'error' = the command could not be " +
+        "run (invalid config, timeout, or spawn failure)."
+    ),
+  command: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "The exact argv array that was executed, read verbatim from " +
+        ".orchestrate/commands.json. Present when status is 'installed' or " +
+        "'failed'. The caller never supplies this — it is fixed by config."
+    ),
+  exitCode: z
+    .number()
+    .optional()
+    .describe(
+      "Process exit code. 0 for 'installed', non-zero for 'failed'. Present " +
+        "when status is 'installed' or 'failed'."
+    ),
+  stdout: z
+    .string()
+    .optional()
+    .describe(
+      "Captured standard output, tail-truncated to 64,000 characters. " +
+        "Present when status is 'installed' or 'failed', and on a 'TIMEOUT' " +
+        "error (the output captured before the command was killed). See " +
+        "`truncated`."
+    ),
+  stderr: z
+    .string()
+    .optional()
+    .describe(
+      "Captured standard error, tail-truncated to 64,000 characters. " +
+        "Present when status is 'installed' or 'failed', and on a 'TIMEOUT' " +
+        "error. See `truncated`."
+    ),
+  truncated: z
+    .boolean()
+    .optional()
+    .describe(
+      "True when `stdout` or `stderr` was truncated to fit the size cap. " +
+        "Present whenever `stdout`/`stderr` are present."
+    ),
+  durationMs: z
+    .number()
+    .optional()
+    .describe(
+      "Wall-clock duration of the command in milliseconds. Present whenever " +
+        "the install command was actually executed — status 'installed' or " +
+        "'failed', or a 'TIMEOUT' / 'EXEC_ERROR' error. Absent for " +
+        "config-level failures."
+    ),
+  reason: z
+    .string()
+    .optional()
+    .describe(
+      "Human-readable explanation of why no install ran. Present when status " +
+        "is 'not-configured'."
+    ),
+  errorCode: z
+    .enum(["CONFIG_INVALID", "EXEC_ERROR", "TIMEOUT"])
+    .optional()
+    .describe(
+      "Machine-readable failure category. Present when status is 'error'. " +
+        "'CONFIG_INVALID' = commands.json is malformed JSON or the wrong " +
+        "shape; 'EXEC_ERROR' = the install binary could not be spawned (e.g. " +
+        "a missing `pnpm` — there is no silent npm fallback); 'TIMEOUT' = the " +
+        "command exceeded the time limit and was killed."
+    ),
+  errorMessage: z
+    .string()
+    .optional()
+    .describe(
+      "Cleaned, human-readable failure description. Present when status is " +
+        "'error'."
+    ),
+});
+
+/**
+ * Result of running the configured `install` command — the `z.infer` of
+ * {@link runInstallOutputSchema} (the schema is the single source of truth).
+ *
+ * Surfaced as the `run_install` MCP tool output and also returned by the
+ * internal `runInstall` (called by `create_worktree` after a worktree is
+ * created).
  *
  * - `installed` — the install command exited 0.
  * - `not-configured` — no `install` command is set (a clean, expected state —
@@ -584,18 +679,7 @@ export const runIntegration = (
  * - `error` — the command could not be run (invalid config, timeout, spawn
  *   failure).
  */
-export interface InstallResult {
-  status: "installed" | "not-configured" | "failed" | "error";
-  command?: string[];
-  exitCode?: number;
-  stdout?: string;
-  stderr?: string;
-  truncated?: boolean;
-  durationMs?: number;
-  reason?: string;
-  errorCode?: "CONFIG_INVALID" | "EXEC_ERROR" | "TIMEOUT";
-  errorMessage?: string;
-}
+export type InstallResult = z.infer<typeof runInstallOutputSchema>;
 
 /**
  * Runs the project's configured `install` command — the dependency-install step
