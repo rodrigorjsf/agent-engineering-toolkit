@@ -128,6 +128,14 @@ is what `/orchestrate clean` (section 0) runs on demand.
    `null`, is **never** swept — it has not concluded. **Never** include the
    current run, or any run still `in-progress`, in the verdict map: omitting a
    run from the map tells `clean_runs` to leave it strictly intact.
+
+   **Collect the close-set before sweeping.** For every run whose verdict
+   resolves to `merged`, you already hold its `run-state.json` open (you just
+   read `finalPullRequest` from it). While it is open, **collect the `issue`
+   number of every slice whose `state` is `"passed"`** into a per-run
+   close-set. Do this **now**, before step 2 — `clean_runs` deletes the merged
+   run's directory and its `run-state.json`, the only source of those issue
+   numbers, so capturing them after the sweep is impossible.
 2. Call the **`clean_runs` MCP tool** with the repository root as `repoPath` and
    the per-run `verdicts` map you built. The tool removes each `merged` run's
    worktrees, its umbrella and slice branches (local and remote), and its run
@@ -135,7 +143,19 @@ is what `/orchestrate clean` (section 0) runs on demand.
    worktree is preserved (and that run's directory kept) so a developer can
    still inspect it. `clean_runs` is git + filesystem only — it never shells
    `gh`; the merge verdict you resolved above is the GitHub half of the gate.
-3. The sweep is best-effort and idempotent — an already-absent branch or
+3. **Close the passed-slice issues (backstop).** After `clean_runs` returns,
+   for every issue in the close-set you collected in step 1, run
+   `gh issue close <N>`. This is **orchestrator** work — the `gh issue close`
+   lives here in the orchestrator procedure, never inside `clean_runs` (the
+   no-`gh` invariant on the MCP tool is preserved). The close is idempotent: on
+   a default-branch integration base the final umbrella PR's `Closes #<N>`
+   keyword already closed the issue, and `gh issue close` on an
+   already-closed issue exits 0 — a no-op, not an error. This backstop is what
+   closes the passed-slice issues when `development` is **not** the repository's
+   default branch (where the `Closes` keywords are inert). It closes **only**
+   passed slices; a failed or skipped slice has no entry in the close-set, so
+   its issue stays open.
+4. The sweep is best-effort and idempotent — an already-absent branch or
    worktree is success, not error. Note the result, then continue to discover
    or start the run; a cleanup hiccup never blocks the run itself.
 
@@ -445,8 +465,23 @@ a developer to review and merge:
 ```
 gh pr create --base development --head orchestrate/umbrella-<runId> \
   --title "orchestrate run <runId>" \
-  --body "<summary of the run — slices passed, failed, and skipped>"
+  --body "<summary of the run — slices passed, failed, and skipped>
+
+Closes #<N>
+Closes #<M>"
 ```
+
+The `--body` enumerates **one `Closes #<N>` line per slice** whose
+`run-state.json` `state` is `"passed"` (the `#<N>`/`#<M>` placeholders above
+stand for those passed-slice issue numbers — emit as many lines as there are
+passed slices), in addition to the run summary. A
+**failed** or **skipped** slice gets **no** `Closes` line — its code is not in
+the umbrella, so its issue must stay open. Because the integration base is
+`development`: when `development` is the repository's default branch these
+`Closes` keywords fire a native GitHub close the instant the umbrella pull
+request merges; when `development` is **not** the default branch the keywords
+are inert and the §1 start-of-run sweep backstop (below) closes the passed-slice
+issues instead.
 
 Record its URL as `finalPullRequest` in `run-state.json`, set
 `status: "completed"`, and checkpoint. Then render the run's HTML artifacts
@@ -827,14 +862,36 @@ Other stop conditions: an empty backlog is a clean no-op, as is a
 The orchestrator is the **single writer** of GitHub tracker state — the
 subagents never touch issues, labels, or pull requests. Tracker writes happen
 only at a slice's terminal state (see section 3 step 9 for the pass label
-command and *Failure handling* for the failure label command) and as PRD
-progress/summary comments (see section 2 steps 6 and the final-PR paragraph).
-The parent PRD issue receives a progress comment after each wave and a final
-summary when the run completes.
+command and *Failure handling* for the failure label command), as PRD
+progress/summary comments (see section 2 steps 6 and the final-PR paragraph),
+and as **issue closes** on merge→development (below). The parent PRD issue
+receives a progress comment after each wave and a final summary when the run
+completes. Issue-closing is part of the single-writer role — alongside labels
+and progress comments — and is **not** delegated to subagents.
 
-The orchestrator does not close issues. The `Closes #N` trailers on the slice
-commits close them when a developer merges the final umbrella pull request into
-`development`.
+The orchestrator closes a passed slice's issue **when its code lands in
+`development`** — never on the slice→umbrella merge (the slice merely vanishes
+into the umbrella branch; its code is not yet in the integration base). Two
+complementary mechanisms enforce the correct semantics (issue closed ⇔ code in
+`development`):
+
+- **Native close — final umbrella PR body.** The final integration pull request
+  (section 2) lists a `Closes #<N>` line for every passed slice. When
+  `development` is the repository's default branch, merging that pull request
+  fires GitHub's native close instantly.
+- **Backstop — §1 start-of-run sweep.** When `development` is **not** the
+  default branch the `Closes` keywords are inert, so the start-of-run cleanup
+  sweep (section 1) covers the gap: on a `merged` verdict it collects each
+  passed slice's issue number from `run-state.json` (before `clean_runs` deletes
+  it) and runs `gh issue close <N>` — orchestrator work, idempotent if the
+  native keyword already fired (an already-closed issue exits 0).
+
+This is orchestrator `gh` work; `clean_runs` stays git + filesystem only and
+never shells `gh` (the no-`gh` invariant). The slice-commit `Closes #<N>`
+trailer (section 3 step 6) and the slice pull request's `Implements #<N>` body
+(section 3) are **unchanged** — the trailer is now harmless reinforcing
+redundancy, and `Implements` remains the deliberate non-closing slice→umbrella
+verb; the lifecycle no longer relies on either.
 
 **`gh`-op resilience (prose, not a tool).** Wrap every `gh` operation —
 `gh pr create`, `gh pr merge`, `gh pr view`, `gh issue edit`, `gh issue
