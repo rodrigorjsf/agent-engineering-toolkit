@@ -23,8 +23,21 @@ const MAX_OUTPUT_CHARS = 64_000;
 
 // ─── Capability verbs ─────────────────────────────────────────────────────────
 
-/** The four fixed capability verbs, each a key in `.orchestrate/commands.json`. */
-export const CAPABILITY_VERBS = ["tests", "typecheck", "build", "lint"] as const;
+/**
+ * The capability verbs, each a key in `.orchestrate/commands.json`. The first
+ * four (`tests`, `typecheck`, `build`, `lint`) are the fast, per-slice verbs the
+ * Capability detector auto-populates. `integration` is an optional, heavy,
+ * per-wave suite (Testcontainers/failsafe) that is never auto-detected — it is
+ * hand-authored only when a project ships such a suite, and runs once per wave
+ * against the umbrella tip rather than on every slice.
+ */
+export const CAPABILITY_VERBS = [
+  "tests",
+  "typecheck",
+  "build",
+  "lint",
+  "integration",
+] as const;
 export type CapabilityVerb = (typeof CAPABILITY_VERBS)[number];
 
 // ─── Schemas — z.object is the single source of truth; TS types via z.infer ───
@@ -37,6 +50,14 @@ export type CapabilityVerb = (typeof CAPABILITY_VERBS)[number];
  * never be word-split, glob-expanded, or interpreted. Unknown keys are
  * stripped, so a `$schema` pointer or future additive keys do not break an
  * existing config.
+ *
+ * `integration` is an optional, heavy capability verb — a per-wave suite
+ * (Testcontainers/failsafe) distinct from the four fast, per-slice capability
+ * verbs above and distinct from the `install` setup verb. It is never
+ * auto-detected: a project hand-authors it only when it ships such a suite, and
+ * the orchestrator runs it once per wave against the umbrella tip rather than on
+ * every slice. Because unknown keys are stripped, a project that omits it stays
+ * forward-compatible.
  *
  * `install` is a setup verb, not a capability verb — it runs once after a
  * worktree is created (a fresh worktree has no installed dependencies) so the
@@ -56,6 +77,7 @@ export const commandsConfigSchema = z.object({
   typecheck: z.array(z.string().min(1)).optional(),
   build: z.array(z.string().min(1)).optional(),
   lint: z.array(z.string().min(1)).optional(),
+  integration: z.array(z.string().min(1)).optional(),
   install: z.array(z.string().min(1)).optional(),
   knownFailures: z.array(z.string().min(1)).optional(),
 });
@@ -87,7 +109,7 @@ export const runCommandOutputSchema = z.object({
         "could not be run (invalid config, timeout, or spawn failure)."
     ),
   capability: z
-    .enum(["tests", "typecheck", "build", "lint"])
+    .enum(["tests", "typecheck", "build", "lint", "integration"])
     .describe("The capability verb this result is for. Always present."),
   command: z
     .array(z.string())
@@ -539,6 +561,11 @@ export const runBuild = (input: RunCommandInput, opts?: RunCommandOptions) =>
 
 export const runLint = (input: RunCommandInput, opts?: RunCommandOptions) =>
   runConfiguredCommand("lint", input, opts);
+
+export const runIntegration = (
+  input: RunCommandInput,
+  opts?: RunCommandOptions
+) => runConfiguredCommand("integration", input, opts);
 
 // ─── Install (setup verb) ─────────────────────────────────────────────────────
 

@@ -21200,6 +21200,7 @@ var commandsConfigSchema = external_exports.object({
   typecheck: external_exports.array(external_exports.string().min(1)).optional(),
   build: external_exports.array(external_exports.string().min(1)).optional(),
   lint: external_exports.array(external_exports.string().min(1)).optional(),
+  integration: external_exports.array(external_exports.string().min(1)).optional(),
   install: external_exports.array(external_exports.string().min(1)).optional(),
   knownFailures: external_exports.array(external_exports.string().min(1)).optional()
 });
@@ -21212,7 +21213,7 @@ var runCommandOutputSchema = external_exports.object({
   status: external_exports.enum(["passed", "failed", "not-configured", "error"]).describe(
     "Outcome discriminant. 'passed' = command exited 0; 'failed' = command exited non-zero; 'not-configured' = no command is configured for this verb (a clear, expected state \u2014 not a failure); 'error' = the command could not be run (invalid config, timeout, or spawn failure)."
   ),
-  capability: external_exports.enum(["tests", "typecheck", "build", "lint"]).describe("The capability verb this result is for. Always present."),
+  capability: external_exports.enum(["tests", "typecheck", "build", "lint", "integration"]).describe("The capability verb this result is for. Always present."),
   command: external_exports.array(external_exports.string()).optional().describe(
     "The exact argv array that was executed, read verbatim from .orchestrate/commands.json. Present when status is 'passed' or 'failed'. The caller never supplies this \u2014 it is fixed by config."
   ),
@@ -21448,6 +21449,7 @@ var runTests = (input, opts) => runConfiguredCommand("tests", input, opts);
 var runTypecheck = (input, opts) => runConfiguredCommand("typecheck", input, opts);
 var runBuild = (input, opts) => runConfiguredCommand("build", input, opts);
 var runLint = (input, opts) => runConfiguredCommand("lint", input, opts);
+var runIntegration = (input, opts) => runConfiguredCommand("integration", input, opts);
 async function runInstall(input, opts = {}) {
   const execCwd = input.repoPath ?? process.cwd();
   const configRoot = await resolveConfigRoot(execCwd);
@@ -24631,7 +24633,13 @@ var RUN_TOOLS = [
     run: runTypecheck
   },
   { name: "run_build", title: "Run Build", verb: "build", run: runBuild },
-  { name: "run_lint", title: "Run Lint", verb: "lint", run: runLint }
+  { name: "run_lint", title: "Run Lint", verb: "lint", run: runLint },
+  {
+    name: "run_integration",
+    title: "Run Integration Suite",
+    verb: "integration",
+    run: runIntegration
+  }
 ];
 for (const tool of RUN_TOOLS) {
   registerTool(

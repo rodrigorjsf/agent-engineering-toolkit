@@ -8,9 +8,12 @@ import {
   runTypecheck,
   runBuild,
   runLint,
+  runIntegration,
   runInstall,
   runConfiguredCommand,
   runCommandInputSchema,
+  runCommandOutputSchema,
+  commandsConfigSchema,
 } from "../src/tools/run-command.js";
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
@@ -213,6 +216,64 @@ describe("run-command capability tools", () => {
 
   it("exposes only repoPath as input — never a free-form command string", () => {
     expect(Object.keys(runCommandInputSchema.shape)).toEqual(["repoPath"]);
+  });
+});
+
+describe("#235 integration verb (per-wave heavy suite)", () => {
+  // The passed-case round-trips a real RunCommandOutput through
+  // runCommandOutputSchema, so it fails loudly if the `capability` output enum
+  // was not widened to include "integration" — the silent runtime trap.
+  it("returns status='passed' with capability='integration' and exitCode 0", async () => {
+    const dir = project({ integration: ["node", "-e", "process.exit(0)"] });
+    const r = await runIntegration({ repoPath: dir });
+
+    expect(r.status).toBe("passed");
+    expect(r.capability).toBe("integration");
+    expect(r.exitCode).toBe(0);
+    expect(r.command).toEqual(["node", "-e", "process.exit(0)"]);
+    expect(r.errorCode).toBeUndefined();
+  });
+
+  it("returns status='failed' with capability='integration' on a non-zero exit", async () => {
+    const dir = project({ integration: ["node", "-e", "process.exit(4)"] });
+    const r = await runIntegration({ repoPath: dir });
+
+    expect(r.status).toBe("failed");
+    expect(r.capability).toBe("integration");
+    expect(r.exitCode).toBe(4);
+  });
+
+  it("returns status='not-configured' (no errorCode) when no integration command is set", async () => {
+    const dir = project({ tests: ["node", "-e", "process.exit(0)"] });
+    const r = await runIntegration({ repoPath: dir });
+
+    expect(r.status).toBe("not-configured");
+    expect(r.capability).toBe("integration");
+    expect(r.errorCode).toBeUndefined();
+  });
+
+  it("commandsConfigSchema accepts an integration argv array", () => {
+    const parsed = commandsConfigSchema.parse({
+      tests: ["npm", "test"],
+      integration: ["mvn", "verify", "-Pfailsafe"],
+    });
+
+    expect(parsed.integration).toEqual(["mvn", "verify", "-Pfailsafe"]);
+  });
+
+  // runConfiguredCommand constructs-and-returns its result rather than parsing
+  // it through runCommandOutputSchema, so the output enum is enforced only at
+  // the SDK boundary. This guards target #3 directly: a un-widened
+  // `capability` enum would throw here, in-process, instead of failing silently
+  // at call time.
+  it("runCommandOutputSchema accepts capability='integration'", () => {
+    expect(() =>
+      runCommandOutputSchema.parse({
+        status: "passed",
+        capability: "integration",
+        exitCode: 0,
+      })
+    ).not.toThrow();
   });
 });
 

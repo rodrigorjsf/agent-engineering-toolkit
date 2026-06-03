@@ -17,6 +17,7 @@ import {
   runTypecheck,
   runBuild,
   runLint,
+  runIntegration,
   runCommandInputSchema,
   runCommandOutputSchema,
   type RunCommandInput,
@@ -308,6 +309,12 @@ const RUN_TOOLS: {
   },
   { name: "run_build", title: "Run Build", verb: "build", run: runBuild },
   { name: "run_lint", title: "Run Lint", verb: "lint", run: runLint },
+  {
+    name: "run_integration",
+    title: "Run Integration Suite",
+    verb: "integration",
+    run: runIntegration,
+  },
 ];
 
 for (const tool of RUN_TOOLS) {

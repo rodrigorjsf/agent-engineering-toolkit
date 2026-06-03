@@ -555,11 +555,70 @@ Process waves in order, starting at index `completedWaves`. For each wave:
 4. **Integrate sequentially** (the `parallel` path; the `sequential` path
    already integrated each slice inline in step 3). The commit, pull-request,
    and merge steps (section 3, steps 6–9) run **one slice at a time** — merges
-   into the umbrella branch must not race each other. After each slice finishes
-   integrating, check for `.orchestrate/runs/<runId>/context-flag.json`: if it
+   into the umbrella branch must not race each other.
+
+   **Per-slice post-merge unit re-verify (parallel path only).** Each slice's
+   worktree was branched from the wave's *starting* umbrella (step 1) and never
+   saw this wave's earlier siblings, so the clean `MERGEABLE` path (section 3,
+   step 8) would otherwise squash-merge without ever testing the
+   `base + slice1..N` combination. Before the `gh pr merge --squash` of every
+   slice **except the first merged slice of this wave** (whose pre-merge gate
+   already covered the umbrella — the merge is a no-op at that point), in the
+   slice's still-present worktree bring in the wave's already-merged siblings
+   and re-run the fast unit command:
+
+   ```
+   git -C <worktree-path> fetch origin orchestrate/umbrella-<runId>
+   git -C <worktree-path> merge origin/orchestrate/umbrella-<runId>
+   ```
+
+   Then run the `run_tests` and `run_build` capability tools (only these two —
+   the fast unit command, not all four) with `<worktree-path>` as `repoPath`,
+   and gate the `gh pr merge --squash` on **both** passing. Because the
+   re-verify runs *before* the merge, a failure never pollutes the umbrella and
+   **no revert/rollback machinery is needed**: the slice has **FAILED** via the
+   existing failure path (its worktree is preserved and the wave continues — see
+   "Failure handling"). If the `git merge origin/orchestrate/umbrella-<runId>`
+   surfaces conflicts, defer to section 3 step 8a (do not duplicate conflict
+   logic here). The `sequential` path needs no equivalent step: each of its
+   slices already branches from `base + slice1..N-1` (step 3 above), so its
+   pre-merge gate has already tested the integrated state.
+
+   After each slice finishes integrating, check for
+   `.orchestrate/runs/<runId>/context-flag.json`: if it
    exists, the context-watchdog has signalled that this session's context is
    filling. Do not start the next slice — finish writing `run-state.json` for
    the slice just integrated, then go to section 4 (Context handoff).
+4a. **Run the per-wave integration suite.** After every processable slice in
+   this wave has integrated and passed its post-merge unit re-verify, run the
+   optional heavy `integration` suite **once** against the umbrella tip — a
+   bounded `num_waves` cost that localizes a cross-slice integration break to
+   this wave's small slice set. The slice worktrees are removed at section 3
+   step 9, so **defer removal of the last successfully-merged slice's worktree**
+   until after this step, fast-forward-merge the umbrella into it, and use that
+   worktree path as `repoPath` (`.orchestrate/commands.json` is repo-tracked, so
+   it is present in every worktree):
+
+   ```
+   git -C <worktree-path> fetch origin orchestrate/umbrella-<runId>
+   git -C <worktree-path> merge origin/orchestrate/umbrella-<runId>
+   ```
+
+   Call the `run_integration` MCP tool with `<worktree-path>` as `repoPath`.
+
+   - `not-configured` (the project ships no `integration` command) — **tolerated
+     and skipped**, the same posture as any unconfigured capability verb.
+     Proceed to step 5.
+   - `passed` — proceed to step 5.
+   - `failed` / `error` — **halt the run**: do **not** checkpoint
+     `completedWaves` forward and do **not** build the next wave on a broken
+     umbrella. Leave the umbrella branch and the failing worktree on disk,
+     record the failure in `run-state.json`, report to the user, and stop —
+     consistent with step 1's "fail loud, do not branch a wave from a wrong
+     base".
+
+   Remove the deferred worktree (section 3 step 9's `remove_worktree`) only
+   after a `passed` or `not-configured` result.
 5. **Checkpoint the wave.** Set `completedWaves` to this wave's index + 1 and
    write `run-state.json`.
 6. **Report wave progress to the PRD.** If `parentIssue` is set, post a comment
