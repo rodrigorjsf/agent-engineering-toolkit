@@ -32,6 +32,7 @@ const VALID_CONFIG: RoutingConfig = {
     "conflict-resolver": { model: "opus", effort: "deep" },
   },
   intraWaveConcurrency: "parallel",
+  continuationBudget: 2,
 };
 
 /** Writes a project dir; `config` null skips the routing.json file entirely. */
@@ -190,5 +191,51 @@ describe("routingConfigSchema intraWaveConcurrency", () => {
         intraWaveConcurrency: "sequential",
       }).success
     ).toBe(false);
+  });
+});
+
+describe("routingConfigSchema continuationBudget (#234)", () => {
+  // A config with no continuationBudget key — the shape a pre-knob routing.json
+  // has on disk. Drop only continuationBudget so the three tiers remain.
+  const { continuationBudget: _drop, ...noBudget } = VALID_CONFIG;
+
+  it("resolves continuationBudget === 2 (the default) when the key is absent", () => {
+    const dir = project(noBudget);
+    const r = resolveRoutingFromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.continuationBudget).toBe(2);
+  });
+
+  it("echoes an explicit continuationBudget verbatim", () => {
+    const dir = project({ ...VALID_CONFIG, continuationBudget: 5 });
+    const r = resolveRoutingFromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.continuationBudget).toBe(5);
+  });
+
+  it("accepts continuationBudget: 0 (continuation disabled)", () => {
+    const dir = project({ ...VALID_CONFIG, continuationBudget: 0 });
+    const r = resolveRoutingFromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.continuationBudget).toBe(0);
+  });
+
+  it("rejects a negative continuationBudget → CONFIG_INVALID", () => {
+    const dir = project({ ...VALID_CONFIG, continuationBudget: -1 });
+    const r = resolveRoutingFromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("error");
+    expect(r.errorCode).toBe("CONFIG_INVALID");
+  });
+
+  it("rejects a non-integer continuationBudget → CONFIG_INVALID", () => {
+    const dir = project({ ...VALID_CONFIG, continuationBudget: 1.5 });
+    const r = resolveRoutingFromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("error");
+    expect(r.errorCode).toBe("CONFIG_INVALID");
   });
 });

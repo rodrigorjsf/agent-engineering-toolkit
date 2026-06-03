@@ -57,6 +57,17 @@ export const routingConfigSchema = z.object({
         "conflict-free, at the cost of serializing the wave. Optional; the " +
         "three tier blocks remain required."
     ),
+  continuationBudget: z
+    .number()
+    .int()
+    .min(0)
+    .default(2)
+    .describe(
+      "How many times the orchestrator may re-spawn the implementer in the " +
+        "same worktree after an 'incomplete' envelope (re-spawns BEYOND the " +
+        "initial run). 0 disables continuation (incomplete FAILs immediately, " +
+        "the legacy behavior). Defaults to 2."
+    ),
 });
 
 export const resolveRoutingInputSchema = z.object({
@@ -107,6 +118,16 @@ export const resolveRoutingOutputSchema = z.object({
     .optional()
     .describe(
       "Cleaned, human-readable failure description. Present when status='error'."
+    ),
+  continuationBudget: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe(
+      "The resolved continuation budget for this run — how many implementer " +
+        "re-spawns are allowed after an 'incomplete' envelope. Present when " +
+        "status='ok'."
     ),
 });
 
@@ -192,5 +213,6 @@ export function resolveRoutingFromConfig(
     status: "ok",
     tier: input.tier,
     routing: resolveRouting(input.tier, config.data),
+    continuationBudget: config.data.continuationBudget,
   };
 }

@@ -138,6 +138,15 @@ metadata, not source — the target project should gitignore
 from the start on resume; an `in-progress` slice is **resumed from its
 `subState`**, not re-processed from scratch (see *Resume*).
 
+An implementer `incomplete` envelope drives an **in-session continuation loop**
+(the orchestrator re-spawns the implementer in the same preserved worktree with
+the `remainingWork` handoff until it returns `completed` or the continuation
+budget is exhausted) and does **not** introduce a new slice `state` — the enum
+stays `pending` / `in-progress` / `passed` / `failed` / `skipped`. The loop's
+continuation counter and worktree fingerprint are within-session loop state,
+never persisted to `run-state.json`; a mid-continuation handoff/resume rebuilds
+the worktree and restarts the slice clean.
+
 ## Resume
 
 On startup the orchestrator scans **every** `.orchestrate/runs/*/run-state.json`

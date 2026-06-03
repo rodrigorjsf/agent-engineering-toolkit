@@ -96,6 +96,15 @@ export const implementerEnvelopeSchema = z.object({
         "when verified); optional for 'incomplete' (cause is definitionally " +
         "turn-budget); omit for 'completed'."
     ),
+  remainingWork: z
+    .string()
+    .optional()
+    .describe(
+      "Present and non-empty ONLY when status='incomplete'. The handoff note " +
+        "the orchestrator forwards to the continuation implementer: what is " +
+        "done, what is left, and how to resume in the same worktree. Required " +
+        "for an 'incomplete' envelope; absent or empty for 'completed'/'blocked'."
+    ),
 });
 
 /**
@@ -202,12 +211,35 @@ export const investigatorEnvelopeSchema = z.object({
  * The full set of envelope shapes, discriminated on `role`. Each subagent role
  * maps to exactly one member.
  */
-export const envelopeSchema = z.discriminatedUnion("role", [
-  implementerEnvelopeSchema,
-  reviewerEnvelopeSchema,
-  conflictResolverEnvelopeSchema,
-  investigatorEnvelopeSchema,
-]);
+export const envelopeSchema = z
+  .discriminatedUnion("role", [
+    implementerEnvelopeSchema,
+    reviewerEnvelopeSchema,
+    conflictResolverEnvelopeSchema,
+    investigatorEnvelopeSchema,
+  ])
+  // An 'incomplete' implementer envelope MUST carry a non-empty `remainingWork`
+  // handoff — it is the note the orchestrator forwards to the continuation
+  // implementer in the same worktree. Enforced at the union level (rather than
+  // refining the member, which would turn it into a ZodEffects the
+  // discriminatedUnion cannot take as an option) so the issue lands on the
+  // `remainingWork` path and `validateEnvelope` classifies it SCHEMA_MISMATCH.
+  .superRefine((data, ctx) => {
+    if (
+      data.role === "implementer" &&
+      data.status === "incomplete" &&
+      (data.remainingWork === undefined || data.remainingWork.trim() === "")
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["remainingWork"],
+        message:
+          "An 'incomplete' implementer envelope must carry a non-empty " +
+          "`remainingWork` handoff: what is done, what is left, and how to " +
+          "resume in the same worktree.",
+      });
+    }
+  });
 
 // ─── validate_envelope tool I/O schemas ───────────────────────────────────────
 
