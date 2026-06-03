@@ -209,3 +209,14 @@ worktree was preserved, so its `run-state.json` survives. The `--force` option
 removes failed-slice worktrees too, deletes every branch, and always removes the
 run directory. Cleanup runs both as a start-of-run sweep and on demand via
 `/orchestrate clean`; it never touches an `in-progress` run.
+
+`/orchestrate clean --failed <runId>` is a **distinct** override. Unlike
+`--force` — which still operates *inside* the completed-and-merged status gate —
+`--failed` **bypasses the status gate** for one named run, the only sanctioned
+exception (ADR-0012), so a crashed run frozen at `in-progress` can be reclaimed.
+It calls the `reclaim_run` MCP tool (not `clean_runs`), is scoped by construction
+to `runs/<runId>/` and that runId's branches so it can never touch another run,
+and removes all of that run's worktrees (passed and failed), branches, and run
+directory. Its only protection is a **mandatory interactive confirmation** (no
+`--yes`) that lists the exact deletion set and surfaces the run-state `updatedAt`
+as a **staleness advisory** — informational, never a gate.

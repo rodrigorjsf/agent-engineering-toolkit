@@ -89,8 +89,13 @@ import {
   cleanRuns,
   cleanRunsInputSchema,
   cleanRunsOutputSchema,
+  reclaimRun,
+  reclaimRunInputSchema,
+  reclaimRunOutputSchema,
   type CleanRunsInput,
   type CleanRunsOutput,
+  type ReclaimRunInput,
+  type ReclaimRunOutput,
 } from "./tools/clean-runs.js";
 import {
   verifyChangeset,
@@ -756,6 +761,32 @@ const handleCleanRuns: ToolHandler<CleanRunsInput, CleanRunsOutput> = async (
   };
 };
 
+// ─── reclaim_run ──────────────────────────────────────────────────────────────
+
+const handleReclaimRun: ToolHandler<ReclaimRunInput, ReclaimRunOutput> = async (
+  input
+) => {
+  const result = await reclaimRun(input);
+  let text: string;
+  if (result.status === "ok") {
+    const r = result.report!;
+    if (r.reason === "failed-run-reclaimed") {
+      text =
+        `Reclaimed run ${r.runId}: removed ${r.removedWorktrees.length} ` +
+        `worktree(s), ${r.removedBranches.length} branch(es); run dir ` +
+        `removed: ${r.runDirRemoved}.`;
+    } else {
+      text = `Run ${r.runId} not reclaimed (${r.reason}); nothing removed.`;
+    }
+  } else {
+    text = `Run reclaim failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
 // ─── verify_changeset ─────────────────────────────────────────────────────────
 
 const handleVerifyChangeset: ToolHandler<
@@ -834,6 +865,33 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleCleanRuns as unknown as AnyToolHandler
+);
+
+registerTool(
+  "reclaim_run",
+  {
+    title: "Reclaim a Single Crashed or Abandoned Run",
+    description:
+      "Removes the complete on-disk and git footprint of ONE named run — all " +
+      "its worktrees (passed AND failed), its umbrella branch and every slice " +
+      "branch (local and remote), and its run directory. Takes a REQUIRED " +
+      "single `runId`. Unlike `clean_runs`, this tool BYPASSES the " +
+      "`status === 'completed'` cross-run isolation gate by design: it is the " +
+      "one sanctioned exception in ADR-0012, the human-gated reclaim path for a " +
+      "crashed or abandoned run that looks `in-progress` forever (there is no " +
+      "`failed` run status). It is scoped by construction to that single " +
+      "`.orchestrate/runs/<runId>/` and the branches embedding that runId, so " +
+      "it can never touch any other run. The mandatory interactive confirmation " +
+      "that authorizes the deletion lives in the SKILL, not here — this tool is " +
+      "non-interactive execution only. A valid runId with no run directory on " +
+      "disk is the clean `run-not-found` no-op (so a re-reclaim is idempotent). " +
+      "Every removal is best-effort. Never throws.",
+    inputSchema: reclaimRunInputSchema.shape,
+    outputSchema: reclaimRunOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleReclaimRun as unknown as AnyToolHandler
 );
 
 registerTool(
