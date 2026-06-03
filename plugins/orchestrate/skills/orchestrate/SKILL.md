@@ -682,6 +682,26 @@ subagent's verbatim returned text and its `role`:
    - `failed` or `error` (either verb) → the slice has **FAILED** (the existing
      FAILED semantics defined throughout section 3 — no new failure handling).
 
+   **Known-baseline-failure hint (`knownFailureMatches`).** When a capability
+   tool returns `status: "failed"` and the project's `commands.json` configures a
+   `knownFailures` pattern list, the result carries
+   `knownFailureMatches.matched` (configured patterns that appeared in the
+   failing output) and `.unmatched` (configured patterns that did not). Use it
+   only as a **hint**, never as a verdict — it is a best-effort L1 annotation,
+   not a deterministic "zero new failures" assertion (`run_tests` returns capped
+   exit-code output, not a structured test-result list). When every failure
+   indicator in the output is explained by a `matched` pattern and `unmatched`
+   holds only not-present baseline cases, treat the failure as a **likely known
+   baseline** and proceed per this gate's baseline handling. When the failing
+   output contains indicators NOT covered by any `matched` pattern,
+   **spot-check** before treating it as baseline — L1 cannot deterministically
+   assert "0 new failures." A `knownFailures` entry in `commands.json` looks
+   like, e.g.:
+
+   ```json
+   { "tests": ["npm", "test"], "knownFailures": ["flaky-network timeout", "ECONNRESET"] }
+   ```
+
    The verb set is exactly `run_build` + `run_tests` — a deliberate subset:
    build+test is the correctness trust boundary, while `typecheck`/`lint` remain
    the reviewer's quality remit and are intentionally **not** re-run here. The

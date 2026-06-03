@@ -216,6 +216,117 @@ describe("run-command capability tools", () => {
   });
 });
 
+describe("knownFailures annotation", () => {
+  it("annotates a matched pattern on a failing command", async () => {
+    const dir = project({
+      tests: [
+        "node",
+        "-e",
+        "process.stderr.write('flaky-network timeout'); process.exit(1)",
+      ],
+      knownFailures: ["flaky-network timeout"],
+    });
+    const r = await runTests({ repoPath: dir });
+
+    expect(r.status).toBe("failed");
+    expect(r.knownFailureMatches).toBeDefined();
+    expect(r.knownFailureMatches!.matched).toEqual(["flaky-network timeout"]);
+    expect(r.knownFailureMatches!.unmatched).toEqual([]);
+  });
+
+  it("lists a configured pattern that does not appear under unmatched", async () => {
+    const dir = project({
+      tests: [
+        "node",
+        "-e",
+        "process.stderr.write('flaky-network timeout'); process.exit(1)",
+      ],
+      knownFailures: ["flaky-network timeout", "never appears here"],
+    });
+    const r = await runTests({ repoPath: dir });
+
+    expect(r.status).toBe("failed");
+    expect(r.knownFailureMatches!.matched).toEqual(["flaky-network timeout"]);
+    expect(r.knownFailureMatches!.unmatched).toEqual(["never appears here"]);
+  });
+
+  it("matches a regex pattern", async () => {
+    const dir = project({
+      tests: [
+        "node",
+        "-e",
+        "process.stdout.write('the FAIL: connection timeout occurred'); process.exit(1)",
+      ],
+      knownFailures: ["FAIL.*timeout"],
+    });
+    const r = await runTests({ repoPath: dir });
+
+    expect(r.status).toBe("failed");
+    expect(r.knownFailureMatches!.matched).toEqual(["FAIL.*timeout"]);
+    expect(r.knownFailureMatches!.unmatched).toEqual([]);
+  });
+
+  it("falls back to literal includes on an invalid regex — never throws, never CONFIG_INVALID", async () => {
+    const dir = project({
+      tests: [
+        "node",
+        "-e",
+        "process.stderr.write('unbalanced ( paren in output'); process.exit(1)",
+      ],
+      // "(" is an invalid RegExp — must be matched literally via includes.
+      knownFailures: ["("],
+    });
+    const r = await runTests({ repoPath: dir });
+
+    expect(r.status).toBe("failed");
+    expect(r.errorCode).toBeUndefined();
+    expect(r.knownFailureMatches!.matched).toEqual(["("]);
+    expect(r.knownFailureMatches!.unmatched).toEqual([]);
+  });
+
+  it("is absent when knownFailures is unset", async () => {
+    const dir = project({
+      tests: ["node", "-e", "process.exit(1)"],
+    });
+    const r = await runTests({ repoPath: dir });
+
+    expect(r.status).toBe("failed");
+    expect(r.knownFailureMatches).toBeUndefined();
+  });
+
+  it("is absent on a passed command even when knownFailures is set", async () => {
+    const dir = project({
+      tests: ["node", "-e", "process.exit(0)"],
+      knownFailures: ["some pattern"],
+    });
+    const r = await runTests({ repoPath: dir });
+
+    expect(r.status).toBe("passed");
+    expect(r.knownFailureMatches).toBeUndefined();
+  });
+
+  it("matches a pattern present only in the truncated-away HEAD of oversized output", async () => {
+    const dir = project({
+      tests: [
+        "node",
+        "-e",
+        // MARKER sits at the very head, then >64k chars of padding push it out
+        // of the tail-kept window. Matching runs over untruncated output, so it
+        // still matches; the returned stdout is capped and excludes MARKER.
+        "process.stdout.write('BASELINE-MARKER' + 'x'.repeat(70000)); process.exit(1)",
+      ],
+      knownFailures: ["BASELINE-MARKER"],
+    });
+    const r = await runTests({ repoPath: dir });
+
+    expect(r.status).toBe("failed");
+    expect(r.truncated).toBe(true);
+    expect(r.stdout).not.toContain("BASELINE-MARKER");
+    expect(r.knownFailureMatches!.matched).toEqual(["BASELINE-MARKER"]);
+    expect(r.knownFailureMatches!.unmatched).toEqual([]);
+  });
+});
+
 describe("runInstall", () => {
   it("returns status='installed' when the configured install command exits 0", async () => {
     const dir = project({ install: ["node", "-e", "process.exit(0)"] });
