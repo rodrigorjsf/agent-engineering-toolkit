@@ -40,6 +40,13 @@ All four subagents have **no Bash and no git access** — they are sandboxed to
 one worktree (the investigator is read-only). Only the orchestrator touches
 branches, remotes, and the tracker.
 
+IDE or language-server diagnostics about files under a worktree path —
+unresolved imports, missing-module errors, or stale type errors from a checkout
+that lacks generated or installed artifacts — are **non-authoritative**. The
+orchestrate capability tools (`run_typecheck`, `run_build`, `run_tests`,
+`run_lint`) are the only source of truth for whether a slice builds and its
+tests pass; trust their result, never an editor's inline diagnostic.
+
 ## Prerequisites
 
 Check these before starting. If one is missing, report it and stop.
