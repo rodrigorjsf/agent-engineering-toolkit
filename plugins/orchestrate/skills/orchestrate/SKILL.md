@@ -822,10 +822,20 @@ To hand off:
    `in-progress` — the successor resumes from it. Do **not** delete
    `.orchestrate/runs/<runId>/context-flag.json`; the successor deletes it on
    startup once it has consumed it.
-2. Call the `spawn_successor` MCP tool with the repository root as `repoPath`.
-   It launches a new interactive Claude Code session — terminal and `claude`
-   flags come from `.orchestrate/handoff.json`, defaults otherwise — that
-   re-invokes `/orchestrate` with Remote Control active.
+2. Derive the resume invocation from the active run's `runId` prefix and pass
+   it to `spawn_successor` as `resumePrompt`. The rule is exact: if the `runId`
+   starts with `prd`, strip the `prd` prefix and take the characters up to the
+   first `-` as `<N>` (e.g. `prd195-20260521-015143` → `195`), pass
+   `resumePrompt: "/orchestrate 195"`; if it starts with `backlog-`, pass
+   `resumePrompt: "/orchestrate"`. **Always derive and pass** `resumePrompt`
+   uniformly — even for a `backlog-` run, where it equals the default — so the
+   static `handoff.json` `successor.resumePrompt` is purely a manual/legacy
+   fallback. Then call the `spawn_successor` MCP tool with the repository root
+   as `repoPath` and the derived `resumePrompt`. It launches a new interactive
+   Claude Code session — terminal and `claude` flags come from
+   `.orchestrate/handoff.json`, defaults otherwise — that re-invokes the
+   passed `resumePrompt` (the partition-correct `/orchestrate <N>` or bare
+   `/orchestrate`) with Remote Control active.
    - `status: "ok"` — the successor launched. Report to the user which terminal
      opened (`terminal`) and that the run continues there, then **stop** — do
      not process any further waves in this session.
