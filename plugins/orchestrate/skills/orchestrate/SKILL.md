@@ -162,45 +162,61 @@ Before discovering or starting a run, sweep away the footprint of concluded
 runs so the `.orchestrate/runs/` directory does not accumulate. This same sweep
 is what `/orchestrate clean` (section 0) runs on demand.
 
-1. Enumerate every `.orchestrate/runs/*/run-state.json`. For each run whose
-   `status` is `completed` and whose `finalPullRequest` is **non-null**, resolve
-   the run's **merge verdict** — the gate is strictly the final pull request
-   having **merged** into the integration base, not merely being open:
+1. Enumerate every `.orchestrate/runs/*/run-state.json` and parse each into
+   `{ runId, status, finalPullRequest, slices }` (normalize `slices` to an array
+   of `{ issue, state }`). Then resolve the **merge verdicts** across the two
+   pure phases of the **`resolve_cleanup_verdicts` MCP tool** — the gate is
+   strictly the final pull request having **merged** into the integration base,
+   not merely being open:
+
+   **Phase one — `resolve_cleanup_verdicts` with `phase: "enumerate"`** and the
+   parsed `runs` array. The tool applies the eligibility gate
+   (`status === "completed" && finalPullRequest != null`) — omitting every run
+   that is **not** `completed` or whose `finalPullRequest` is `null`, since such
+   a run has not concluded — and returns the **deduplicated** `finalPullRequests`
+   identifiers to look up, plus `eligibleRuns` (each run paired with its final
+   PR). **Never** include the current run, or any run still `in-progress`, in the
+   parsed `runs`: an ineligible run is omitted from the verdict map, which tells
+   `clean_runs` to leave it strictly intact.
+
+   **Fetch the merge facts (orchestrator `gh` work — stays in the spine).** For
+   each identifier in the returned `finalPullRequests`, run:
 
    ```
    gh pr view <finalPullRequest> --json state,mergedAt
    ```
 
-   - `state` is `MERGED` and `mergedAt` is non-null → verdict `merged`.
-   - `state` is `OPEN` → verdict `open`.
-   - `state` is `CLOSED` and `mergedAt` is null → verdict `closed-unmerged`.
-   - The command errors or the result cannot be parsed → verdict `unknown`.
+   The fetch loop is **orchestrator** work — `resolve_cleanup_verdicts` is pure
+   and never shells `gh`. Build one `facts` entry per `eligibleRuns` row,
+   carrying that run's `runId`, its `finalPullRequest`, the fetched
+   `state`/`mergedAt` (use `null`/omit when the command errors or cannot be
+   parsed), and that run's `slices` from step-1 parsing.
 
-   A run whose `status` is **not** `completed`, or whose `finalPullRequest` is
-   `null`, is **never** swept — it has not concluded. **Never** include the
-   current run, or any run still `in-progress`, in the verdict map: omitting a
-   run from the map tells `clean_runs` to leave it strictly intact.
+   **Phase two — `resolve_cleanup_verdicts` with `phase: "classify"`** and the
+   `facts` array. The tool classifies every `{ state, mergedAt }` into the
+   four-way verdict — `MERGED` + non-null `mergedAt` → `merged`; `OPEN` → `open`;
+   `CLOSED` + null `mergedAt` → `closed-unmerged`; any malformed/missing/
+   unexpected fact → `unknown` — and, in the same pass, captures each `merged`
+   run's `closeSetIssues` (the issue numbers of exactly its `passed` slices).
+   Collapse the returned `verdicts` into the `Record<runId, verdict>` map
+   `clean_runs` ingests, and keep each merged run's `closeSetIssues` as that
+   run's **close-set** for step 3. This is why slices flow through phase two:
+   `clean_runs` deletes the merged run's directory and its `run-state.json`, the
+   only source of those issue numbers, so the close-set must be captured **now**.
 
    As defense-in-depth, `clean_runs` independently enforces the same
    `status === "completed" && finalPullRequest != null` gate by re-reading each
    run's own `run-state.json` (per ADR-0012), so even a misbuilt verdict map can
    never make it touch an unconcluded or `in-progress` run — such a run is
    skipped with reason `run-not-completed` or `final-pr-missing`.
-
-   **Collect the close-set before sweeping.** For every run whose verdict
-   resolves to `merged`, you already hold its `run-state.json` open (you just
-   read `finalPullRequest` from it). While it is open, **collect the `issue`
-   number of every slice whose `state` is `"passed"`** into a per-run
-   close-set. Do this **now**, before step 2 — `clean_runs` deletes the merged
-   run's directory and its `run-state.json`, the only source of those issue
-   numbers, so capturing them after the sweep is impossible.
 2. Call the **`clean_runs` MCP tool** with the repository root as `repoPath` and
-   the per-run `verdicts` map you built. The tool removes each `merged` run's
-   worktrees, its umbrella and slice branches (local and remote), and its run
-   directory; it leaves every other run intact and reports it. A `failed`-slice
-   worktree is preserved (and that run's directory kept) so a developer can
-   still inspect it. `clean_runs` is git + filesystem only — it never shells
-   `gh`; the merge verdict you resolved above is the GitHub half of the gate.
+   the per-run `verdicts` map you collapsed from phase two. The tool removes each
+   `merged` run's worktrees, its umbrella and slice branches (local and remote),
+   and its run directory; it leaves every other run intact and reports it. A
+   `failed`-slice worktree is preserved (and that run's directory kept) so a
+   developer can still inspect it. `clean_runs` is git + filesystem only — it
+   never shells `gh`; the merge verdicts you resolved above are the GitHub half
+   of the gate.
 3. **Close the passed-slice issues (backstop).** After `clean_runs` returns,
    for every issue in the close-set you collected in step 1, run
    `gh issue close <N>`. This is **orchestrator** work — the `gh issue close`

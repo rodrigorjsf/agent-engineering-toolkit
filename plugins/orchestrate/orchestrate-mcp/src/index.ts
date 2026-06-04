@@ -136,6 +136,13 @@ import {
   type FinalizeSliceInput,
   type FinalizeSliceOutput,
 } from "./tools/finalize-slice.js";
+import {
+  resolveCleanupVerdicts,
+  resolveCleanupVerdictsInputSchema,
+  resolveCleanupVerdictsOutputSchema,
+  type ResolveCleanupVerdictsInput,
+  type ResolveCleanupVerdictsOutput,
+} from "./tools/resolve-cleanup-verdicts.js";
 
 const server = new McpServer({
   name: "orchestrate",
@@ -1157,6 +1164,63 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleFinalizeSlice as unknown as AnyToolHandler
+);
+
+// ─── resolve_cleanup_verdicts ─────────────────────────────────────────────────
+
+const handleResolveCleanupVerdicts: ToolHandler<
+  ResolveCleanupVerdictsInput,
+  ResolveCleanupVerdictsOutput
+> = async (input) => {
+  const result = resolveCleanupVerdicts(input);
+  let text: string;
+  if (result.status === "error") {
+    text = `resolve_cleanup_verdicts failed [${result.errorCode}]: ${result.errorMessage}`;
+  } else if (input.phase === "enumerate") {
+    text =
+      `Enumerated ${result.eligibleRuns!.length} eligible run(s); ` +
+      `${result.finalPullRequests!.length} final PR(s) to fetch.`;
+  } else {
+    const merged = result.verdicts!.filter(
+      (v) => v.verdict === "merged"
+    ).length;
+    text =
+      `Classified ${result.verdicts!.length} fetched fact(s): ` +
+      `${merged} merged.`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "resolve_cleanup_verdicts",
+  {
+    title: "Resolve Start-of-Run Cleanup Verdicts (two pure phases)",
+    description:
+      "The PURE verdict logic of the start-of-run cleanup sweep (SKILL §1), in " +
+      "two phases behind one tool. phase 'enumerate' (phase one): ingests the " +
+      "enumerated parsed run-states, applies the cleanup-eligibility gate " +
+      "(`status === 'completed' && finalPullRequest != null`, omitting every " +
+      "other run), and returns the DEDUPLICATED final-PR identifiers (first-seen " +
+      "order) the SPINE then looks up with `gh pr view <id> --json " +
+      "state,mergedAt`, plus the eligible runs paired with their final PRs. " +
+      "phase 'classify' (phase two): ingests the fetched `{state, mergedAt}` " +
+      "facts and returns the four-way verdict (`merged | open | " +
+      "closed-unmerged | unknown` — any malformed/missing/unexpected fact → " +
+      "`unknown`) that `clean_runs` consumes, capturing each `merged` run's " +
+      "`closeSetIssues` (the issue numbers of its `passed` slices) in the same " +
+      "pass. FULLY PURE — no fs, no git, no `gh`, no child process; the " +
+      "`gh pr view` fetch loop, the `gh issue close` backstop, and " +
+      "`clean_runs`' fs/git removal all stay in the spine. Returns a " +
+      "discriminated `status` of 'ok' or 'error' and never throws.",
+    inputSchema: resolveCleanupVerdictsInputSchema.shape,
+    outputSchema: resolveCleanupVerdictsOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleResolveCleanupVerdicts as unknown as AnyToolHandler
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────
