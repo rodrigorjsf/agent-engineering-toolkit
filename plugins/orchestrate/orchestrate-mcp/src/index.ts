@@ -150,6 +150,13 @@ import {
   type RunWaveInput,
   type RunWaveOutput,
 } from "./tools/run-wave.js";
+import {
+  resolveMergeConflict,
+  resolveMergeConflictInputSchema,
+  resolveMergeConflictOutputSchema,
+  type ResolveMergeConflictInput,
+  type ResolveMergeConflictOutput,
+} from "./tools/resolve-merge-conflict.js";
 
 const server = new McpServer({
   name: "orchestrate",
@@ -1315,6 +1322,69 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleRunWave as unknown as AnyToolHandler
+);
+
+// ─── resolve_merge_conflict ───────────────────────────────────────────────────
+
+const handleResolveMergeConflict: ToolHandler<
+  ResolveMergeConflictInput,
+  ResolveMergeConflictOutput
+> = async (input) => {
+  const result = await resolveMergeConflict(input);
+  let text: string;
+  switch (result.verdict) {
+    case "clean":
+      text = `Umbrella merge applied cleanly — nothing to resolve.`;
+      break;
+    case "conflicted":
+      text = `Umbrella merge conflicted in ${result.conflictedFiles?.length ?? 0} path(s) — the unmerged index is left for the resolver.`;
+      break;
+    case "completed":
+      text = `Merge completed — the resolved set staged cleanly with no residual markers.`;
+      break;
+    case "markers_remain":
+      text = `Resolution incomplete — residual conflict markers remain; the merge was aborted (worktree left clean).`;
+      break;
+    case "error":
+      text = `resolve_merge_conflict failed [${result.errorCode}]: ${result.errorMessage}`;
+      break;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "resolve_merge_conflict",
+  {
+    title: "Resolve a Merge Conflict (re-entrant lifecycle, two operations)",
+    description:
+      "The two deterministic git operations around the conflict-resolver spawn " +
+      "(SKILL §3 step 8a), behind one tool selected by the `operation` " +
+      "discriminant — the resolver spawn, envelope validation, clean-path " +
+      "capability re-verify, and attempt-once policy all stay in the spine. " +
+      "'prepare': RE-ENTRANT recovery first — a pre-existing in-progress merge " +
+      "(a stale `MERGE_HEAD` from an interrupted predecessor) is `git merge " +
+      "--abort`ed best-effort BEFORE the fresh fetch+merge, so a mid-merge " +
+      "successor recovers instead of wedging on 'you have not concluded your " +
+      "merge'; then fetch the umbrella and merge it into the slice worktree, " +
+      "returning `clean` (auto-committed, nothing to resolve) or " +
+      "`conflicted{conflictedFiles}` (the unmerged index is left for the " +
+      "resolver — a rename-conflict emits BOTH paths). 'finalize': stage the " +
+      "resolved file set (`git add -- ...`, never `-A`/`-u`/`.`), scan the " +
+      "staged diff for residual conflict markers (`<<<<<<<`/`=======`/" +
+      "`>>>>>>>`), and complete the merge commit — `completed` when none remain, " +
+      "or `markers_remain` (the merge is ABORTED, leaving the worktree clean) " +
+      "when any do. Git-only via the hardened exec seam, run-scoped (mutates " +
+      "nothing outside the passed worktree), shells no `gh`, and never throws — " +
+      "every failure mode is a structured `verdict`.",
+    inputSchema: resolveMergeConflictInputSchema.shape,
+    outputSchema: resolveMergeConflictOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleResolveMergeConflict as unknown as AnyToolHandler
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────

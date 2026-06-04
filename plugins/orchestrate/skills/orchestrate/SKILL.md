@@ -877,7 +877,8 @@ subagent's verbatim returned text and its `role`:
    `implementer → reviewer → orchestrator` trust chain.
 
    Call the `run_build` and `run_tests` MCP tools with the slice's
-   `<worktree-path>` as `repoPath` (the same pattern step 8a.3 uses). Each tool
+   `<worktree-path>` as `repoPath` (the same pattern step 8a's `clean`-verdict
+   re-verify uses). Each tool
    returns a `status` enum (`passed | failed | not-configured | error`); handle
    all four:
    - `passed` on **both** verbs → proceed to step 6.
@@ -911,7 +912,7 @@ subagent's verbatim returned text and its `role`:
    The verb set is exactly `run_build` + `run_tests` — a deliberate subset:
    build+test is the correctness trust boundary, while `typecheck`/`lint` remain
    the reviewer's quality remit and are intentionally **not** re-run here. The
-   step 8a.3 (post-conflict) re-verify running all four
+   step 8a `clean`-verdict (post-`prepare`) re-verify running all four
    `run_tests`/`run_typecheck`/`run_build`/`run_lint` verbs is a **known,
    intentional asymmetry** — and is left unchanged: this pre-merge gate is
    focused correctness on a worktree the reviewer already saw, whereas the
@@ -997,53 +998,65 @@ subagent's verbatim returned text and its `role`:
 8a. **Resolve a merge conflict (once).** Attempt resolution exactly once — a
    conflict the resolver cannot fix is a FAILED slice.
 
-   1. In the slice's worktree, fetch and merge the current umbrella branch so
-      the conflict markers surface in the files:
+   1. Prepare the worktree for resolution with the **`resolve_merge_conflict`
+      MCP tool** in operation `prepare`. Call it with `operation: "prepare"`,
+      `worktreePath` = the slice `worktreePath`, `umbrellaRef` =
+      `orchestrate/umbrella-<runId>`, and `remote` (defaults to `origin`). The
+      tool first **recovers re-entrantly**: if a pre-existing in-progress merge
+      is found (a stale `MERGE_HEAD` left by an interrupted predecessor), it
+      `git merge --abort`s it best-effort so this run is not wedged on "you have
+      not concluded your merge"; then it fetches the umbrella and merges it into
+      the worktree, surfacing any conflict markers in the files. The
+      `conflictedFiles` it returns (a rename-conflict emits BOTH of its paths)
+      is the list passed to the resolver in step 4.
 
-      ```
-      git -C <worktree-path> fetch origin orchestrate/umbrella-<runId>
-      git -C <worktree-path> merge origin/orchestrate/umbrella-<runId>
-      ```
-
-   2. List the conflicted files:
-      `git -C <worktree-path> diff --name-only --diff-filter=U`.
-   3. If the conflicted-file list is **EMPTY**, the umbrella merge applied
-      cleanly with no conflicts to resolve — do not spawn the
-      conflict-resolver. A clean textual merge is not proof of a correct one:
-      Git auto-merges non-overlapping hunks that may still be semantically
-      broken. Re-verify the merged worktree before integrating — run the
-      `run_tests`, `run_typecheck`, `run_build`, and `run_lint` capability
-      tools with the worktree path as `repoPath`. If any reports failure, the
-      slice has **FAILED**. If all pass, the merge commit already exists —
-      push and merge the slice PR: `git -C <worktree-path> push` then
-      `gh pr merge <pr-number> --squash --delete-branch`.
-   4. Spawn the `orchestrate:conflict-resolver-<effort>` subagent — `<effort>`
+      - `verdict: "conflicted"` — the merge left an unmerged index; carry
+        `conflictedFiles` into step 4.
+      - `verdict: "clean"` — the umbrella merge applied cleanly with no
+        conflicts to resolve, and the tool already auto-committed it. **Do not
+        spawn the conflict-resolver.** A clean textual merge is not proof of a
+        correct one: Git auto-merges non-overlapping hunks that may still be
+        semantically broken. Re-verify the merged worktree before integrating —
+        run the `run_tests`, `run_typecheck`, `run_build`, and `run_lint`
+        capability tools with the worktree path as `repoPath`. If any reports
+        failure, the slice has **FAILED**. If all pass, the merge commit already
+        exists — push and merge the slice PR: `git -C <worktree-path> push` then
+        `gh pr merge <pr-number> --squash --delete-branch`.
+      - `verdict: "error"` — a git or input failure (`errorCode`,
+        `errorMessage`); the slice has **FAILED**, wired like every other
+        MCP-tool error in this section.
+   2. Spawn the `orchestrate:conflict-resolver-<effort>` subagent — `<effort>`
       and the `model` override from `routing.conflict-resolver`. Its prompt
       must carry the issue, the worktree path, and the list of conflicted
-      files.
-   5. Validate its returned text with `validate_envelope` (role
+      files (the `conflictedFiles` from step 1).
+   3. Validate its returned text with `validate_envelope` (role
       `conflict-resolver`). An `invalid` or `missing` envelope, or a `valid`
       envelope with `status: "failed"`, means resolution failed: abort and the
       slice has **FAILED** — `git -C <worktree-path> merge --abort`.
-   6. On a `valid` envelope with `status: "resolved"`, stage the resolved files
-      and **confirm no conflict markers remain** — inspect
-      `git -C <worktree-path> diff --cached` for leftover `<<<<<<<`, `=======`,
-      or `>>>>>>>` lines. If any remain, the resolution is incomplete:
-      `git -C <worktree-path> merge --abort` and the slice has **FAILED**.
-      Otherwise complete the merge, push, and merge the pull request — if
-      `gh pr merge` fails (the resolution did not make the pull request
-      mergeable), the slice has **FAILED**; the one attempt is spent.
+   4. On a `valid` envelope with `status: "resolved"`, finalize the merge with
+      the **`resolve_merge_conflict` MCP tool** in operation `finalize`. Call it
+      with `operation: "finalize"`, `worktreePath` = the slice `worktreePath`,
+      and `resolvedFiles` = the resolver's resolved file set. The tool stages
+      exactly that set (`git add -- ...`, never `-A`/`-u`/`.`), scans the staged
+      diff for residual conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`), and
+      completes the merge commit.
 
-      ```
-      git -C <worktree-path> add -- <resolved file> ...
-      git -C <worktree-path> commit --no-edit
-      git -C <worktree-path> push
-      gh pr merge <pr-number> --squash --delete-branch
-      ```
+      - `verdict: "completed"` — the resolved set staged cleanly with no
+        residual markers and the merge commit was written. Push and merge the
+        pull request: `git -C <worktree-path> push` then
+        `gh pr merge <pr-number> --squash --delete-branch`. If `gh pr merge`
+        fails (the resolution did not make the pull request mergeable), the
+        slice has **FAILED**; the one attempt is spent.
+      - `verdict: "markers_remain"` — residual conflict markers remain, so the
+        resolution is incomplete: the tool has already **aborted the merge**,
+        leaving the worktree clean. The slice has **FAILED**.
+      - `verdict: "error"` — a git or input failure (`errorCode`,
+        `errorMessage`); the slice has **FAILED**.
 
 9. **Finish the slice.** Once any of step 8's `gh pr merge --squash` paths
-   (`MERGEABLE`, the clean-textual-merge 8a.3 path, or the conflict-resolved
-   8a.6 path) has succeeded — the slice PR is now squash-merged into the
+   (`MERGEABLE`, the clean-textual-merge `prepare` `clean`-verdict path at step
+   8a.1, or the conflict-resolved `finalize` `completed`-verdict path at step
+   8a.4) has succeeded — the slice PR is now squash-merged into the
    umbrella — run the merged-tail mechanics with the **`finalize_slice` MCP
    tool** in phase `post-merge`. Call it with `phase: "post-merge"`,
    `worktreePath` = the slice `worktreePath`, `repoPath` = the **main repo root**
