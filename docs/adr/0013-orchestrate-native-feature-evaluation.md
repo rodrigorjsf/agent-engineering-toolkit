@@ -97,12 +97,19 @@ violate the distribution-degradation requirement and forfeit durable resume.
   execution-time permission scope is introduced. The "alternative, not
   replacement" requirement is met by adopting zero, not by alternating paths.
 - **Context reduction is delivered by decomposition.** Extracting every
-  deterministic-procedure and subagent-delegable block lands the skill body near
-  **~750 lines** — still above the project's 500-line `SKILL.md` cap. This
-  over-cap residue is the **irreducible orchestration-judgment spine** (roles &
-  safety, complexity tiering, wave-concurrency policy, failure narration,
-  checkpoint/resume semantics) and is an accepted, documented exception for an
-  orchestrator skill, not a defect for the quality gate to "fix."
+  deterministic-procedure and subagent-delegable block first projected the skill
+  body near **~750 lines** — over the project's 500-line `SKILL.md` cap, which
+  is why an over-cap exception was carved here for the spine. The #275
+  procedural-prose relocation (moving each phase's operational mechanics into
+  phase-loaded `references/*.md`) then **refined the spine to ~425 lines** —
+  which now lands *under* the 500-line cap, giving the exception headroom rather
+  than exercising it. This residue is the **irreducible orchestration-judgment
+  spine** (roles & safety, complexity tiering, wave-concurrency policy, failure
+  narration, checkpoint/resume semantics + the resume re-validate matrix, the
+  result-envelope trust chain, the single-writer tracker invariant); the
+  documented exception remains on record so the spine is never flagged as bloat
+  should its irreducible judgment grow back over the cap. This exception is
+  orchestrate-specific and is **not** generalized to any other skill.
 - **Per-feature reevaluation triggers** (so this is not relitigated each Claude
   Code release):
   - *Dynamic workflows* — when a workflow gains **durable cross-session resume**
