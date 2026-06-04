@@ -192,10 +192,14 @@ when **both** conditions hold:
   was *opened*; the gate is its **merged** state. A run whose final pull request
   is still open or was closed unmerged is left intact and only reported.
 
-The merge verdict is GitHub state, which the orchestrator resolves with
-`gh pr view <finalPullRequest> --json state,mergedAt` and passes as a per-run
-verdict map (`runId → merged | open | closed-unmerged | unknown`) to the
-`clean_runs` MCP tool, itself git + filesystem only. As defense-in-depth,
+The merge verdict is GitHub state. The orchestrator fetches each run's
+`gh pr view <finalPullRequest> --json state,mergedAt` facts and the **pure**
+`resolve_cleanup_verdicts` MCP tool classifies them into a per-run verdict map
+(`runId → merged | open | closed-unmerged | unknown`) — phase one of that tool
+also applies the eligibility gate to pick which final PRs to fetch, and phase
+two captures each `merged` run's passed-slice close-set. The orchestrator then
+passes the verdict map to the `clean_runs` MCP tool, itself git + filesystem
+only. As defense-in-depth,
 `clean_runs` does **not** trust the verdict map alone: even for a `merged`
 verdict it **re-reads** the run's own `run-state.json` and refuses to act unless
 `status === "completed"` **and** `finalPullRequest != null` — a

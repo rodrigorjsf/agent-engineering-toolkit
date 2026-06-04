@@ -53,12 +53,16 @@ The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing 
 | `bootstrap_config` | Set up a repository's `.orchestrate/` config on a first-ever run — project-aware `commands.json`, model-derived `handoff.json`, default `routing.json`, the run directory, and the `.gitignore` entry |
 | `create_worktree` / `remove_worktree` | Git worktree lifecycle — isolated per-slice checkouts |
 | `push_and_verify` | Push a slice branch and verify it actually landed on the remote (SHA-match `git ls-remote` check + bounded backoff) — fails loud when an exit-0 push never lands; git-only, never shells `gh` |
+| `finalize_slice` | Land one reviewed slice's git + run-state mechanics in two phases: `commit-push` (stage exactly the named files, guard an empty changeset, commit with `Closes #<N>`, compose `push_and_verify`, checkpoint `subState: pushed`) and `post-merge` (checkpoint `subState: merged`, remove the worktree, reclaim the local branch). Forge ops and the `pr-open` checkpoint stay in the spine; git-only, never shells `gh` |
 | `run_tests` / `run_typecheck` / `run_build` / `run_lint` | Run the project's configured capability commands |
+| `run_wave` | A family of bracketed deterministic wave-loop operations behind one tool, selected by the `operation` discriminant — so only the higher-level policy that decides how a wave processes its slices stays the orchestrator's concern. `refresh-base` (fast-forward the local umbrella ref to its remote tip via a `git merge-base` ancestor proof, or report `diverged` and leave the ref untouched), `select-processable` (gate one slice on its in-partition and out-of-partition blocker states — consumed from state passed in, never read with `gh`), `reverify-slice` (no-op for the first merged slice; else fetch + merge the umbrella into the worktree and run the tests + build verbs, returning `passed`/`failed{which}`/`conflict` — a conflict is flagged in place, never resolved), and `integration-gate` (run the per-wave integration suite → `proceed`/`halt`/`tolerate`). Git-only, run-scoped, never throws |
+| `resolve_merge_conflict` | The two deterministic git operations around the conflict-resolver spawn, behind one tool selected by the `operation` discriminant — the resolver spawn, envelope validation, clean-path re-verify, and attempt-once policy stay in the spine. `prepare` (re-entrant recovery first — abort a stale in-progress merge before the fresh fetch + merge of the umbrella into the worktree, returning `clean` (auto-committed, nothing to resolve) or `conflicted{conflictedFiles}`, a rename-conflict emitting both paths) and `finalize` (stage the resolved set, scan the staged diff for residual conflict markers, complete the merge commit → `completed`, or `markers_remain` with the merge aborted leaving the worktree clean). Git-only, run-scoped, never shells `gh`, never throws |
 | `plan_waves` | Topologically sort issues into dependency waves; detects cycles |
 | `resolve_routing` | Resolve the model and effort variant for each role from a complexity tier |
 | `validate_envelope` | Validate a subagent's result envelope against its role schema — distinguishes a valid, a truncated/invalid, and a missing envelope. The implementer status carries `completed`, `incomplete` (a graceful turn-budget self-report), and `blocked` |
 | `recover_changed_files` | Recover a worktree's changed-file set by inspecting it directly — the orchestrator's fallback when an envelope is missing or invalid |
 | `verify_changeset` | Compare a worktree's actual changeset against the file set an implementer declared — the post-implementer scope check before a `completed` envelope is trusted |
+| `resolve_cleanup_verdicts` | The PURE verdict logic of the start-of-run cleanup sweep, in two phases: `enumerate` (apply the `completed && finalPullRequest != null` eligibility gate to the parsed run-states, return the deduplicated final-PR identifiers the spine fetches with `gh pr view`) and `classify` (turn the fetched `{state, mergedAt}` facts into the four-way `merged`/`open`/`closed-unmerged`/`unknown` verdict `clean_runs` consumes, capturing each merged run's passed-slice close-set in the same pass). No fs/git/`gh` — the fetch loop, `gh issue close`, and `clean_runs`' removal stay in the spine |
 | `clean_runs` | Remove a concluded run's worktrees, branches, and run directory once its final pull request has merged — git + filesystem only |
 | `render_dashboard` / `render_graph` / `render_report` | Render standalone HTML artifacts from the run state |
 | `spawn_successor` | Launch a fresh Claude Code session that resumes the run |
@@ -353,8 +357,11 @@ plugins/orchestrate/
 │                                #   session-start (SessionStart) hooks
 ├── skills/
 │   └── orchestrate/
-│       ├── SKILL.md             # The orchestrator skill
-│       └── references/          # run-state and context-handoff references
+│       ├── SKILL.md             # The orchestrator judgment spine
+│       └── references/          # phase-loaded references:
+│                                #   prerequisites, clean-mode, run-lifecycle,
+│                                #   wave-loop, slice-pipeline, failure-handling,
+│                                #   run-state, context-handoff
 ├── agents/                      # 8 subagents — {investigator,implementer,
 │                                #   reviewer,conflict-resolver}-{standard,deep}
 ├── templates/                   # commands.json, routing.json, handoff.json

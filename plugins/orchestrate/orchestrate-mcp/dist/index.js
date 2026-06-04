@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs13, exportName) {
+    function addFormats(ajv, list, fs14, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs13[f]);
+        ajv.addFormat(f, fs14[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -22085,6 +22085,14 @@ function resolveRunDir(repoPath, runId) {
 // src/tools/render.ts
 var sliceStateEnum = external_exports.enum(["pending", "in-progress", "passed", "failed", "skipped"]);
 var tierEnum = external_exports.enum(["trivial", "standard", "complex"]);
+var subStateEnum = external_exports.enum([
+  "implemented",
+  "verified",
+  "reviewed",
+  "pushed",
+  "pr-open",
+  "merged"
+]);
 var sliceSchema = external_exports.object({
   issue: external_exports.number().int(),
   title: external_exports.string(),
@@ -22092,6 +22100,7 @@ var sliceSchema = external_exports.object({
   tier: tierEnum,
   blockedBy: external_exports.array(external_exports.string()),
   state: sliceStateEnum,
+  subState: subStateEnum.optional(),
   sliceBranch: external_exports.string(),
   worktreePath: external_exports.string().nullable(),
   pullRequest: external_exports.string().nullable(),
@@ -24619,6 +24628,956 @@ async function validateRunState(input) {
   return { status: "valid" };
 }
 
+// src/tools/finalize-slice.ts
+var fs13 = __toESM(require("fs"));
+var finalizeSliceInputSchema = external_exports.object({
+  phase: external_exports.enum(["commit-push", "post-merge"]).describe(
+    "Which finalization phase to run. 'commit-push' = \xA73 step 6: stage the named file set, guard an empty changeset, commit (subject + `Closes #<N>`), push-and-verify, and write `subState:'pushed'` on a confirmed landing. 'post-merge' = \xA73 step 9 (the thin tail): write `subState:'merged'`, remove the worktree, then force-reclaim the local slice branch (idempotent). Forge ops and the `pr-open` checkpoint stay in the spine."
+  ),
+  worktreePath: external_exports.string().describe(
+    "Absolute path of the slice WORKTREE. In 'commit-push' the stage/commit/push run here; in 'post-merge' it is the worktree removed. NOT where run-state.json lives \u2014 that is under `repoPath` (the main repo root)."
+  ),
+  repoPath: external_exports.string().describe(
+    "Absolute path of the MAIN repository root \u2014 the canonical run-state.json lives under it at `.orchestrate/runs/<runId>/run-state.json`, NOT under the slice worktree (a fresh checkout that gitignores `.orchestrate/runs/`). In 'post-merge' the worktree removal and the local `branch -D` are also driven from here (the worktree is gone by then)."
+  ),
+  runId: external_exports.string().describe(
+    "The orchestration run's id (`prd<N>-<timestamp>` or `backlog-<timestamp>`). Selects the per-run directory `.orchestrate/runs/<runId>/` under `repoPath` whose run-state.json this tool mutates."
+  ),
+  sliceId: external_exports.string().describe(
+    "The issue-id-string key of this slice in run-state's `slices` map. Its `subState` is the field this tool advances ('pushed' then 'merged')."
+  ),
+  branch: external_exports.string().describe(
+    "The slice's local branch name (e.g. `orchestrate/slice-7`). In 'commit-push' it is the branch pushed and verified; in 'post-merge' it is the local branch force-reclaimed after worktree removal."
+  ),
+  remote: external_exports.string().optional().default("origin").describe(
+    "Remote to push to and verify against in 'commit-push'. Defaults to `origin`. Unused in 'post-merge' (local reclaim only)."
+  ),
+  setUpstream: external_exports.boolean().optional().default(true).describe(
+    "When true, the 'commit-push' push sets the upstream tracking ref (`-u`) \u2014 the first push of a new slice branch. Default true."
+  ),
+  files: external_exports.array(external_exports.string()).optional().describe(
+    "The spine-computed EXACT file set to stage in 'commit-push' (the union of the validated implementer + reviewer `filesChanged`). Staged via `git add -- ...files` \u2014 NEVER `git add -A`/`-u`/`.`, so untracked build artifacts in the worktree are never committed. Required for 'commit-push'; ignored in 'post-merge'."
+  ),
+  commitSubject: external_exports.string().optional().describe(
+    "The commit subject line for 'commit-push' (e.g. `feat(x): <issue title>`). Committed via a first `-m`; the `Closes #<issueNumber>` trailer is the second `-m`. Required for 'commit-push'."
+  ),
+  issueNumber: external_exports.number().int().optional().describe(
+    "The GitHub issue number for the `Closes #<N>` commit trailer in 'commit-push'. Required for 'commit-push'."
+  )
+});
+var finalizeSliceOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "failed"]).describe(
+    "Outcome discriminant. 'ok' = the requested phase completed (commit + verified push, or the merged-tail removal); 'failed' = a git or run-state step failed \u2014 see `errorCode`."
+  ),
+  verdict: external_exports.enum(["committed-pushed", "failed"]).describe(
+    "The slice-finalization verdict. 'committed-pushed' on a successful phase (both phases report it \u2014 'commit-push' on a confirmed landing, 'post-merge' on the merged-tail completion); 'failed' otherwise."
+  ),
+  branch: external_exports.string().optional().describe("The branch acted on. Present when status='ok'."),
+  remote: external_exports.string().optional().describe(
+    "The remote the branch landed on. Present in a successful 'commit-push'."
+  ),
+  sha: external_exports.string().optional().describe(
+    "The commit SHA confirmed on the remote (matches the local branch tip). Present in a successful 'commit-push'."
+  ),
+  attempts: external_exports.number().optional().describe(
+    "How many landing-verification polls ran before the remote ref matched (>=1). Present in a successful 'commit-push'."
+  ),
+  worktreeRemoved: external_exports.boolean().optional().describe(
+    "True when the worktree was removed (or was already absent \u2014 idempotent). Present in a successful 'post-merge'."
+  ),
+  branchReclaimed: external_exports.boolean().optional().describe(
+    "True when the local slice branch was deleted (or was already absent \u2014 idempotent). Present in a successful 'post-merge'."
+  ),
+  errorCode: external_exports.enum([
+    "INVALID_INPUT",
+    "EMPTY_CHANGESET",
+    "PUSH_FAILED",
+    "BRANCH_NOT_ON_REMOTE",
+    "RUN_ID_INVALID",
+    "RUN_STATE_NOT_FOUND",
+    "RUN_STATE_INVALID",
+    "SLICE_NOT_IN_RUN_STATE",
+    "RUN_STATE_WRITE_FAILED",
+    "WORKTREE_REMOVE_FAILED",
+    "GIT_ERROR"
+  ]).optional().describe(
+    "Machine-readable failure category (git-only). 'INVALID_INPUT' = a branch/remote/path would be parsed by git as an option flag, or a required phase field is missing; 'EMPTY_CHANGESET' = nothing was staged (`git diff --cached --quiet` clean) \u2014 the slice produced no changes; 'PUSH_FAILED'/'BRANCH_NOT_ON_REMOTE' = bubbled from pushAndVerify (the push exited non-zero, or exited 0 but never landed at the expected SHA \u2014 the silent-failure mode); 'RUN_ID_INVALID' = the runId is malformed; 'RUN_STATE_NOT_FOUND'/'RUN_STATE_INVALID' = run-state.json is absent or not parseable; 'SLICE_NOT_IN_RUN_STATE' = `sliceId` is not a key in the `slices` map; 'RUN_STATE_WRITE_FAILED' = the checkpoint write failed; 'WORKTREE_REMOVE_FAILED' = the worktree could not be removed; 'GIT_ERROR' = another git command could not run."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='failed'."
+  )
+});
+function writeSubState(repoPath, runId, sliceId, subState) {
+  const resolved = resolveRunDir(repoPath, runId);
+  if (!resolved.ok) {
+    return {
+      ok: false,
+      errorCode: "RUN_ID_INVALID",
+      errorMessage: resolved.errorMessage
+    };
+  }
+  const statePath = resolved.paths.runStatePath;
+  let raw;
+  try {
+    raw = fs13.readFileSync(statePath, "utf8");
+  } catch {
+    return {
+      ok: false,
+      errorCode: "RUN_STATE_NOT_FOUND",
+      errorMessage: `No run-state.json found at ${statePath}.`
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      ok: false,
+      errorCode: "RUN_STATE_INVALID",
+      errorMessage: `run-state.json is not valid JSON: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`
+    };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {
+      ok: false,
+      errorCode: "RUN_STATE_INVALID",
+      errorMessage: "run-state.json is not a JSON object."
+    };
+  }
+  const obj = parsed;
+  const slices = obj.slices;
+  if (slices === null || typeof slices !== "object" || Array.isArray(slices)) {
+    return {
+      ok: false,
+      errorCode: "RUN_STATE_INVALID",
+      errorMessage: "run-state.json `slices` is not a map keyed by issue id."
+    };
+  }
+  const sliceMap = slices;
+  const slice = sliceMap[sliceId];
+  if (slice === null || typeof slice !== "object" || Array.isArray(slice)) {
+    return {
+      ok: false,
+      errorCode: "SLICE_NOT_IN_RUN_STATE",
+      errorMessage: `Slice '${sliceId}' is not a key in run-state.json's slices map.`
+    };
+  }
+  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+  slice.subState = subState;
+  slice.updatedAt = nowIso;
+  obj.updatedAt = nowIso;
+  try {
+    fs13.writeFileSync(statePath, JSON.stringify(obj, null, 2), "utf8");
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      errorCode: "RUN_STATE_WRITE_FAILED",
+      errorMessage: `Could not write run-state.json at ${statePath}: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`
+    };
+  }
+}
+function isAbsentRefError2(message) {
+  const m = message.toLowerCase();
+  return m.includes("remote ref does not exist") || m.includes("not found") || m.includes("does not exist") || m.includes("couldn't find remote ref") || /branch .* not found/.test(m);
+}
+async function deleteLocalBranch2(branch, repoPath) {
+  try {
+    await gitExecFile(["branch", "-D", "--", branch], repoPath);
+    return null;
+  } catch (err) {
+    const message = cleanGitError(err);
+    if (isAbsentRefError2(message)) {
+      return null;
+    }
+    return message;
+  }
+}
+async function finalizeSlice(input, opts) {
+  if (input.phase === "commit-push") {
+    return finalizeCommitPush(input, opts);
+  }
+  return finalizePostMerge(input);
+}
+async function finalizeCommitPush(input, opts) {
+  const { worktreePath, repoPath, runId, sliceId, branch } = input;
+  const remote = input.remote ?? "origin";
+  const setUpstream = input.setUpstream ?? true;
+  if (!input.files || input.commitSubject === void 0 || input.issueNumber === void 0) {
+    return failed(
+      "INVALID_INPUT",
+      "phase 'commit-push' requires `files`, `commitSubject`, and `issueNumber`."
+    );
+  }
+  const { files, commitSubject, issueNumber } = input;
+  const branchGuard = optionInjectionError("branch", branch);
+  if (branchGuard) return failed("INVALID_INPUT", branchGuard);
+  const remoteGuard = optionInjectionError("remote", remote);
+  if (remoteGuard) return failed("INVALID_INPUT", remoteGuard);
+  try {
+    await gitExecFile(["add", "--", ...files], worktreePath);
+  } catch (err) {
+    return failed("GIT_ERROR", cleanGitError(err));
+  }
+  let hasStaged = false;
+  try {
+    await gitExecFile(["diff", "--cached", "--quiet"], worktreePath);
+    hasStaged = false;
+  } catch {
+    hasStaged = true;
+  }
+  if (!hasStaged) {
+    return failed(
+      "EMPTY_CHANGESET",
+      "Nothing was staged \u2014 the slice produced no changes; not committing."
+    );
+  }
+  try {
+    await gitExecFile(
+      ["commit", "-m", commitSubject, "-m", `Closes #${issueNumber}`],
+      worktreePath
+    );
+  } catch (err) {
+    return failed("GIT_ERROR", cleanGitError(err));
+  }
+  const push = await pushAndVerify(
+    { repoPath: worktreePath, branch, remote, setUpstream },
+    opts
+  );
+  if (push.status === "error") {
+    return {
+      status: "failed",
+      verdict: "failed",
+      errorCode: push.errorCode ?? "GIT_ERROR",
+      errorMessage: push.errorMessage
+    };
+  }
+  const write = writeSubState(repoPath, runId, sliceId, "pushed");
+  if (!write.ok) {
+    return failed(write.errorCode, write.errorMessage);
+  }
+  return {
+    status: "ok",
+    verdict: "committed-pushed",
+    branch: push.branch,
+    remote: push.remote,
+    sha: push.sha,
+    attempts: push.attempts
+  };
+}
+async function finalizePostMerge(input) {
+  const { worktreePath, repoPath, runId, sliceId, branch } = input;
+  const branchGuard = optionInjectionError("branch", branch);
+  if (branchGuard) return failed("INVALID_INPUT", branchGuard);
+  const write = writeSubState(repoPath, runId, sliceId, "merged");
+  if (!write.ok) {
+    return failed(write.errorCode, write.errorMessage);
+  }
+  let worktreeRemoved = false;
+  const removed = await removeWorktree({
+    worktreePath,
+    repoPath,
+    force: true
+  });
+  if (removed.status === "ok" || removed.errorCode === "PATH_NOT_FOUND") {
+    worktreeRemoved = true;
+  } else {
+    return {
+      status: "failed",
+      verdict: "failed",
+      errorCode: "WORKTREE_REMOVE_FAILED",
+      errorMessage: removed.status === "refused" ? removed.refusalReason ?? "Worktree removal was refused." : removed.errorMessage ?? "Worktree removal failed."
+    };
+  }
+  const branchErr = await deleteLocalBranch2(branch, repoPath);
+  if (branchErr) {
+    return failed("GIT_ERROR", branchErr);
+  }
+  return {
+    status: "ok",
+    verdict: "committed-pushed",
+    branch,
+    worktreeRemoved,
+    branchReclaimed: true
+  };
+}
+function failed(errorCode, errorMessage) {
+  return {
+    status: "failed",
+    verdict: "failed",
+    errorCode,
+    errorMessage
+  };
+}
+
+// src/tools/resolve-cleanup-verdicts.ts
+var sliceStateEnum2 = external_exports.enum([
+  "pending",
+  "in-progress",
+  "passed",
+  "failed",
+  "skipped"
+]);
+var cleanupSliceSchema = external_exports.object({
+  issue: external_exports.number().int().describe("The slice's GitHub issue number."),
+  state: sliceStateEnum2.describe(
+    "The slice's terminal state. Only `passed` slices join a merged run's close-set; `failed`/`skipped`/`pending`/`in-progress` are excluded."
+  )
+});
+var parsedRunSchema = external_exports.object({
+  runId: external_exports.string().describe("The run's timestamp id (its directory name)."),
+  status: external_exports.string().describe(
+    "The run's `status` field \u2014 `in-progress` or `completed`. A run that is not `completed` is omitted from phase one's eligible set."
+  ),
+  finalPullRequest: external_exports.string().nullable().describe(
+    "The run's final integration pull-request identifier, or null if it has none yet. A run with a null `finalPullRequest` is omitted from phase one's eligible set (it has not concluded)."
+  ),
+  slices: external_exports.array(cleanupSliceSchema).describe(
+    "The run's slices, normalized to an array. Used only in phase two to build a merged run's close-set; omit or pass [] in phase one."
+  ).optional()
+});
+var mergeFactSchema = external_exports.object({
+  runId: external_exports.string().describe("The run's timestamp id (its directory name)."),
+  finalPullRequest: external_exports.string().describe(
+    "The final-PR identifier the spine looked up. Echoed back from phase one."
+  ),
+  state: external_exports.string().nullable().optional().describe(
+    "The PR `state` from `gh pr view` \u2014 typically `MERGED`, `OPEN`, or `CLOSED`. Any other, missing, or null value classifies to `unknown`."
+  ),
+  mergedAt: external_exports.string().nullable().optional().describe(
+    "The PR `mergedAt` timestamp from `gh pr view`, or null when unmerged. `MERGED` with a null `mergedAt`, or `CLOSED` with a non-null `mergedAt`, is a malformed fact and classifies to `unknown`."
+  ),
+  slices: external_exports.array(cleanupSliceSchema).describe(
+    "The run's slices, normalized to an array \u2014 the source of the close-set for a run that classifies `merged`. Omit or pass [] for a run that cannot be merged."
+  ).optional()
+});
+var resolveCleanupVerdictsInputSchema = external_exports.object({
+  phase: external_exports.enum(["enumerate", "classify"]).describe(
+    "Which half of the two-phase sweep to run. 'enumerate' (phase one) ingests parsed run-states, applies the eligibility gate, and returns the DEDUPLICATED final-PR identifiers the spine then fetches with `gh pr view`. 'classify' (phase two) ingests the fetched `{state, mergedAt}` facts and returns the verdict map `clean_runs` consumes, plus each merged run's close-set."
+  ),
+  runs: external_exports.array(parsedRunSchema).optional().describe(
+    "Phase one only: the enumerated parsed run-states. Each carries its `runId`, `status`, `finalPullRequest`, and (optionally) `slices`. Ignored when phase='classify'."
+  ),
+  facts: external_exports.array(mergeFactSchema).optional().describe(
+    "Phase two only: the fetched merge facts, one per final-PR the spine looked up. Each carries the `runId`, `finalPullRequest`, the fetched `state`/`mergedAt`, and the run's `slices`. Ignored when phase='enumerate'."
+  )
+});
+var eligibleRunSchema = external_exports.object({
+  runId: external_exports.string().describe("The eligible run's id."),
+  finalPullRequest: external_exports.string().describe(
+    "The run's final-PR identifier \u2014 the argument the spine passes to `gh pr view <id> --json state,mergedAt`."
+  )
+});
+var runVerdictEntrySchema = external_exports.object({
+  runId: external_exports.string().describe("The classified run's id."),
+  verdict: runVerdictSchema.describe(
+    "The four-way merge verdict `clean_runs` consumes: 'merged' (the only verdict that triggers cleanup), 'open', 'closed-unmerged', or 'unknown' (a malformed, missing, or unexpected fact)."
+  ),
+  closeSetIssues: external_exports.array(external_exports.number().int()).describe(
+    "For a `merged` run, the issue numbers of exactly its `passed` slices \u2014 the close-set the spine closes with `gh issue close <N>` after the sweep. Empty for any non-`merged` verdict (no close-set is collected)."
+  )
+});
+var resolveCleanupVerdictsOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the phase ran; 'error' = the input did not match the requested phase (e.g. a missing `runs`/`facts` array)."
+  ),
+  finalPullRequests: external_exports.array(external_exports.string()).optional().describe(
+    "Phase one: the DEDUPLICATED final-PR identifiers to fetch, in first-seen order. Present when status='ok' and phase='enumerate'."
+  ),
+  eligibleRuns: external_exports.array(eligibleRunSchema).optional().describe(
+    "Phase one: the eligible runs paired with their final-PR identifiers, in input order (NOT deduplicated \u2014 two runs may share a final PR, though that is degenerate). Present when status='ok' and phase='enumerate'. Lets the spine map a fetched fact back to its run."
+  ),
+  verdicts: external_exports.array(runVerdictEntrySchema).optional().describe(
+    "Phase two: one verdict entry per fact, in input order. Present when status='ok' and phase='classify'. The spine collapses these into the `Record<runId, verdict>` map `clean_runs` ingests."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Human-readable failure description. Present when status='error'."
+  )
+});
+function isEligible(run) {
+  return run.status === "completed" && run.finalPullRequest != null;
+}
+function classifyFact(state, mergedAt) {
+  if (state === "MERGED") {
+    return typeof mergedAt === "string" && mergedAt.length > 0 ? "merged" : "unknown";
+  }
+  if (state === "OPEN") {
+    return "open";
+  }
+  if (state === "CLOSED") {
+    return mergedAt == null ? "closed-unmerged" : "unknown";
+  }
+  return "unknown";
+}
+function closeSetOf(slices) {
+  if (!Array.isArray(slices)) {
+    return [];
+  }
+  const out = [];
+  for (const slice of slices) {
+    if (slice.state === "passed") {
+      out.push(slice.issue);
+    }
+  }
+  return out;
+}
+function resolveCleanupVerdicts(input) {
+  if (input.phase === "enumerate") {
+    const runs = input.runs;
+    if (runs === void 0) {
+      return {
+        status: "error",
+        errorCode: "INVALID_INPUT",
+        errorMessage: "phase='enumerate' requires a `runs` array of parsed run-states."
+      };
+    }
+    const eligibleRuns = [];
+    const seen = /* @__PURE__ */ new Set();
+    const finalPullRequests = [];
+    for (const run of runs) {
+      if (!isEligible(run)) {
+        continue;
+      }
+      const finalPr = run.finalPullRequest;
+      eligibleRuns.push({ runId: run.runId, finalPullRequest: finalPr });
+      if (!seen.has(finalPr)) {
+        seen.add(finalPr);
+        finalPullRequests.push(finalPr);
+      }
+    }
+    return { status: "ok", finalPullRequests, eligibleRuns };
+  }
+  const facts = input.facts;
+  if (facts === void 0) {
+    return {
+      status: "error",
+      errorCode: "INVALID_INPUT",
+      errorMessage: "phase='classify' requires a `facts` array of fetched merge facts."
+    };
+  }
+  const verdicts = facts.map((fact) => {
+    const verdict = classifyFact(fact.state, fact.mergedAt);
+    const closeSetIssues = verdict === "merged" ? closeSetOf(fact.slices) : [];
+    return { runId: fact.runId, verdict, closeSetIssues };
+  });
+  return { status: "ok", verdicts };
+}
+
+// src/tools/run-wave.ts
+var inPartitionBlockerStateEnum = external_exports.enum([
+  "pending",
+  "in-progress",
+  "passed",
+  "failed",
+  "skipped"
+]);
+var outOfPartitionBlockerStateEnum = external_exports.enum(["OPEN", "CLOSED"]);
+var inPartitionBlockerSchema = external_exports.object({
+  blockerId: external_exports.string().describe("The blocker slice's id (its issue-id-string key in the run)."),
+  state: inPartitionBlockerStateEnum.describe(
+    "The blocker slice's terminal state. The dependent slice is processable only when this is `passed`; any other value blocks it."
+  )
+});
+var outOfPartitionBlockerSchema = external_exports.object({
+  blockerId: external_exports.string().describe("The blocker issue's id (an issue outside this run's partition)."),
+  state: outOfPartitionBlockerStateEnum.describe(
+    "The blocker issue's resolved tracker state, looked up by the orchestrator and passed in (ADR-0008 \u2014 this tool never reads tracker state). `CLOSED` = resolved, the dependent slice proceeds; `OPEN` = unmet, it is skipped."
+  )
+});
+var runWaveInputSchema = external_exports.object({
+  operation: external_exports.enum([
+    "refresh-base",
+    "select-processable",
+    "reverify-slice",
+    "integration-gate"
+  ]).describe(
+    "Which bracketed wave operation to run. 'refresh-base' (\xA72 step 1): fast-forward the local umbrella ref to its remote tip, or report `diverged` when that is not a fast-forward. 'select-processable' (\xA72 step 2): gate one slice on its in-partition + out-of-partition blocker states (passed in), returning `processable` or `skip`. 'reverify-slice' (\xA72 step 4 inner re-verify): merge the umbrella into the slice worktree and run the two correctness verbs, returning `passed`/`failed`/`conflict` (or `skipped-first-merge` for the first merged slice). 'integration-gate' (\xA72 step 4a): run the per-wave integration suite, returning `proceed`/`halt`/`tolerate`."
+  ),
+  repoPath: external_exports.string().optional().describe(
+    "The directory the operation runs in. For 'refresh-base' it is the main repo root holding the local umbrella ref. For 'reverify-slice' and 'integration-gate' it is the slice/deferred WORKTREE the merge and the capability commands run against \u2014 the same `repoPath` the run_* capability tools take (config is resolved from the main root, the command execs here). Unused by 'select-processable' (pure)."
+  ),
+  umbrellaRef: external_exports.string().optional().describe(
+    "The umbrella branch name (e.g. `orchestrate/umbrella-<runId>`). In 'refresh-base' it is the local ref fast-forwarded to its remote counterpart; in 'reverify-slice' it is the remote-tracking branch (`origin/<umbrellaRef>`) merged into the worktree. Required for both those operations; unused by the others."
+  ),
+  remote: external_exports.string().optional().default("origin").describe(
+    "Remote to fetch the umbrella from. Defaults to `origin`. Used by 'refresh-base' and 'reverify-slice'; unused by the others."
+  ),
+  isFirstMergedThisWave: external_exports.boolean().optional().describe(
+    "'reverify-slice' only: when true, this is the first slice merged in this wave, whose pre-merge gate already covered the umbrella \u2014 re-verify is a no-op (`skipped-first-merge`). Required for 'reverify-slice'."
+  ),
+  inPartitionBlockers: external_exports.array(inPartitionBlockerSchema).optional().describe(
+    "'select-processable' only: the dependent slice's blockers that are themselves slices in this run's partition, each with its resolved state. The slice is processable only when every one reached `passed`. Pass [] when the slice has no in-partition blockers."
+  ),
+  outOfPartitionBlockers: external_exports.array(outOfPartitionBlockerSchema).optional().describe(
+    "'select-processable' only: the dependent slice's blockers that are NOT slices in this run's partition, each with the tracker state the orchestrator resolved and passed in (ADR-0008). The slice is processable only when every one is `CLOSED`. Pass [] when the slice has no out-of-partition blockers."
+  )
+});
+var runWaveOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "failed"]).describe(
+    "Outcome discriminant. 'ok' = the operation reached a non-failure verdict (refreshed | processable | skip | skipped-first-merge | passed | proceed | tolerate); 'failed' = a blocking verdict or error (diverged | failed | conflict | halt | error). The `verdict` field carries the specific outcome."
+  ),
+  verdict: external_exports.enum([
+    "refreshed",
+    "diverged",
+    "processable",
+    "skip",
+    "skipped-first-merge",
+    "passed",
+    "failed",
+    "conflict",
+    "proceed",
+    "halt",
+    "tolerate",
+    "error"
+  ]).describe(
+    "The operation's specific outcome. 'refresh-base' \u2192 `refreshed` (fast-forwarded) | `diverged` (not a fast-forward \u2014 the ref is left untouched). 'select-processable' \u2192 `processable` | `skip` (see `blockerId`). 'reverify-slice' \u2192 `skipped-first-merge` | `passed` | `failed` (see `which`) | `conflict` (the merge left an unmerged index, flagged not resolved). 'integration-gate' \u2192 `proceed` | `halt` | `tolerate` (no integration command configured). `error` = a git or input failure (see `errorCode`)."
+  ),
+  sha: external_exports.string().optional().describe(
+    "'refresh-base' `refreshed`: the umbrella SHA the local ref now points at (the fetched remote tip)."
+  ),
+  blockerId: external_exports.string().optional().describe(
+    "'select-processable' `skip`: the id of the first unmet blocker (a non-`passed` in-partition blocker or an `OPEN` out-of-partition blocker) \u2014 the reason the dependent slice is skipped."
+  ),
+  which: external_exports.enum(["tests", "build"]).optional().describe(
+    "'reverify-slice' `failed`: which correctness verb failed after the umbrella was merged into the worktree."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT", "GIT_ERROR"]).optional().describe(
+    "Machine-readable failure category for `verdict: 'error'`. 'INVALID_INPUT' = a ref/remote would be parsed by git as an option flag, or a required field for the operation is missing; 'GIT_ERROR' = a git command failed for a reason other than divergence or a merge conflict (e.g. an unreachable remote, a missing local umbrella ref)."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present for `diverged`, `conflict`, `failed`, `halt`, and `error`."
+  )
+});
+var FETCH_ATTEMPTS = 3;
+var FETCH_BASE_DELAY_MS = 500;
+var FETCH_BACKOFF_FACTOR = 2;
+var FETCH_MAX_DELAY_MS = 8e3;
+var defaultSleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
+async function runWave(input, opts) {
+  switch (input.operation) {
+    case "refresh-base":
+      return refreshBase(input, opts);
+    case "select-processable":
+      return selectProcessable(input);
+    case "reverify-slice":
+      return reverifySlice(input, opts);
+    case "integration-gate":
+      return integrationGate(input);
+  }
+}
+async function refreshBase(input, opts) {
+  const repoPath = input.repoPath;
+  const umbrellaRef = input.umbrellaRef;
+  const remote = input.remote ?? "origin";
+  if (repoPath === void 0 || umbrellaRef === void 0) {
+    return failed2(
+      "INVALID_INPUT",
+      "operation 'refresh-base' requires `repoPath` and `umbrellaRef`."
+    );
+  }
+  const refGuard = optionInjectionError("umbrellaRef", umbrellaRef);
+  if (refGuard) return failed2("INVALID_INPUT", refGuard);
+  const remoteGuard = optionInjectionError("remote", remote);
+  if (remoteGuard) return failed2("INVALID_INPUT", remoteGuard);
+  const fetchErr = await fetchWithRetry(
+    [remote, umbrellaRef],
+    repoPath,
+    opts
+  );
+  if (fetchErr) {
+    return failed2("GIT_ERROR", fetchErr);
+  }
+  let localTip;
+  try {
+    const { stdout } = await gitExecFile(
+      ["rev-parse", "--verify", "--quiet", `refs/heads/${umbrellaRef}`],
+      repoPath
+    );
+    localTip = stdout.trim();
+  } catch (err) {
+    return failed2("GIT_ERROR", cleanGitError(err));
+  }
+  if (localTip.length === 0) {
+    return failed2(
+      "GIT_ERROR",
+      `Local umbrella ref refs/heads/${umbrellaRef} does not exist \u2014 cannot refresh a missing base.`
+    );
+  }
+  let fetchedTip;
+  let mergeBase;
+  try {
+    const fh = await gitExecFile(["rev-parse", "FETCH_HEAD"], repoPath);
+    fetchedTip = fh.stdout.trim();
+    const mb = await gitExecFile(
+      ["merge-base", `refs/heads/${umbrellaRef}`, "FETCH_HEAD"],
+      repoPath
+    );
+    mergeBase = mb.stdout.trim();
+  } catch (err) {
+    return failed2("GIT_ERROR", cleanGitError(err));
+  }
+  if (mergeBase !== localTip) {
+    return {
+      status: "failed",
+      verdict: "diverged",
+      errorMessage: `The umbrella ${umbrellaRef} diverged: the local ref is not an ancestor of ${remote}/${umbrellaRef} (${fetchedTip}), so a fast-forward is impossible. Leaving the local ref untouched.`
+    };
+  }
+  try {
+    await gitExecFile(
+      ["update-ref", `refs/heads/${umbrellaRef}`, fetchedTip],
+      repoPath
+    );
+  } catch (err) {
+    return failed2("GIT_ERROR", cleanGitError(err));
+  }
+  return { status: "ok", verdict: "refreshed", sha: fetchedTip };
+}
+function selectProcessable(input) {
+  const inPartition = input.inPartitionBlockers ?? [];
+  const outOfPartition = input.outOfPartitionBlockers ?? [];
+  for (const blocker of inPartition) {
+    if (blocker.state !== "passed") {
+      return { status: "ok", verdict: "skip", blockerId: blocker.blockerId };
+    }
+  }
+  for (const blocker of outOfPartition) {
+    if (blocker.state !== "CLOSED") {
+      return { status: "ok", verdict: "skip", blockerId: blocker.blockerId };
+    }
+  }
+  return { status: "ok", verdict: "processable" };
+}
+async function reverifySlice(input, opts) {
+  const repoPath = input.repoPath;
+  const umbrellaRef = input.umbrellaRef;
+  const remote = input.remote ?? "origin";
+  if (repoPath === void 0 || umbrellaRef === void 0 || input.isFirstMergedThisWave === void 0) {
+    return failed2(
+      "INVALID_INPUT",
+      "operation 'reverify-slice' requires `repoPath`, `umbrellaRef`, and `isFirstMergedThisWave`."
+    );
+  }
+  if (input.isFirstMergedThisWave) {
+    return { status: "ok", verdict: "skipped-first-merge" };
+  }
+  const refGuard = optionInjectionError("umbrellaRef", umbrellaRef);
+  if (refGuard) return failed2("INVALID_INPUT", refGuard);
+  const remoteGuard = optionInjectionError("remote", remote);
+  if (remoteGuard) return failed2("INVALID_INPUT", remoteGuard);
+  const fetchErr = await fetchWithRetry([remote, umbrellaRef], repoPath, opts);
+  if (fetchErr) {
+    return failed2("GIT_ERROR", fetchErr);
+  }
+  try {
+    await gitExecFile(
+      ["merge", "--no-edit", `${remote}/${umbrellaRef}`],
+      repoPath
+    );
+  } catch (err) {
+    const conflicted = await hasUnmergedPaths(repoPath);
+    if (conflicted) {
+      return {
+        status: "failed",
+        verdict: "conflict",
+        errorMessage: `Merging ${remote}/${umbrellaRef} into the slice worktree produced a conflict (the unmerged index is left in place for resolution).`
+      };
+    }
+    return failed2("GIT_ERROR", cleanGitError(err));
+  }
+  const tests = await runTests({ repoPath });
+  if (tests.status !== "passed") {
+    return {
+      status: "failed",
+      verdict: "failed",
+      which: "tests",
+      errorMessage: `The merged slice worktree failed the 'tests' verb (status: ${tests.status}).`
+    };
+  }
+  const build = await runBuild({ repoPath });
+  if (build.status !== "passed") {
+    return {
+      status: "failed",
+      verdict: "failed",
+      which: "build",
+      errorMessage: `The merged slice worktree failed the 'build' verb (status: ${build.status}).`
+    };
+  }
+  return { status: "ok", verdict: "passed" };
+}
+async function integrationGate(input) {
+  const repoPath = input.repoPath;
+  if (repoPath === void 0) {
+    return failed2(
+      "INVALID_INPUT",
+      "operation 'integration-gate' requires `repoPath`."
+    );
+  }
+  const result = await runIntegration({ repoPath });
+  switch (result.status) {
+    case "passed":
+      return { status: "ok", verdict: "proceed" };
+    case "not-configured":
+      return { status: "ok", verdict: "tolerate" };
+    case "failed":
+    case "error":
+      return {
+        status: "failed",
+        verdict: "halt",
+        errorMessage: `The per-wave integration suite did not pass (status: ${result.status}) \u2014 halting rather than building the next wave on a broken umbrella.`
+      };
+  }
+}
+async function fetchWithRetry(fetchArgs, repoPath, opts) {
+  const attempts = opts?.fetchAttempts ?? FETCH_ATTEMPTS;
+  const baseDelayMs = opts?.baseDelayMs ?? FETCH_BASE_DELAY_MS;
+  const factor = opts?.factor ?? FETCH_BACKOFF_FACTOR;
+  const maxDelayMs = opts?.maxDelayMs ?? FETCH_MAX_DELAY_MS;
+  const sleep = opts?.sleep ?? defaultSleep2;
+  let lastErr = null;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await gitExecFile(["fetch", ...fetchArgs], repoPath);
+      return null;
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts) {
+        const delay = Math.min(
+          baseDelayMs * Math.pow(factor, i - 1),
+          maxDelayMs
+        );
+        await sleep(delay);
+      }
+    }
+  }
+  return cleanGitError(lastErr);
+}
+async function hasUnmergedPaths(repoPath) {
+  try {
+    const { stdout } = await gitExecFile(
+      ["diff", "--name-only", "--diff-filter=U"],
+      repoPath
+    );
+    return stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+function failed2(errorCode, errorMessage) {
+  return {
+    status: "failed",
+    verdict: "error",
+    errorCode,
+    errorMessage
+  };
+}
+
+// src/tools/resolve-merge-conflict.ts
+var resolveMergeConflictInputSchema = external_exports.object({
+  operation: external_exports.enum(["prepare", "finalize"]).describe(
+    "Which conflict-merge lifecycle operation to run. 'prepare' (\xA73 step 8a, pre-resolver): abort any pre-existing in-progress merge (re-entrancy recovery), then fetch the umbrella and merge it into the slice worktree, returning `clean` (auto-committed, nothing to resolve) or `conflicted{conflictedFiles}` (the index is left unmerged for the resolver). 'finalize' (\xA73 step 8a, post-resolver): stage the resolved file set, scan the staged diff for residual conflict markers, and complete the merge commit \u2014 `completed` when no markers remain, or `markers_remain` (the merge is ABORTED, leaving the worktree clean) when any do."
+  ),
+  worktreePath: external_exports.string().describe(
+    "Absolute path of the slice WORKTREE the merge runs in. In 'prepare' the fetch+merge target it; in 'finalize' the stage/scan/commit target it. This is the only directory the operation mutates."
+  ),
+  umbrellaRef: external_exports.string().optional().describe(
+    "The umbrella branch name (e.g. `orchestrate/umbrella-<runId>`) merged into the worktree as `<remote>/<umbrellaRef>`. Required for 'prepare'; unused by 'finalize' (the merge is already in progress from 'prepare')."
+  ),
+  remote: external_exports.string().optional().default("origin").describe(
+    "Remote to fetch the umbrella from in 'prepare'. Defaults to `origin`. Unused by 'finalize'."
+  ),
+  resolvedFiles: external_exports.array(external_exports.string()).optional().describe(
+    "'finalize' only: the EXACT file set the conflict-resolver resolved, staged via `git add -- ...resolvedFiles` (NEVER `git add -A`/`-u`/`.`). The residual-marker scan runs on the resulting staged diff. Required for 'finalize'; unused by 'prepare'."
+  )
+});
+var resolveMergeConflictOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "failed"]).describe(
+    "Outcome discriminant. 'ok' = the operation reached a non-failure verdict (clean | completed); 'failed' = a blocking verdict or error (conflicted | markers_remain | error). The `verdict` field carries the specific outcome."
+  ),
+  verdict: external_exports.enum(["clean", "conflicted", "completed", "markers_remain", "error"]).describe(
+    "The operation's specific outcome. 'prepare' \u2192 `clean` (the umbrella merge applied with no conflicts and git auto-committed it \u2014 nothing to resolve) | `conflicted` (the merge left an unmerged index; see `conflictedFiles`). 'finalize' \u2192 `completed` (the resolved set staged cleanly with no residual markers and the merge commit was written) | `markers_remain` (residual conflict markers were found in the staged diff \u2014 the merge was ABORTED, leaving the worktree clean). `error` = a git or input failure (see `errorCode`)."
+  ),
+  conflictedFiles: external_exports.array(external_exports.string()).optional().describe(
+    "'prepare' `conflicted`: the unmerged paths the umbrella merge left in the index (`git diff --name-only --diff-filter=U`). A rename-conflict emits BOTH of its paths. This is the list the spine passes to the conflict-resolver."
+  ),
+  markerLines: external_exports.array(external_exports.string()).optional().describe(
+    "'finalize' `markers_remain`: the verbatim staged-diff lines (diff column included, e.g. `+<<<<<<< HEAD`) that still carried a residual conflict marker (`<<<<<<<`, `=======`, or `>>>>>>>`) \u2014 the reason the resolution was rejected. The merge was aborted before this is reported."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT", "GIT_ERROR"]).optional().describe(
+    "Machine-readable failure category for `verdict: 'error'`. 'INVALID_INPUT' = a ref/remote would be parsed by git as an option flag, or a required field for the operation is missing; 'GIT_ERROR' = a git command failed for a reason other than a merge conflict (e.g. an unreachable remote)."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present for `conflicted`, `markers_remain`, and `error`."
+  )
+});
+var FETCH_ATTEMPTS2 = 3;
+var FETCH_BASE_DELAY_MS2 = 500;
+var FETCH_BACKOFF_FACTOR2 = 2;
+var FETCH_MAX_DELAY_MS2 = 8e3;
+var defaultSleep3 = (ms) => new Promise((r) => setTimeout(r, ms));
+var CONFLICT_MARKERS = ["<<<<<<<", "=======", ">>>>>>>"];
+function scanConflictMarkers(diffText) {
+  const offendingLines = [];
+  for (const rawLine of diffText.split("\n")) {
+    const line = rawLine.length > 0 && (rawLine[0] === "+" || rawLine[0] === "-" || rawLine[0] === " ") ? rawLine.slice(1) : rawLine;
+    if (CONFLICT_MARKERS.some((marker) => line.startsWith(marker))) {
+      offendingLines.push(rawLine);
+    }
+  }
+  return { hasMarkers: offendingLines.length > 0, offendingLines };
+}
+async function resolveMergeConflict(input, opts) {
+  switch (input.operation) {
+    case "prepare":
+      return prepare(input, opts);
+    case "finalize":
+      return finalize(input);
+  }
+}
+async function prepare(input, opts) {
+  const worktreePath = input.worktreePath;
+  const umbrellaRef = input.umbrellaRef;
+  const remote = input.remote ?? "origin";
+  if (umbrellaRef === void 0) {
+    return failed3(
+      "INVALID_INPUT",
+      "operation 'prepare' requires `umbrellaRef`."
+    );
+  }
+  const refGuard = optionInjectionError("umbrellaRef", umbrellaRef);
+  if (refGuard) return failed3("INVALID_INPUT", refGuard);
+  const remoteGuard = optionInjectionError("remote", remote);
+  if (remoteGuard) return failed3("INVALID_INPUT", remoteGuard);
+  let mergeInProgress = false;
+  try {
+    const { stdout } = await gitExecFile(
+      ["rev-parse", "--verify", "--quiet", "MERGE_HEAD"],
+      worktreePath
+    );
+    mergeInProgress = stdout.trim().length > 0;
+  } catch {
+    mergeInProgress = false;
+  }
+  if (mergeInProgress) {
+    await abortMergeBestEffort(worktreePath);
+  }
+  const fetchErr = await fetchWithRetry2([remote, umbrellaRef], worktreePath, opts);
+  if (fetchErr) {
+    return failed3("GIT_ERROR", fetchErr);
+  }
+  try {
+    await gitExecFile(
+      ["merge", "--no-edit", `${remote}/${umbrellaRef}`],
+      worktreePath
+    );
+  } catch (err) {
+    const conflictedFiles = await unmergedPaths(worktreePath);
+    if (conflictedFiles.length > 0) {
+      return {
+        status: "failed",
+        verdict: "conflicted",
+        conflictedFiles,
+        errorMessage: `Merging ${remote}/${umbrellaRef} into the slice worktree produced a conflict in ${conflictedFiles.length} path(s) \u2014 the unmerged index is left in place for the conflict-resolver.`
+      };
+    }
+    return failed3("GIT_ERROR", cleanGitError(err));
+  }
+  return { status: "ok", verdict: "clean" };
+}
+async function finalize(input) {
+  const worktreePath = input.worktreePath;
+  const resolvedFiles = input.resolvedFiles;
+  if (resolvedFiles === void 0) {
+    return failed3(
+      "INVALID_INPUT",
+      "operation 'finalize' requires `resolvedFiles`."
+    );
+  }
+  try {
+    await gitExecFile(["add", "--", ...resolvedFiles], worktreePath);
+  } catch (err) {
+    return failed3("GIT_ERROR", cleanGitError(err));
+  }
+  let stagedDiff;
+  try {
+    const { stdout } = await gitExecFile(
+      ["diff", "--cached"],
+      worktreePath
+    );
+    stagedDiff = stdout;
+  } catch (err) {
+    return failed3("GIT_ERROR", cleanGitError(err));
+  }
+  const scan = scanConflictMarkers(stagedDiff);
+  if (scan.hasMarkers) {
+    await abortMergeBestEffort(worktreePath);
+    return {
+      status: "failed",
+      verdict: "markers_remain",
+      markerLines: scan.offendingLines,
+      errorMessage: `Residual conflict markers remain in the staged diff after resolution (${scan.offendingLines.length} marker line(s)) \u2014 the merge was aborted, leaving the worktree clean. The one resolution attempt is spent.`
+    };
+  }
+  try {
+    await gitExecFile(["commit", "--no-edit"], worktreePath);
+  } catch (err) {
+    return failed3("GIT_ERROR", cleanGitError(err));
+  }
+  return { status: "ok", verdict: "completed" };
+}
+async function fetchWithRetry2(fetchArgs, repoPath, opts) {
+  const attempts = opts?.fetchAttempts ?? FETCH_ATTEMPTS2;
+  const baseDelayMs = opts?.baseDelayMs ?? FETCH_BASE_DELAY_MS2;
+  const factor = opts?.factor ?? FETCH_BACKOFF_FACTOR2;
+  const maxDelayMs = opts?.maxDelayMs ?? FETCH_MAX_DELAY_MS2;
+  const sleep = opts?.sleep ?? defaultSleep3;
+  let lastErr = null;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await gitExecFile(["fetch", ...fetchArgs], repoPath);
+      return null;
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts) {
+        const delay = Math.min(
+          baseDelayMs * Math.pow(factor, i - 1),
+          maxDelayMs
+        );
+        await sleep(delay);
+      }
+    }
+  }
+  return cleanGitError(lastErr);
+}
+async function unmergedPaths(repoPath) {
+  try {
+    const { stdout } = await gitExecFile(
+      ["diff", "--name-only", "--diff-filter=U"],
+      repoPath
+    );
+    return stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  } catch {
+    return [];
+  }
+}
+async function abortMergeBestEffort(repoPath) {
+  try {
+    await gitExecFile(["merge", "--abort"], repoPath);
+  } catch {
+  }
+}
+function failed3(errorCode, errorMessage) {
+  return {
+    status: "failed",
+    verdict: "error",
+    errorCode,
+    errorMessage
+  };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
@@ -25172,6 +26131,156 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleValidateRunState
+);
+var handleFinalizeSlice = async (input) => {
+  const result = await finalizeSlice(input);
+  let text;
+  if (result.status === "ok") {
+    text = input.phase === "commit-push" ? `Slice committed and pushed: ${result.branch} landed at ${result.sha} on ${result.remote} (${result.attempts} verify attempt(s)); subState 'pushed' checkpointed.` : `Slice merged-tail finalized: subState 'merged' checkpointed, worktree removed (${result.worktreeRemoved}), local branch ${result.branch} reclaimed (${result.branchReclaimed}).`;
+  } else {
+    text = `finalize_slice failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "finalize_slice",
+  {
+    title: "Finalize a Reviewed Slice (git + run-state mechanics)",
+    description: "Owns the deterministic git + run-state machinery of landing one reviewed slice \u2014 the git-only half of \xA73 (Processing one slice), in two phases behind one tool. phase 'commit-push' (step 6): stages EXACTLY the spine-computed `files` set ('git add -- ...files', never 'git add -A'/'-u'/'.'), guards an empty changeset ('git diff --cached --quiet' \u2192 EMPTY_CHANGESET, no commit), commits with the two-`-m` form (subject + 'Closes #<N>' trailer), composes the push_and_verify landing check, and writes `subState:'pushed'` ONLY after the push is confirmed landed (a never-landing push bubbles PUSH_FAILED / BRANCH_NOT_ON_REMOTE). phase 'post-merge' (step 9, the thin tail): writes `subState:'merged'`, removes the worktree, then force-reclaims the local slice branch (ordered after removal, idempotent if already gone). run-state.json lives under the MAIN repo `repoPath`, NOT the slice `worktreePath`. Git-only via the hardened exec seam \u2014 it never shells `gh`; the forge ops (PR create, mergeability poll, squash-merge, label edit), the `pr-open` checkpoint, and the conflict-resolver path stay in the spine. Returns a discriminated `status` of 'ok' or 'failed' with a git-only `errorCode`, and never throws.",
+    inputSchema: finalizeSliceInputSchema.shape,
+    outputSchema: finalizeSliceOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleFinalizeSlice
+);
+var handleResolveCleanupVerdicts = async (input) => {
+  const result = resolveCleanupVerdicts(input);
+  let text;
+  if (result.status === "error") {
+    text = `resolve_cleanup_verdicts failed [${result.errorCode}]: ${result.errorMessage}`;
+  } else if (input.phase === "enumerate") {
+    text = `Enumerated ${result.eligibleRuns.length} eligible run(s); ${result.finalPullRequests.length} final PR(s) to fetch.`;
+  } else {
+    const merged = result.verdicts.filter(
+      (v) => v.verdict === "merged"
+    ).length;
+    text = `Classified ${result.verdicts.length} fetched fact(s): ${merged} merged.`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "resolve_cleanup_verdicts",
+  {
+    title: "Resolve Start-of-Run Cleanup Verdicts (two pure phases)",
+    description: "The PURE verdict logic of the start-of-run cleanup sweep (SKILL \xA71), in two phases behind one tool. phase 'enumerate' (phase one): ingests the enumerated parsed run-states, applies the cleanup-eligibility gate (`status === 'completed' && finalPullRequest != null`, omitting every other run), and returns the DEDUPLICATED final-PR identifiers (first-seen order) the SPINE then looks up with `gh pr view <id> --json state,mergedAt`, plus the eligible runs paired with their final PRs. phase 'classify' (phase two): ingests the fetched `{state, mergedAt}` facts and returns the four-way verdict (`merged | open | closed-unmerged | unknown` \u2014 any malformed/missing/unexpected fact \u2192 `unknown`) that `clean_runs` consumes, capturing each `merged` run's `closeSetIssues` (the issue numbers of its `passed` slices) in the same pass. FULLY PURE \u2014 no fs, no git, no `gh`, no child process; the `gh pr view` fetch loop, the `gh issue close` backstop, and `clean_runs`' fs/git removal all stay in the spine. Returns a discriminated `status` of 'ok' or 'error' and never throws.",
+    inputSchema: resolveCleanupVerdictsInputSchema.shape,
+    outputSchema: resolveCleanupVerdictsOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleResolveCleanupVerdicts
+);
+var handleRunWave = async (input) => {
+  const result = await runWave(input);
+  let text;
+  switch (result.verdict) {
+    case "refreshed":
+      text = `Umbrella base refreshed (fast-forwarded to ${result.sha}).`;
+      break;
+    case "diverged":
+      text = `Umbrella base diverged \u2014 ${result.errorMessage}`;
+      break;
+    case "processable":
+      text = `Slice is processable \u2014 every blocker is resolved.`;
+      break;
+    case "skip":
+      text = `Slice skipped \u2014 blocker ${result.blockerId} is unmet.`;
+      break;
+    case "skipped-first-merge":
+      text = `Re-verify skipped \u2014 first merged slice of the wave (no-op).`;
+      break;
+    case "passed":
+      text = `Slice re-verified \u2014 both correctness verbs passed after the umbrella merge.`;
+      break;
+    case "failed":
+      text = `Slice re-verify failed \u2014 the '${result.which}' verb failed after the umbrella merge.`;
+      break;
+    case "conflict":
+      text = `Slice re-verify hit a merge conflict \u2014 ${result.errorMessage}`;
+      break;
+    case "proceed":
+      text = `Integration gate passed \u2014 proceed to the next wave.`;
+      break;
+    case "halt":
+      text = `Integration gate failed \u2014 ${result.errorMessage}`;
+      break;
+    case "tolerate":
+      text = `Integration gate tolerated \u2014 no integration suite configured.`;
+      break;
+    case "error":
+      text = `run_wave failed [${result.errorCode}]: ${result.errorMessage}`;
+      break;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "run_wave",
+  {
+    title: "Run a Bracketed Deterministic Wave Operation",
+    description: "A family of bracketed deterministic wave-loop operations behind one tool, selected by the `operation` discriminant, so only the higher-level policy that decides how a wave processes its slices stays the orchestrator's concern. 'refresh-base' (\xA72 step 1): fetch the remote umbrella and fast-forward the local umbrella ref to it (FETCH_HEAD + a `git merge-base` ancestor proof before the ref moves), or report `diverged` \u2014 distinct from a generic git error \u2014 when that is not a fast-forward, leaving the ref untouched. 'select-processable' (\xA72 step 2): gate one slice on its in-partition (must be `passed`) and out-of-partition (must be `CLOSED`) blocker states \u2014 consumed from STATE PASSED IN, never read with `gh` (ADR-0008) \u2014 returning `processable` or `skip{blockerId}`. 'reverify-slice' (\xA72 step 4 inner re-verify): a no-op (`skipped-first-merge`) for the first merged slice of a wave; otherwise fetch + merge the umbrella into the slice worktree, then run the two correctness verbs (tests + build), returning `passed`, `failed{which}`, or `conflict` (the unmerged index is left IN PLACE and only flagged \u2014 resolution is a downstream concern). 'integration-gate' (\xA72 step 4a): run the per-wave integration suite, mapping `proceed` (passed), `halt` (failed/error), or `tolerate` (not configured). All loop state (umbrella ref, remote, first-merged flag) is PASSED IN, never inferred. Git-only via the hardened exec seam, run-scoped (mutates nothing outside the passed worktree), and never throws \u2014 every failure mode is a structured `verdict`.",
+    inputSchema: runWaveInputSchema.shape,
+    outputSchema: runWaveOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRunWave
+);
+var handleResolveMergeConflict = async (input) => {
+  const result = await resolveMergeConflict(input);
+  let text;
+  switch (result.verdict) {
+    case "clean":
+      text = `Umbrella merge applied cleanly \u2014 nothing to resolve.`;
+      break;
+    case "conflicted":
+      text = `Umbrella merge conflicted in ${result.conflictedFiles?.length ?? 0} path(s) \u2014 the unmerged index is left for the resolver.`;
+      break;
+    case "completed":
+      text = `Merge completed \u2014 the resolved set staged cleanly with no residual markers.`;
+      break;
+    case "markers_remain":
+      text = `Resolution incomplete \u2014 residual conflict markers remain; the merge was aborted (worktree left clean).`;
+      break;
+    case "error":
+      text = `resolve_merge_conflict failed [${result.errorCode}]: ${result.errorMessage}`;
+      break;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "resolve_merge_conflict",
+  {
+    title: "Resolve a Merge Conflict (re-entrant lifecycle, two operations)",
+    description: "The two deterministic git operations around the conflict-resolver spawn (SKILL \xA73 step 8a), behind one tool selected by the `operation` discriminant \u2014 the resolver spawn, envelope validation, clean-path capability re-verify, and attempt-once policy all stay in the spine. 'prepare': RE-ENTRANT recovery first \u2014 a pre-existing in-progress merge (a stale `MERGE_HEAD` from an interrupted predecessor) is `git merge --abort`ed best-effort BEFORE the fresh fetch+merge, so a mid-merge successor recovers instead of wedging on 'you have not concluded your merge'; then fetch the umbrella and merge it into the slice worktree, returning `clean` (auto-committed, nothing to resolve) or `conflicted{conflictedFiles}` (the unmerged index is left for the resolver \u2014 a rename-conflict emits BOTH paths). 'finalize': stage the resolved file set (`git add -- ...`, never `-A`/`-u`/`.`), scan the staged diff for residual conflict markers (`<<<<<<<`/`=======`/`>>>>>>>`), and complete the merge commit \u2014 `completed` when none remain, or `markers_remain` (the merge is ABORTED, leaving the worktree clean) when any do. Git-only via the hardened exec seam, run-scoped (mutates nothing outside the passed worktree), shells no `gh`, and never throws \u2014 every failure mode is a structured `verdict`.",
+    inputSchema: resolveMergeConflictInputSchema.shape,
+    outputSchema: resolveMergeConflictOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleResolveMergeConflict
 );
 async function main() {
   const transport = new StdioServerTransport();

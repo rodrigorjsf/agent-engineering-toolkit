@@ -129,6 +129,34 @@ import {
   type ValidateRunStateInput,
   type ValidateRunStateOutput,
 } from "./tools/validate-run-state.js";
+import {
+  finalizeSlice,
+  finalizeSliceInputSchema,
+  finalizeSliceOutputSchema,
+  type FinalizeSliceInput,
+  type FinalizeSliceOutput,
+} from "./tools/finalize-slice.js";
+import {
+  resolveCleanupVerdicts,
+  resolveCleanupVerdictsInputSchema,
+  resolveCleanupVerdictsOutputSchema,
+  type ResolveCleanupVerdictsInput,
+  type ResolveCleanupVerdictsOutput,
+} from "./tools/resolve-cleanup-verdicts.js";
+import {
+  runWave,
+  runWaveInputSchema,
+  runWaveOutputSchema,
+  type RunWaveInput,
+  type RunWaveOutput,
+} from "./tools/run-wave.js";
+import {
+  resolveMergeConflict,
+  resolveMergeConflictInputSchema,
+  resolveMergeConflictOutputSchema,
+  type ResolveMergeConflictInput,
+  type ResolveMergeConflictOutput,
+} from "./tools/resolve-merge-conflict.js";
 
 const server = new McpServer({
   name: "orchestrate",
@@ -1098,6 +1126,265 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleValidateRunState as unknown as AnyToolHandler
+);
+
+// ─── finalize_slice ───────────────────────────────────────────────────────────
+
+const handleFinalizeSlice: ToolHandler<
+  FinalizeSliceInput,
+  FinalizeSliceOutput
+> = async (input) => {
+  const result = await finalizeSlice(input);
+  let text: string;
+  if (result.status === "ok") {
+    text =
+      input.phase === "commit-push"
+        ? `Slice committed and pushed: ${result.branch} landed at ${result.sha} on ${result.remote} (${result.attempts} verify attempt(s)); subState 'pushed' checkpointed.`
+        : `Slice merged-tail finalized: subState 'merged' checkpointed, worktree removed (${result.worktreeRemoved}), local branch ${result.branch} reclaimed (${result.branchReclaimed}).`;
+  } else {
+    text = `finalize_slice failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "finalize_slice",
+  {
+    title: "Finalize a Reviewed Slice (git + run-state mechanics)",
+    description:
+      "Owns the deterministic git + run-state machinery of landing one reviewed " +
+      "slice — the git-only half of §3 (Processing one slice), in two phases " +
+      "behind one tool. phase 'commit-push' (step 6): stages EXACTLY the " +
+      "spine-computed `files` set ('git add -- ...files', never 'git add -A'/" +
+      "'-u'/'.'), guards an empty changeset ('git diff --cached --quiet' → " +
+      "EMPTY_CHANGESET, no commit), commits with the two-`-m` form (subject + " +
+      "'Closes #<N>' trailer), composes the push_and_verify landing check, and " +
+      "writes `subState:'pushed'` ONLY after the push is confirmed landed (a " +
+      "never-landing push bubbles PUSH_FAILED / BRANCH_NOT_ON_REMOTE). phase " +
+      "'post-merge' (step 9, the thin tail): writes `subState:'merged'`, removes " +
+      "the worktree, then force-reclaims the local slice branch (ordered after " +
+      "removal, idempotent if already gone). run-state.json lives under the MAIN " +
+      "repo `repoPath`, NOT the slice `worktreePath`. Git-only via the hardened " +
+      "exec seam — it never shells `gh`; the forge ops (PR create, mergeability " +
+      "poll, squash-merge, label edit), the `pr-open` checkpoint, and the " +
+      "conflict-resolver path stay in the spine. Returns a discriminated " +
+      "`status` of 'ok' or 'failed' with a git-only `errorCode`, and never throws.",
+    inputSchema: finalizeSliceInputSchema.shape,
+    outputSchema: finalizeSliceOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleFinalizeSlice as unknown as AnyToolHandler
+);
+
+// ─── resolve_cleanup_verdicts ─────────────────────────────────────────────────
+
+const handleResolveCleanupVerdicts: ToolHandler<
+  ResolveCleanupVerdictsInput,
+  ResolveCleanupVerdictsOutput
+> = async (input) => {
+  const result = resolveCleanupVerdicts(input);
+  let text: string;
+  if (result.status === "error") {
+    text = `resolve_cleanup_verdicts failed [${result.errorCode}]: ${result.errorMessage}`;
+  } else if (input.phase === "enumerate") {
+    text =
+      `Enumerated ${result.eligibleRuns!.length} eligible run(s); ` +
+      `${result.finalPullRequests!.length} final PR(s) to fetch.`;
+  } else {
+    const merged = result.verdicts!.filter(
+      (v) => v.verdict === "merged"
+    ).length;
+    text =
+      `Classified ${result.verdicts!.length} fetched fact(s): ` +
+      `${merged} merged.`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "resolve_cleanup_verdicts",
+  {
+    title: "Resolve Start-of-Run Cleanup Verdicts (two pure phases)",
+    description:
+      "The PURE verdict logic of the start-of-run cleanup sweep (SKILL §1), in " +
+      "two phases behind one tool. phase 'enumerate' (phase one): ingests the " +
+      "enumerated parsed run-states, applies the cleanup-eligibility gate " +
+      "(`status === 'completed' && finalPullRequest != null`, omitting every " +
+      "other run), and returns the DEDUPLICATED final-PR identifiers (first-seen " +
+      "order) the SPINE then looks up with `gh pr view <id> --json " +
+      "state,mergedAt`, plus the eligible runs paired with their final PRs. " +
+      "phase 'classify' (phase two): ingests the fetched `{state, mergedAt}` " +
+      "facts and returns the four-way verdict (`merged | open | " +
+      "closed-unmerged | unknown` — any malformed/missing/unexpected fact → " +
+      "`unknown`) that `clean_runs` consumes, capturing each `merged` run's " +
+      "`closeSetIssues` (the issue numbers of its `passed` slices) in the same " +
+      "pass. FULLY PURE — no fs, no git, no `gh`, no child process; the " +
+      "`gh pr view` fetch loop, the `gh issue close` backstop, and " +
+      "`clean_runs`' fs/git removal all stay in the spine. Returns a " +
+      "discriminated `status` of 'ok' or 'error' and never throws.",
+    inputSchema: resolveCleanupVerdictsInputSchema.shape,
+    outputSchema: resolveCleanupVerdictsOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleResolveCleanupVerdicts as unknown as AnyToolHandler
+);
+
+// ─── run_wave ─────────────────────────────────────────────────────────────────
+
+const handleRunWave: ToolHandler<RunWaveInput, RunWaveOutput> = async (
+  input
+) => {
+  const result = await runWave(input);
+  let text: string;
+  switch (result.verdict) {
+    case "refreshed":
+      text = `Umbrella base refreshed (fast-forwarded to ${result.sha}).`;
+      break;
+    case "diverged":
+      text = `Umbrella base diverged — ${result.errorMessage}`;
+      break;
+    case "processable":
+      text = `Slice is processable — every blocker is resolved.`;
+      break;
+    case "skip":
+      text = `Slice skipped — blocker ${result.blockerId} is unmet.`;
+      break;
+    case "skipped-first-merge":
+      text = `Re-verify skipped — first merged slice of the wave (no-op).`;
+      break;
+    case "passed":
+      text = `Slice re-verified — both correctness verbs passed after the umbrella merge.`;
+      break;
+    case "failed":
+      text = `Slice re-verify failed — the '${result.which}' verb failed after the umbrella merge.`;
+      break;
+    case "conflict":
+      text = `Slice re-verify hit a merge conflict — ${result.errorMessage}`;
+      break;
+    case "proceed":
+      text = `Integration gate passed — proceed to the next wave.`;
+      break;
+    case "halt":
+      text = `Integration gate failed — ${result.errorMessage}`;
+      break;
+    case "tolerate":
+      text = `Integration gate tolerated — no integration suite configured.`;
+      break;
+    case "error":
+      text = `run_wave failed [${result.errorCode}]: ${result.errorMessage}`;
+      break;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "run_wave",
+  {
+    title: "Run a Bracketed Deterministic Wave Operation",
+    description:
+      "A family of bracketed deterministic wave-loop operations behind one " +
+      "tool, selected by the `operation` discriminant, so only the higher-level " +
+      "policy that decides how a wave processes its slices stays the " +
+      "orchestrator's concern. 'refresh-base' (§2 step 1): fetch the remote " +
+      "umbrella and fast-forward the local umbrella ref to it (FETCH_HEAD + a " +
+      "`git merge-base` ancestor proof before the ref moves), or report " +
+      "`diverged` — distinct from a generic git error — when that is not a " +
+      "fast-forward, leaving the ref untouched. 'select-processable' (§2 step " +
+      "2): gate one slice on its in-partition (must be `passed`) and " +
+      "out-of-partition (must be `CLOSED`) blocker states — consumed from STATE " +
+      "PASSED IN, never read with `gh` (ADR-0008) — returning `processable` or " +
+      "`skip{blockerId}`. 'reverify-slice' (§2 step 4 inner re-verify): a no-op " +
+      "(`skipped-first-merge`) for the first merged slice of a wave; otherwise " +
+      "fetch + merge the umbrella into the slice worktree, then run the two " +
+      "correctness verbs (tests + build), returning `passed`, `failed{which}`, " +
+      "or `conflict` (the unmerged index is left IN PLACE and only flagged — " +
+      "resolution is a downstream concern). 'integration-gate' (§2 step 4a): " +
+      "run the per-wave integration suite, mapping `proceed` (passed), `halt` " +
+      "(failed/error), or `tolerate` (not configured). All loop state (umbrella " +
+      "ref, remote, first-merged flag) is PASSED IN, never inferred. Git-only " +
+      "via the hardened exec seam, run-scoped (mutates nothing outside the " +
+      "passed worktree), and never throws — every failure mode is a structured " +
+      "`verdict`.",
+    inputSchema: runWaveInputSchema.shape,
+    outputSchema: runWaveOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRunWave as unknown as AnyToolHandler
+);
+
+// ─── resolve_merge_conflict ───────────────────────────────────────────────────
+
+const handleResolveMergeConflict: ToolHandler<
+  ResolveMergeConflictInput,
+  ResolveMergeConflictOutput
+> = async (input) => {
+  const result = await resolveMergeConflict(input);
+  let text: string;
+  switch (result.verdict) {
+    case "clean":
+      text = `Umbrella merge applied cleanly — nothing to resolve.`;
+      break;
+    case "conflicted":
+      text = `Umbrella merge conflicted in ${result.conflictedFiles?.length ?? 0} path(s) — the unmerged index is left for the resolver.`;
+      break;
+    case "completed":
+      text = `Merge completed — the resolved set staged cleanly with no residual markers.`;
+      break;
+    case "markers_remain":
+      text = `Resolution incomplete — residual conflict markers remain; the merge was aborted (worktree left clean).`;
+      break;
+    case "error":
+      text = `resolve_merge_conflict failed [${result.errorCode}]: ${result.errorMessage}`;
+      break;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "resolve_merge_conflict",
+  {
+    title: "Resolve a Merge Conflict (re-entrant lifecycle, two operations)",
+    description:
+      "The two deterministic git operations around the conflict-resolver spawn " +
+      "(SKILL §3 step 8a), behind one tool selected by the `operation` " +
+      "discriminant — the resolver spawn, envelope validation, clean-path " +
+      "capability re-verify, and attempt-once policy all stay in the spine. " +
+      "'prepare': RE-ENTRANT recovery first — a pre-existing in-progress merge " +
+      "(a stale `MERGE_HEAD` from an interrupted predecessor) is `git merge " +
+      "--abort`ed best-effort BEFORE the fresh fetch+merge, so a mid-merge " +
+      "successor recovers instead of wedging on 'you have not concluded your " +
+      "merge'; then fetch the umbrella and merge it into the slice worktree, " +
+      "returning `clean` (auto-committed, nothing to resolve) or " +
+      "`conflicted{conflictedFiles}` (the unmerged index is left for the " +
+      "resolver — a rename-conflict emits BOTH paths). 'finalize': stage the " +
+      "resolved file set (`git add -- ...`, never `-A`/`-u`/`.`), scan the " +
+      "staged diff for residual conflict markers (`<<<<<<<`/`=======`/" +
+      "`>>>>>>>`), and complete the merge commit — `completed` when none remain, " +
+      "or `markers_remain` (the merge is ABORTED, leaving the worktree clean) " +
+      "when any do. Git-only via the hardened exec seam, run-scoped (mutates " +
+      "nothing outside the passed worktree), shells no `gh`, and never throws — " +
+      "every failure mode is a structured `verdict`.",
+    inputSchema: resolveMergeConflictInputSchema.shape,
+    outputSchema: resolveMergeConflictOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleResolveMergeConflict as unknown as AnyToolHandler
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────
