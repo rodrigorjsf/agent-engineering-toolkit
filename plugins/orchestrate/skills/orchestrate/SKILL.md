@@ -503,47 +503,63 @@ Process waves in order, starting at index `completedWaves`. For each wave:
 1. **Refresh the umbrella base.** Before creating this wave's worktrees,
    fast-forward the local umbrella ref to its remote counterpart — every prior
    wave's slices were squash-merged into `orchestrate/umbrella-<runId>` on the
-   remote, and this wave's worktrees must branch from that integrated state:
+   remote, and this wave's worktrees must branch from that integrated state.
+   Call the `run_wave` MCP tool with `operation: "refresh-base"`, the
+   repository root as `repoPath`, `umbrellaRef: "orchestrate/umbrella-<runId>"`,
+   and `remote: "origin"`:
 
-   ```
-   git fetch origin orchestrate/umbrella-<runId>:orchestrate/umbrella-<runId>
-   ```
+   - `refreshed` — the local umbrella ref was fast-forwarded to the remote tip
+     (a no-op fast-forward on the first wave); proceed.
+   - `diverged` — the umbrella history diverged (the remote tip is not a
+     descendant of the local ref), so a fast-forward is impossible. The tool
+     leaves the local ref untouched; the run must **stop** rather than branch a
+     wave from a wrong base — record the failure, report to the user, and halt.
+   - `error` — a git failure (an unreachable remote, a missing local umbrella
+     ref); halt and report.
 
-   The `<src>:<dst>` refspec updates the local branch ref directly without a
-   checkout, and **fails loudly** (non-zero exit) when the update is not a
-   fast-forward — a non-fast-forward means the umbrella history diverged, and
-   the run must stop rather than branch a wave from a wrong base. This step is
-   what guarantees a dependent slice is built on the slices it is blocked by;
-   it does **not** rely on `create_worktree`'s internal fetch, which may be
-   skipped or may fail. It runs on every wave — the first wave's fetch is a
-   no-op fast-forward — and on a resumed run, since the wave loop is re-entered
-   from this step.
+   The tool fetches the remote umbrella and gates the local ref update on a
+   `git merge-base` ancestor proof, so it **fails loudly** on a
+   non-fast-forward rather than clobbering history. This step is what guarantees
+   a dependent slice is built on the slices it is blocked by; it does **not**
+   rely on `create_worktree`'s internal fetch, which may be skipped or may fail.
+   It runs on every wave — the first wave's fetch is a no-op fast-forward — and
+   on a resumed run, since the wave loop is re-entered from this step.
 2. **Select the processable slices.** A slice in this wave is processable when
    its state is `pending`, every **in-partition** blocker it depends on reached
-   `passed`, and every **out-of-partition** blocker is verified resolved.
+   `passed`, and every **out-of-partition** blocker is verified resolved. The
+   orchestrator first resolves each blocker's state, then hands the gating
+   decision to the `run_wave` tool.
 
    - **In-partition blockers** — a `blockedBy` id that is itself a slice in
-     this run's `slices` map. The slice is processable only when every such
-     blocker reached `passed`. If any is `failed` or `skipped`, mark this slice
-     `skipped` with a `failureReason` naming the blocker, checkpoint, and do not
-     process it.
+     this run's `slices` map. Read each such blocker's `state` directly from
+     `run-state.json`.
    - **Out-of-partition blockers** — a `blockedBy` id that is **not** a slice
      in this run's `slices` map. This happens on a partitioned run: a child
      issue may be blocked by an issue outside its parent PRD. `plan_waves` does
      not order such a blocker — it treats any id outside its input set as
      already satisfied — so the orchestrator must verify the blocker's **real**
-     tracker state itself before the dependent slice runs:
+     tracker state itself before the dependent slice runs (the `gh` lookup stays
+     in the spine; the tool never shells `gh`):
 
      ```
      gh issue view <blocker-id> --json state
      ```
 
-     A `state` of `CLOSED` (the issue is merged or closed) → the blocker is
-     resolved; the dependent slice proceeds. A `state` of `OPEN` → the external
-     blocker is unmet; mark the dependent slice `skipped` with a `failureReason`
-     naming the external blocker issue (e.g. "blocked by #<id>, an issue
-     outside this run's partition that is still open"), checkpoint, and do not
-     process it. Never silently assume an out-of-partition blocker is done.
+     Never silently assume an out-of-partition blocker is done.
+
+   Then call `run_wave` with `operation: "select-processable"`, passing the
+   resolved states it just gathered — `inPartitionBlockers` (each
+   `{ blockerId, state }` from `run-state.json`) and `outOfPartitionBlockers`
+   (each `{ blockerId, state }`, `state` the `OPEN`/`CLOSED` from
+   `gh issue view`):
+
+   - `processable` — every in-partition blocker reached `passed` and every
+     out-of-partition blocker is `CLOSED`; process the slice.
+   - `skip` (with `blockerId`) — the named blocker is unmet (a non-`passed`
+     in-partition blocker, or an `OPEN` out-of-partition one). Mark this slice
+     `skipped` with a `failureReason` naming that blocker (e.g. "blocked by
+     #<blockerId>, an issue outside this run's partition that is still open"),
+     checkpoint, and do not process it.
 3. **Process the slices.** Branch on the `intraWaveConcurrency` policy read at
    the top of this section:
 
@@ -561,10 +577,10 @@ Process waves in order, starting at index `completedWaves`. For each wave:
      slice branches from an already-integrated base, so it is conflict-free
      without the conflict-resolver. For each slice, in ascending issue-id order:
 
-     1. **Refresh the umbrella base** by re-running this section's step 1 fetch
-        (`git fetch origin orchestrate/umbrella-<runId>:orchestrate/umbrella-<runId>`)
-        so this slice branches from `base + slice1..N-1` — the integrated state
-        of every earlier slice in this wave, not just the prior waves'.
+     1. **Refresh the umbrella base** by re-running this section's step 1
+        `run_wave` `refresh-base` call so this slice branches from
+        `base + slice1..N-1` — the integrated state of every earlier slice in
+        this wave, not just the prior waves'.
      2. **Process it** — run section 3 (all stages) for this one slice.
      3. **Integrate it** — run section 3 steps 6–9 (commit, pull request, merge)
         for this one slice; merges into the umbrella must not race, and here
@@ -586,28 +602,33 @@ Process waves in order, starting at index `completedWaves`. For each wave:
    worktree was branched from the wave's *starting* umbrella (step 1) and never
    saw this wave's earlier siblings, so the clean `MERGEABLE` path (section 3,
    step 8) would otherwise squash-merge without ever testing the
-   `base + slice1..N` combination. Before the `gh pr merge --squash` of every
-   slice **except the first merged slice of this wave** (whose pre-merge gate
-   already covered the umbrella — the merge is a no-op at that point), in the
-   slice's still-present worktree bring in the wave's already-merged siblings
-   and re-run the fast unit command:
+   `base + slice1..N` combination. Before the `gh pr merge --squash` of each
+   slice, in the slice's still-present worktree, call the `run_wave` MCP tool
+   with `operation: "reverify-slice"`, `repoPath: "<worktree-path>"`,
+   `umbrellaRef: "orchestrate/umbrella-<runId>"`, `remote: "origin"`, and
+   `isFirstMergedThisWave` set true **only** for the first merged slice of this
+   wave (whose pre-merge gate already covered the umbrella — the merge is a no-op
+   at that point). The tool fetches and merges the umbrella into the worktree,
+   then runs the two correctness verbs (tests + build — the fast unit command,
+   not all four):
 
-   ```
-   git -C <worktree-path> fetch origin orchestrate/umbrella-<runId>
-   git -C <worktree-path> merge origin/orchestrate/umbrella-<runId>
-   ```
+   - `skipped-first-merge` — the first merged slice; nothing to re-verify.
+     Proceed to the squash-merge.
+   - `passed` — both verbs passed against the `base + slice1..N` combination;
+     proceed to the `gh pr merge --squash`.
+   - `failed` (with `which`) — the merged worktree failed a verb. Gate the
+     `gh pr merge --squash` on this: the slice has **FAILED** via the existing
+     failure path (its worktree is preserved and the wave continues — see
+     "Failure handling"). Because the re-verify runs *before* the merge, the
+     failure never pollutes the umbrella and **no revert/rollback machinery is
+     needed**.
+   - `conflict` — the umbrella merge left an unmerged index (the tool flags it
+     in place, never resolving it). Defer to section 3 step 8a (do not duplicate
+     conflict logic here).
 
-   Then run the `run_tests` and `run_build` capability tools (only these two —
-   the fast unit command, not all four) with `<worktree-path>` as `repoPath`,
-   and gate the `gh pr merge --squash` on **both** passing. Because the
-   re-verify runs *before* the merge, a failure never pollutes the umbrella and
-   **no revert/rollback machinery is needed**: the slice has **FAILED** via the
-   existing failure path (its worktree is preserved and the wave continues — see
-   "Failure handling"). If the `git merge origin/orchestrate/umbrella-<runId>`
-   surfaces conflicts, defer to section 3 step 8a (do not duplicate conflict
-   logic here). The `sequential` path needs no equivalent step: each of its
-   slices already branches from `base + slice1..N-1` (step 3 above), so its
-   pre-merge gate has already tested the integrated state.
+   The `sequential` path needs no equivalent step: each of its slices already
+   branches from `base + slice1..N-1` (step 3 above), so its pre-merge gate has
+   already tested the integrated state.
 
    After each slice finishes integrating, check for
    `.orchestrate/runs/<runId>/context-flag.json`: if it
@@ -629,21 +650,22 @@ Process waves in order, starting at index `completedWaves`. For each wave:
    git -C <worktree-path> merge origin/orchestrate/umbrella-<runId>
    ```
 
-   Call the `run_integration` MCP tool with `<worktree-path>` as `repoPath`.
+   Then call the `run_wave` MCP tool with `operation: "integration-gate"` and
+   `repoPath: "<worktree-path>"`:
 
-   - `not-configured` (the project ships no `integration` command) — **tolerated
-     and skipped**, the same posture as any unconfigured capability verb.
-     Proceed to step 5.
-   - `passed` — proceed to step 5.
-   - `failed` / `error` — **halt the run**: do **not** checkpoint
-     `completedWaves` forward and do **not** build the next wave on a broken
-     umbrella. Leave the umbrella branch and the failing worktree on disk,
+   - `tolerate` (the project ships no `integration` command) — **tolerated and
+     skipped**, the same posture as any unconfigured capability verb. Proceed to
+     step 5.
+   - `proceed` (the suite passed) — proceed to step 5.
+   - `halt` (the suite failed or errored) — **halt the run**: do **not**
+     checkpoint `completedWaves` forward and do **not** build the next wave on a
+     broken umbrella. Leave the umbrella branch and the failing worktree on disk,
      record the failure in `run-state.json`, report to the user, and stop —
      consistent with step 1's "fail loud, do not branch a wave from a wrong
      base".
 
    Remove the deferred worktree (section 3 step 9's `remove_worktree`) only
-   after a `passed` or `not-configured` result.
+   after a `proceed` or `tolerate` result.
 5. **Checkpoint the wave.** Set `completedWaves` to this wave's index + 1 and
    write `run-state.json`.
 6. **Report wave progress to the PRD.** If `parentIssue` is set, post a comment

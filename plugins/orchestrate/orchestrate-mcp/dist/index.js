@@ -25066,6 +25066,315 @@ function resolveCleanupVerdicts(input) {
   return { status: "ok", verdicts };
 }
 
+// src/tools/run-wave.ts
+var inPartitionBlockerStateEnum = external_exports.enum([
+  "pending",
+  "in-progress",
+  "passed",
+  "failed",
+  "skipped"
+]);
+var outOfPartitionBlockerStateEnum = external_exports.enum(["OPEN", "CLOSED"]);
+var inPartitionBlockerSchema = external_exports.object({
+  blockerId: external_exports.string().describe("The blocker slice's id (its issue-id-string key in the run)."),
+  state: inPartitionBlockerStateEnum.describe(
+    "The blocker slice's terminal state. The dependent slice is processable only when this is `passed`; any other value blocks it."
+  )
+});
+var outOfPartitionBlockerSchema = external_exports.object({
+  blockerId: external_exports.string().describe("The blocker issue's id (an issue outside this run's partition)."),
+  state: outOfPartitionBlockerStateEnum.describe(
+    "The blocker issue's resolved tracker state, looked up by the orchestrator and passed in (ADR-0008 \u2014 this tool never reads tracker state). `CLOSED` = resolved, the dependent slice proceeds; `OPEN` = unmet, it is skipped."
+  )
+});
+var runWaveInputSchema = external_exports.object({
+  operation: external_exports.enum([
+    "refresh-base",
+    "select-processable",
+    "reverify-slice",
+    "integration-gate"
+  ]).describe(
+    "Which bracketed wave operation to run. 'refresh-base' (\xA72 step 1): fast-forward the local umbrella ref to its remote tip, or report `diverged` when that is not a fast-forward. 'select-processable' (\xA72 step 2): gate one slice on its in-partition + out-of-partition blocker states (passed in), returning `processable` or `skip`. 'reverify-slice' (\xA72 step 4 inner re-verify): merge the umbrella into the slice worktree and run the two correctness verbs, returning `passed`/`failed`/`conflict` (or `skipped-first-merge` for the first merged slice). 'integration-gate' (\xA72 step 4a): run the per-wave integration suite, returning `proceed`/`halt`/`tolerate`."
+  ),
+  repoPath: external_exports.string().optional().describe(
+    "The directory the operation runs in. For 'refresh-base' it is the main repo root holding the local umbrella ref. For 'reverify-slice' and 'integration-gate' it is the slice/deferred WORKTREE the merge and the capability commands run against \u2014 the same `repoPath` the run_* capability tools take (config is resolved from the main root, the command execs here). Unused by 'select-processable' (pure)."
+  ),
+  umbrellaRef: external_exports.string().optional().describe(
+    "The umbrella branch name (e.g. `orchestrate/umbrella-<runId>`). In 'refresh-base' it is the local ref fast-forwarded to its remote counterpart; in 'reverify-slice' it is the remote-tracking branch (`origin/<umbrellaRef>`) merged into the worktree. Required for both those operations; unused by the others."
+  ),
+  remote: external_exports.string().optional().default("origin").describe(
+    "Remote to fetch the umbrella from. Defaults to `origin`. Used by 'refresh-base' and 'reverify-slice'; unused by the others."
+  ),
+  isFirstMergedThisWave: external_exports.boolean().optional().describe(
+    "'reverify-slice' only: when true, this is the first slice merged in this wave, whose pre-merge gate already covered the umbrella \u2014 re-verify is a no-op (`skipped-first-merge`). Required for 'reverify-slice'."
+  ),
+  inPartitionBlockers: external_exports.array(inPartitionBlockerSchema).optional().describe(
+    "'select-processable' only: the dependent slice's blockers that are themselves slices in this run's partition, each with its resolved state. The slice is processable only when every one reached `passed`. Pass [] when the slice has no in-partition blockers."
+  ),
+  outOfPartitionBlockers: external_exports.array(outOfPartitionBlockerSchema).optional().describe(
+    "'select-processable' only: the dependent slice's blockers that are NOT slices in this run's partition, each with the tracker state the orchestrator resolved and passed in (ADR-0008). The slice is processable only when every one is `CLOSED`. Pass [] when the slice has no out-of-partition blockers."
+  )
+});
+var runWaveOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "failed"]).describe(
+    "Outcome discriminant. 'ok' = the operation reached a non-failure verdict (refreshed | processable | skip | skipped-first-merge | passed | proceed | tolerate); 'failed' = a blocking verdict or error (diverged | failed | conflict | halt | error). The `verdict` field carries the specific outcome."
+  ),
+  verdict: external_exports.enum([
+    "refreshed",
+    "diverged",
+    "processable",
+    "skip",
+    "skipped-first-merge",
+    "passed",
+    "failed",
+    "conflict",
+    "proceed",
+    "halt",
+    "tolerate",
+    "error"
+  ]).describe(
+    "The operation's specific outcome. 'refresh-base' \u2192 `refreshed` (fast-forwarded) | `diverged` (not a fast-forward \u2014 the ref is left untouched). 'select-processable' \u2192 `processable` | `skip` (see `blockerId`). 'reverify-slice' \u2192 `skipped-first-merge` | `passed` | `failed` (see `which`) | `conflict` (the merge left an unmerged index, flagged not resolved). 'integration-gate' \u2192 `proceed` | `halt` | `tolerate` (no integration command configured). `error` = a git or input failure (see `errorCode`)."
+  ),
+  sha: external_exports.string().optional().describe(
+    "'refresh-base' `refreshed`: the umbrella SHA the local ref now points at (the fetched remote tip)."
+  ),
+  blockerId: external_exports.string().optional().describe(
+    "'select-processable' `skip`: the id of the first unmet blocker (a non-`passed` in-partition blocker or an `OPEN` out-of-partition blocker) \u2014 the reason the dependent slice is skipped."
+  ),
+  which: external_exports.enum(["tests", "build"]).optional().describe(
+    "'reverify-slice' `failed`: which correctness verb failed after the umbrella was merged into the worktree."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT", "GIT_ERROR"]).optional().describe(
+    "Machine-readable failure category for `verdict: 'error'`. 'INVALID_INPUT' = a ref/remote would be parsed by git as an option flag, or a required field for the operation is missing; 'GIT_ERROR' = a git command failed for a reason other than divergence or a merge conflict (e.g. an unreachable remote, a missing local umbrella ref)."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present for `diverged`, `conflict`, `failed`, `halt`, and `error`."
+  )
+});
+var FETCH_ATTEMPTS = 3;
+var FETCH_BASE_DELAY_MS = 500;
+var FETCH_BACKOFF_FACTOR = 2;
+var FETCH_MAX_DELAY_MS = 8e3;
+var defaultSleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
+async function runWave(input, opts) {
+  switch (input.operation) {
+    case "refresh-base":
+      return refreshBase(input, opts);
+    case "select-processable":
+      return selectProcessable(input);
+    case "reverify-slice":
+      return reverifySlice(input, opts);
+    case "integration-gate":
+      return integrationGate(input);
+  }
+}
+async function refreshBase(input, opts) {
+  const repoPath = input.repoPath;
+  const umbrellaRef = input.umbrellaRef;
+  const remote = input.remote ?? "origin";
+  if (repoPath === void 0 || umbrellaRef === void 0) {
+    return failed2(
+      "INVALID_INPUT",
+      "operation 'refresh-base' requires `repoPath` and `umbrellaRef`."
+    );
+  }
+  const refGuard = optionInjectionError("umbrellaRef", umbrellaRef);
+  if (refGuard) return failed2("INVALID_INPUT", refGuard);
+  const remoteGuard = optionInjectionError("remote", remote);
+  if (remoteGuard) return failed2("INVALID_INPUT", remoteGuard);
+  const fetchErr = await fetchWithRetry(
+    [remote, umbrellaRef],
+    repoPath,
+    opts
+  );
+  if (fetchErr) {
+    return failed2("GIT_ERROR", fetchErr);
+  }
+  let localTip;
+  try {
+    const { stdout } = await gitExecFile(
+      ["rev-parse", "--verify", "--quiet", `refs/heads/${umbrellaRef}`],
+      repoPath
+    );
+    localTip = stdout.trim();
+  } catch (err) {
+    return failed2("GIT_ERROR", cleanGitError(err));
+  }
+  if (localTip.length === 0) {
+    return failed2(
+      "GIT_ERROR",
+      `Local umbrella ref refs/heads/${umbrellaRef} does not exist \u2014 cannot refresh a missing base.`
+    );
+  }
+  let fetchedTip;
+  let mergeBase;
+  try {
+    const fh = await gitExecFile(["rev-parse", "FETCH_HEAD"], repoPath);
+    fetchedTip = fh.stdout.trim();
+    const mb = await gitExecFile(
+      ["merge-base", `refs/heads/${umbrellaRef}`, "FETCH_HEAD"],
+      repoPath
+    );
+    mergeBase = mb.stdout.trim();
+  } catch (err) {
+    return failed2("GIT_ERROR", cleanGitError(err));
+  }
+  if (mergeBase !== localTip) {
+    return {
+      status: "failed",
+      verdict: "diverged",
+      errorMessage: `The umbrella ${umbrellaRef} diverged: the local ref is not an ancestor of ${remote}/${umbrellaRef} (${fetchedTip}), so a fast-forward is impossible. Leaving the local ref untouched.`
+    };
+  }
+  try {
+    await gitExecFile(
+      ["update-ref", `refs/heads/${umbrellaRef}`, fetchedTip],
+      repoPath
+    );
+  } catch (err) {
+    return failed2("GIT_ERROR", cleanGitError(err));
+  }
+  return { status: "ok", verdict: "refreshed", sha: fetchedTip };
+}
+function selectProcessable(input) {
+  const inPartition = input.inPartitionBlockers ?? [];
+  const outOfPartition = input.outOfPartitionBlockers ?? [];
+  for (const blocker of inPartition) {
+    if (blocker.state !== "passed") {
+      return { status: "ok", verdict: "skip", blockerId: blocker.blockerId };
+    }
+  }
+  for (const blocker of outOfPartition) {
+    if (blocker.state !== "CLOSED") {
+      return { status: "ok", verdict: "skip", blockerId: blocker.blockerId };
+    }
+  }
+  return { status: "ok", verdict: "processable" };
+}
+async function reverifySlice(input, opts) {
+  const repoPath = input.repoPath;
+  const umbrellaRef = input.umbrellaRef;
+  const remote = input.remote ?? "origin";
+  if (repoPath === void 0 || umbrellaRef === void 0 || input.isFirstMergedThisWave === void 0) {
+    return failed2(
+      "INVALID_INPUT",
+      "operation 'reverify-slice' requires `repoPath`, `umbrellaRef`, and `isFirstMergedThisWave`."
+    );
+  }
+  if (input.isFirstMergedThisWave) {
+    return { status: "ok", verdict: "skipped-first-merge" };
+  }
+  const refGuard = optionInjectionError("umbrellaRef", umbrellaRef);
+  if (refGuard) return failed2("INVALID_INPUT", refGuard);
+  const remoteGuard = optionInjectionError("remote", remote);
+  if (remoteGuard) return failed2("INVALID_INPUT", remoteGuard);
+  const fetchErr = await fetchWithRetry([remote, umbrellaRef], repoPath, opts);
+  if (fetchErr) {
+    return failed2("GIT_ERROR", fetchErr);
+  }
+  try {
+    await gitExecFile(
+      ["merge", "--no-edit", `${remote}/${umbrellaRef}`],
+      repoPath
+    );
+  } catch (err) {
+    const conflicted = await hasUnmergedPaths(repoPath);
+    if (conflicted) {
+      return {
+        status: "failed",
+        verdict: "conflict",
+        errorMessage: `Merging ${remote}/${umbrellaRef} into the slice worktree produced a conflict (the unmerged index is left in place for resolution).`
+      };
+    }
+    return failed2("GIT_ERROR", cleanGitError(err));
+  }
+  const tests = await runTests({ repoPath });
+  if (tests.status !== "passed") {
+    return {
+      status: "failed",
+      verdict: "failed",
+      which: "tests",
+      errorMessage: `The merged slice worktree failed the 'tests' verb (status: ${tests.status}).`
+    };
+  }
+  const build = await runBuild({ repoPath });
+  if (build.status !== "passed") {
+    return {
+      status: "failed",
+      verdict: "failed",
+      which: "build",
+      errorMessage: `The merged slice worktree failed the 'build' verb (status: ${build.status}).`
+    };
+  }
+  return { status: "ok", verdict: "passed" };
+}
+async function integrationGate(input) {
+  const repoPath = input.repoPath;
+  if (repoPath === void 0) {
+    return failed2(
+      "INVALID_INPUT",
+      "operation 'integration-gate' requires `repoPath`."
+    );
+  }
+  const result = await runIntegration({ repoPath });
+  switch (result.status) {
+    case "passed":
+      return { status: "ok", verdict: "proceed" };
+    case "not-configured":
+      return { status: "ok", verdict: "tolerate" };
+    case "failed":
+    case "error":
+      return {
+        status: "failed",
+        verdict: "halt",
+        errorMessage: `The per-wave integration suite did not pass (status: ${result.status}) \u2014 halting rather than building the next wave on a broken umbrella.`
+      };
+  }
+}
+async function fetchWithRetry(fetchArgs, repoPath, opts) {
+  const attempts = opts?.fetchAttempts ?? FETCH_ATTEMPTS;
+  const baseDelayMs = opts?.baseDelayMs ?? FETCH_BASE_DELAY_MS;
+  const factor = opts?.factor ?? FETCH_BACKOFF_FACTOR;
+  const maxDelayMs = opts?.maxDelayMs ?? FETCH_MAX_DELAY_MS;
+  const sleep = opts?.sleep ?? defaultSleep2;
+  let lastErr = null;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await gitExecFile(["fetch", ...fetchArgs], repoPath);
+      return null;
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts) {
+        const delay = Math.min(
+          baseDelayMs * Math.pow(factor, i - 1),
+          maxDelayMs
+        );
+        await sleep(delay);
+      }
+    }
+  }
+  return cleanGitError(lastErr);
+}
+async function hasUnmergedPaths(repoPath) {
+  try {
+    const { stdout } = await gitExecFile(
+      ["diff", "--name-only", "--diff-filter=U"],
+      repoPath
+    );
+    return stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+function failed2(errorCode, errorMessage) {
+  return {
+    status: "failed",
+    verdict: "error",
+    errorCode,
+    errorMessage
+  };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
@@ -25674,6 +25983,64 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleResolveCleanupVerdicts
+);
+var handleRunWave = async (input) => {
+  const result = await runWave(input);
+  let text;
+  switch (result.verdict) {
+    case "refreshed":
+      text = `Umbrella base refreshed (fast-forwarded to ${result.sha}).`;
+      break;
+    case "diverged":
+      text = `Umbrella base diverged \u2014 ${result.errorMessage}`;
+      break;
+    case "processable":
+      text = `Slice is processable \u2014 every blocker is resolved.`;
+      break;
+    case "skip":
+      text = `Slice skipped \u2014 blocker ${result.blockerId} is unmet.`;
+      break;
+    case "skipped-first-merge":
+      text = `Re-verify skipped \u2014 first merged slice of the wave (no-op).`;
+      break;
+    case "passed":
+      text = `Slice re-verified \u2014 both correctness verbs passed after the umbrella merge.`;
+      break;
+    case "failed":
+      text = `Slice re-verify failed \u2014 the '${result.which}' verb failed after the umbrella merge.`;
+      break;
+    case "conflict":
+      text = `Slice re-verify hit a merge conflict \u2014 ${result.errorMessage}`;
+      break;
+    case "proceed":
+      text = `Integration gate passed \u2014 proceed to the next wave.`;
+      break;
+    case "halt":
+      text = `Integration gate failed \u2014 ${result.errorMessage}`;
+      break;
+    case "tolerate":
+      text = `Integration gate tolerated \u2014 no integration suite configured.`;
+      break;
+    case "error":
+      text = `run_wave failed [${result.errorCode}]: ${result.errorMessage}`;
+      break;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "run_wave",
+  {
+    title: "Run a Bracketed Deterministic Wave Operation",
+    description: "A family of bracketed deterministic wave-loop operations behind one tool, selected by the `operation` discriminant, so only the higher-level policy that decides how a wave processes its slices stays the orchestrator's concern. 'refresh-base' (\xA72 step 1): fetch the remote umbrella and fast-forward the local umbrella ref to it (FETCH_HEAD + a `git merge-base` ancestor proof before the ref moves), or report `diverged` \u2014 distinct from a generic git error \u2014 when that is not a fast-forward, leaving the ref untouched. 'select-processable' (\xA72 step 2): gate one slice on its in-partition (must be `passed`) and out-of-partition (must be `CLOSED`) blocker states \u2014 consumed from STATE PASSED IN, never read with `gh` (ADR-0008) \u2014 returning `processable` or `skip{blockerId}`. 'reverify-slice' (\xA72 step 4 inner re-verify): a no-op (`skipped-first-merge`) for the first merged slice of a wave; otherwise fetch + merge the umbrella into the slice worktree, then run the two correctness verbs (tests + build), returning `passed`, `failed{which}`, or `conflict` (the unmerged index is left IN PLACE and only flagged \u2014 resolution is a downstream concern). 'integration-gate' (\xA72 step 4a): run the per-wave integration suite, mapping `proceed` (passed), `halt` (failed/error), or `tolerate` (not configured). All loop state (umbrella ref, remote, first-merged flag) is PASSED IN, never inferred. Git-only via the hardened exec seam, run-scoped (mutates nothing outside the passed worktree), and never throws \u2014 every failure mode is a structured `verdict`.",
+    inputSchema: runWaveInputSchema.shape,
+    outputSchema: runWaveOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRunWave
 );
 async function main() {
   const transport = new StdioServerTransport();
