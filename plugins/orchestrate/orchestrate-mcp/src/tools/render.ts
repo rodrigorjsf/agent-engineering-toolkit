@@ -8,6 +8,18 @@ import { resolveRunDir, type RunPaths } from "../run-dir.js";
 const sliceStateEnum = z.enum(["pending", "in-progress", "passed", "failed", "skipped"]);
 const tierEnum = z.enum(["trivial", "standard", "complex"]);
 
+// Fine-grained position WITHIN §3 processing of an in-progress slice — the
+// resume anchor. Optional so it is backward-compatible with a legacy checkpoint
+// written before the subState scheme (and absent before §3 step 4 completes).
+const subStateEnum = z.enum([
+  "implemented",
+  "verified",
+  "reviewed",
+  "pushed",
+  "pr-open",
+  "merged",
+]);
+
 const sliceSchema = z.object({
   issue: z.number().int(),
   title: z.string(),
@@ -15,6 +27,7 @@ const sliceSchema = z.object({
   tier: tierEnum,
   blockedBy: z.array(z.string()),
   state: sliceStateEnum,
+  subState: subStateEnum.optional(),
   sliceBranch: z.string(),
   worktreePath: z.string().nullable(),
   pullRequest: z.string().nullable(),
