@@ -357,8 +357,11 @@ plugins/orchestrate/
 │                                #   session-start (SessionStart) hooks
 ├── skills/
 │   └── orchestrate/
-│       ├── SKILL.md             # The orchestrator skill
-│       └── references/          # run-state and context-handoff references
+│       ├── SKILL.md             # The orchestrator judgment spine
+│       └── references/          # phase-loaded references:
+│                                #   prerequisites, clean-mode, run-lifecycle,
+│                                #   wave-loop, slice-pipeline, failure-handling,
+│                                #   run-state, context-handoff
 ├── agents/                      # 8 subagents — {investigator,implementer,
 │                                #   reviewer,conflict-resolver}-{standard,deep}
 ├── templates/                   # commands.json, routing.json, handoff.json
