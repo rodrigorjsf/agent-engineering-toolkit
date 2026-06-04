@@ -24910,6 +24910,162 @@ function failed(errorCode, errorMessage) {
   };
 }
 
+// src/tools/resolve-cleanup-verdicts.ts
+var sliceStateEnum2 = external_exports.enum([
+  "pending",
+  "in-progress",
+  "passed",
+  "failed",
+  "skipped"
+]);
+var cleanupSliceSchema = external_exports.object({
+  issue: external_exports.number().int().describe("The slice's GitHub issue number."),
+  state: sliceStateEnum2.describe(
+    "The slice's terminal state. Only `passed` slices join a merged run's close-set; `failed`/`skipped`/`pending`/`in-progress` are excluded."
+  )
+});
+var parsedRunSchema = external_exports.object({
+  runId: external_exports.string().describe("The run's timestamp id (its directory name)."),
+  status: external_exports.string().describe(
+    "The run's `status` field \u2014 `in-progress` or `completed`. A run that is not `completed` is omitted from phase one's eligible set."
+  ),
+  finalPullRequest: external_exports.string().nullable().describe(
+    "The run's final integration pull-request identifier, or null if it has none yet. A run with a null `finalPullRequest` is omitted from phase one's eligible set (it has not concluded)."
+  ),
+  slices: external_exports.array(cleanupSliceSchema).describe(
+    "The run's slices, normalized to an array. Used only in phase two to build a merged run's close-set; omit or pass [] in phase one."
+  ).optional()
+});
+var mergeFactSchema = external_exports.object({
+  runId: external_exports.string().describe("The run's timestamp id (its directory name)."),
+  finalPullRequest: external_exports.string().describe(
+    "The final-PR identifier the spine looked up. Echoed back from phase one."
+  ),
+  state: external_exports.string().nullable().optional().describe(
+    "The PR `state` from `gh pr view` \u2014 typically `MERGED`, `OPEN`, or `CLOSED`. Any other, missing, or null value classifies to `unknown`."
+  ),
+  mergedAt: external_exports.string().nullable().optional().describe(
+    "The PR `mergedAt` timestamp from `gh pr view`, or null when unmerged. `MERGED` with a null `mergedAt`, or `CLOSED` with a non-null `mergedAt`, is a malformed fact and classifies to `unknown`."
+  ),
+  slices: external_exports.array(cleanupSliceSchema).describe(
+    "The run's slices, normalized to an array \u2014 the source of the close-set for a run that classifies `merged`. Omit or pass [] for a run that cannot be merged."
+  ).optional()
+});
+var resolveCleanupVerdictsInputSchema = external_exports.object({
+  phase: external_exports.enum(["enumerate", "classify"]).describe(
+    "Which half of the two-phase sweep to run. 'enumerate' (phase one) ingests parsed run-states, applies the eligibility gate, and returns the DEDUPLICATED final-PR identifiers the spine then fetches with `gh pr view`. 'classify' (phase two) ingests the fetched `{state, mergedAt}` facts and returns the verdict map `clean_runs` consumes, plus each merged run's close-set."
+  ),
+  runs: external_exports.array(parsedRunSchema).optional().describe(
+    "Phase one only: the enumerated parsed run-states. Each carries its `runId`, `status`, `finalPullRequest`, and (optionally) `slices`. Ignored when phase='classify'."
+  ),
+  facts: external_exports.array(mergeFactSchema).optional().describe(
+    "Phase two only: the fetched merge facts, one per final-PR the spine looked up. Each carries the `runId`, `finalPullRequest`, the fetched `state`/`mergedAt`, and the run's `slices`. Ignored when phase='enumerate'."
+  )
+});
+var eligibleRunSchema = external_exports.object({
+  runId: external_exports.string().describe("The eligible run's id."),
+  finalPullRequest: external_exports.string().describe(
+    "The run's final-PR identifier \u2014 the argument the spine passes to `gh pr view <id> --json state,mergedAt`."
+  )
+});
+var runVerdictEntrySchema = external_exports.object({
+  runId: external_exports.string().describe("The classified run's id."),
+  verdict: runVerdictSchema.describe(
+    "The four-way merge verdict `clean_runs` consumes: 'merged' (the only verdict that triggers cleanup), 'open', 'closed-unmerged', or 'unknown' (a malformed, missing, or unexpected fact)."
+  ),
+  closeSetIssues: external_exports.array(external_exports.number().int()).describe(
+    "For a `merged` run, the issue numbers of exactly its `passed` slices \u2014 the close-set the spine closes with `gh issue close <N>` after the sweep. Empty for any non-`merged` verdict (no close-set is collected)."
+  )
+});
+var resolveCleanupVerdictsOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the phase ran; 'error' = the input did not match the requested phase (e.g. a missing `runs`/`facts` array)."
+  ),
+  finalPullRequests: external_exports.array(external_exports.string()).optional().describe(
+    "Phase one: the DEDUPLICATED final-PR identifiers to fetch, in first-seen order. Present when status='ok' and phase='enumerate'."
+  ),
+  eligibleRuns: external_exports.array(eligibleRunSchema).optional().describe(
+    "Phase one: the eligible runs paired with their final-PR identifiers, in input order (NOT deduplicated \u2014 two runs may share a final PR, though that is degenerate). Present when status='ok' and phase='enumerate'. Lets the spine map a fetched fact back to its run."
+  ),
+  verdicts: external_exports.array(runVerdictEntrySchema).optional().describe(
+    "Phase two: one verdict entry per fact, in input order. Present when status='ok' and phase='classify'. The spine collapses these into the `Record<runId, verdict>` map `clean_runs` ingests."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Human-readable failure description. Present when status='error'."
+  )
+});
+function isEligible(run) {
+  return run.status === "completed" && run.finalPullRequest != null;
+}
+function classifyFact(state, mergedAt) {
+  if (state === "MERGED") {
+    return typeof mergedAt === "string" && mergedAt.length > 0 ? "merged" : "unknown";
+  }
+  if (state === "OPEN") {
+    return "open";
+  }
+  if (state === "CLOSED") {
+    return mergedAt == null ? "closed-unmerged" : "unknown";
+  }
+  return "unknown";
+}
+function closeSetOf(slices) {
+  if (!Array.isArray(slices)) {
+    return [];
+  }
+  const out = [];
+  for (const slice of slices) {
+    if (slice.state === "passed") {
+      out.push(slice.issue);
+    }
+  }
+  return out;
+}
+function resolveCleanupVerdicts(input) {
+  if (input.phase === "enumerate") {
+    const runs = input.runs;
+    if (runs === void 0) {
+      return {
+        status: "error",
+        errorCode: "INVALID_INPUT",
+        errorMessage: "phase='enumerate' requires a `runs` array of parsed run-states."
+      };
+    }
+    const eligibleRuns = [];
+    const seen = /* @__PURE__ */ new Set();
+    const finalPullRequests = [];
+    for (const run of runs) {
+      if (!isEligible(run)) {
+        continue;
+      }
+      const finalPr = run.finalPullRequest;
+      eligibleRuns.push({ runId: run.runId, finalPullRequest: finalPr });
+      if (!seen.has(finalPr)) {
+        seen.add(finalPr);
+        finalPullRequests.push(finalPr);
+      }
+    }
+    return { status: "ok", finalPullRequests, eligibleRuns };
+  }
+  const facts = input.facts;
+  if (facts === void 0) {
+    return {
+      status: "error",
+      errorCode: "INVALID_INPUT",
+      errorMessage: "phase='classify' requires a `facts` array of fetched merge facts."
+    };
+  }
+  const verdicts = facts.map((fact) => {
+    const verdict = classifyFact(fact.state, fact.mergedAt);
+    const closeSetIssues = verdict === "merged" ? closeSetOf(fact.slices) : [];
+    return { runId: fact.runId, verdict, closeSetIssues };
+  });
+  return { status: "ok", verdicts };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
@@ -25488,6 +25644,36 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleFinalizeSlice
+);
+var handleResolveCleanupVerdicts = async (input) => {
+  const result = resolveCleanupVerdicts(input);
+  let text;
+  if (result.status === "error") {
+    text = `resolve_cleanup_verdicts failed [${result.errorCode}]: ${result.errorMessage}`;
+  } else if (input.phase === "enumerate") {
+    text = `Enumerated ${result.eligibleRuns.length} eligible run(s); ${result.finalPullRequests.length} final PR(s) to fetch.`;
+  } else {
+    const merged = result.verdicts.filter(
+      (v) => v.verdict === "merged"
+    ).length;
+    text = `Classified ${result.verdicts.length} fetched fact(s): ${merged} merged.`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "resolve_cleanup_verdicts",
+  {
+    title: "Resolve Start-of-Run Cleanup Verdicts (two pure phases)",
+    description: "The PURE verdict logic of the start-of-run cleanup sweep (SKILL \xA71), in two phases behind one tool. phase 'enumerate' (phase one): ingests the enumerated parsed run-states, applies the cleanup-eligibility gate (`status === 'completed' && finalPullRequest != null`, omitting every other run), and returns the DEDUPLICATED final-PR identifiers (first-seen order) the SPINE then looks up with `gh pr view <id> --json state,mergedAt`, plus the eligible runs paired with their final PRs. phase 'classify' (phase two): ingests the fetched `{state, mergedAt}` facts and returns the four-way verdict (`merged | open | closed-unmerged | unknown` \u2014 any malformed/missing/unexpected fact \u2192 `unknown`) that `clean_runs` consumes, capturing each `merged` run's `closeSetIssues` (the issue numbers of its `passed` slices) in the same pass. FULLY PURE \u2014 no fs, no git, no `gh`, no child process; the `gh pr view` fetch loop, the `gh issue close` backstop, and `clean_runs`' fs/git removal all stay in the spine. Returns a discriminated `status` of 'ok' or 'error' and never throws.",
+    inputSchema: resolveCleanupVerdictsInputSchema.shape,
+    outputSchema: resolveCleanupVerdictsOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleResolveCleanupVerdicts
 );
 async function main() {
   const transport = new StdioServerTransport();
