@@ -53,6 +53,7 @@ The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing 
 | `bootstrap_config` | Set up a repository's `.orchestrate/` config on a first-ever run — project-aware `commands.json`, model-derived `handoff.json`, default `routing.json`, the run directory, and the `.gitignore` entry |
 | `create_worktree` / `remove_worktree` | Git worktree lifecycle — isolated per-slice checkouts |
 | `push_and_verify` | Push a slice branch and verify it actually landed on the remote (SHA-match `git ls-remote` check + bounded backoff) — fails loud when an exit-0 push never lands; git-only, never shells `gh` |
+| `finalize_slice` | Land one reviewed slice's git + run-state mechanics in two phases: `commit-push` (stage exactly the named files, guard an empty changeset, commit with `Closes #<N>`, compose `push_and_verify`, checkpoint `subState: pushed`) and `post-merge` (checkpoint `subState: merged`, remove the worktree, reclaim the local branch). Forge ops and the `pr-open` checkpoint stay in the spine; git-only, never shells `gh` |
 | `run_tests` / `run_typecheck` / `run_build` / `run_lint` | Run the project's configured capability commands |
 | `plan_waves` | Topologically sort issues into dependency waves; detects cycles |
 | `resolve_routing` | Resolve the model and effort variant for each role from a complexity tier |

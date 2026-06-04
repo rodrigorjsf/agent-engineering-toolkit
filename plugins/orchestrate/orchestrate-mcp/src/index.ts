@@ -129,6 +129,13 @@ import {
   type ValidateRunStateInput,
   type ValidateRunStateOutput,
 } from "./tools/validate-run-state.js";
+import {
+  finalizeSlice,
+  finalizeSliceInputSchema,
+  finalizeSliceOutputSchema,
+  type FinalizeSliceInput,
+  type FinalizeSliceOutput,
+} from "./tools/finalize-slice.js";
 
 const server = new McpServer({
   name: "orchestrate",
@@ -1098,6 +1105,58 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleValidateRunState as unknown as AnyToolHandler
+);
+
+// ─── finalize_slice ───────────────────────────────────────────────────────────
+
+const handleFinalizeSlice: ToolHandler<
+  FinalizeSliceInput,
+  FinalizeSliceOutput
+> = async (input) => {
+  const result = await finalizeSlice(input);
+  let text: string;
+  if (result.status === "ok") {
+    text =
+      input.phase === "commit-push"
+        ? `Slice committed and pushed: ${result.branch} landed at ${result.sha} on ${result.remote} (${result.attempts} verify attempt(s)); subState 'pushed' checkpointed.`
+        : `Slice merged-tail finalized: subState 'merged' checkpointed, worktree removed (${result.worktreeRemoved}), local branch ${result.branch} reclaimed (${result.branchReclaimed}).`;
+  } else {
+    text = `finalize_slice failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "finalize_slice",
+  {
+    title: "Finalize a Reviewed Slice (git + run-state mechanics)",
+    description:
+      "Owns the deterministic git + run-state machinery of landing one reviewed " +
+      "slice — the git-only half of §3 (Processing one slice), in two phases " +
+      "behind one tool. phase 'commit-push' (step 6): stages EXACTLY the " +
+      "spine-computed `files` set ('git add -- ...files', never 'git add -A'/" +
+      "'-u'/'.'), guards an empty changeset ('git diff --cached --quiet' → " +
+      "EMPTY_CHANGESET, no commit), commits with the two-`-m` form (subject + " +
+      "'Closes #<N>' trailer), composes the push_and_verify landing check, and " +
+      "writes `subState:'pushed'` ONLY after the push is confirmed landed (a " +
+      "never-landing push bubbles PUSH_FAILED / BRANCH_NOT_ON_REMOTE). phase " +
+      "'post-merge' (step 9, the thin tail): writes `subState:'merged'`, removes " +
+      "the worktree, then force-reclaims the local slice branch (ordered after " +
+      "removal, idempotent if already gone). run-state.json lives under the MAIN " +
+      "repo `repoPath`, NOT the slice `worktreePath`. Git-only via the hardened " +
+      "exec seam — it never shells `gh`; the forge ops (PR create, mergeability " +
+      "poll, squash-merge, label edit), the `pr-open` checkpoint, and the " +
+      "conflict-resolver path stay in the spine. Returns a discriminated " +
+      "`status` of 'ok' or 'failed' with a git-only `errorCode`, and never throws.",
+    inputSchema: finalizeSliceInputSchema.shape,
+    outputSchema: finalizeSliceOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleFinalizeSlice as unknown as AnyToolHandler
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────

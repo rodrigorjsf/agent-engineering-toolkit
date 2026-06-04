@@ -881,46 +881,47 @@ subagent's verbatim returned text and its `role`:
    combination. "Pre-merge" names what the gate controls (whether the merge
    proceeds); mechanically it runs pre-commit, on the same worktree state the
    reviewer validated.
-6. **Commit and push.** Stage only the files the subagents reported changing —
-   the union of the `filesChanged` arrays from the validated implementer and
-   reviewer envelopes. Never `git add -A`: the capability tools leave untracked
-   build artifacts in the worktree. When the implementer fetched a new
-   dependency with `run_install`, install ran **in its turn before this
-   commit** and mutated the lockfile (`pnpm-lock.yaml` / `package-lock.json` /
-   `Cargo.lock`); because the implementer declared that lockfile in
-   `filesChanged`, it is in this staged union and the commit captures it — so
-   the new dependency lands in the slice diff.
+6. **Commit and push.** Run the slice's commit + verified-push mechanics with
+   the **`finalize_slice` MCP tool** in phase `commit-push` — not raw `git`. It
+   stages the file set, guards an empty changeset, commits, composes
+   `push_and_verify`, and writes the `pushed` checkpoint, all git-only. Call it
+   with `phase: "commit-push"`, `worktreePath` = the slice `worktreePath`,
+   `repoPath` = the **main repo root** (where `run-state.json` lives — NOT the
+   worktree), `runId`, `sliceId` = the slice's issue-id-string key, `branch` =
+   `orchestrate/slice-<N>`, `remote` = `origin`, `setUpstream: true`,
+   `commitSubject` = `<type>(<scope>): <issue title>`, `issueNumber` = `<N>`, and
+   `files` = the union of the `filesChanged` arrays from the validated
+   implementer and reviewer envelopes.
 
-   ```
-   git -C <worktree-path> add -- <file> <file> ...
-   ```
+   `finalize_slice` stages **exactly** that `files` set (`git add -- ...files`,
+   never `git add -A` — the capability tools leave untracked build artifacts in
+   the worktree). When the implementer fetched a new dependency with
+   `run_install`, install ran **in its turn before this commit** and mutated the
+   lockfile (`pnpm-lock.yaml` / `package-lock.json` / `Cargo.lock`); because the
+   implementer declared that lockfile in `filesChanged`, it is in this staged
+   union and the commit captures it — so the new dependency lands in the slice
+   diff. The commit preserves the two-`-m` form (subject + `Closes #<N>`
+   trailer), and the push goes through `push_and_verify`'s SHA-matched
+   `git ls-remote` landing check.
 
-   If `git -C <worktree-path> diff --cached --quiet` exits 0, nothing changed —
-   the slice has **FAILED**. Otherwise commit (local; two `-m` flags keep a
-   newline out of the shell argument), then push **with the `push_and_verify`
-   MCP tool** — not a raw `git push`:
+   On `status: "ok"` (`verdict: "committed-pushed"`) the slice's `subState` was
+   set to `pushed` and `run-state.json` checkpointed by the tool — and **only**
+   then, because that status means `push_and_verify`'s SHA-matched
+   `git ls-remote` confirmed the branch actually landed; proceed to step 7. The
+   tool never writes `subState: pushed` on a bare `git push` exit-0 — the landing
+   check is what the `pushed` checkpoint attests to (and what the section-1
+   resume re-validates). On `status: "failed"` the slice has **FAILED** — an
+   `EMPTY_CHANGESET` errorCode means the staged index was empty (nothing changed);
+   a `PUSH_FAILED` / `BRANCH_NOT_ON_REMOTE` errorCode is bubbled from
+   `push_and_verify`; `INVALID_INPUT` / `GIT_ERROR` / the run-state error codes
+   wire the same way as every other MCP-tool error in this section.
 
-   ```
-   git -C <worktree-path> commit -m "<type>(<scope>): <issue title>" -m "Closes #<N>"
-   ```
-
-   Call the **`push_and_verify` MCP tool** with `repoPath` = the slice
-   `worktreePath`, `branch` = `orchestrate/slice-<N>`, `remote` = `origin`,
-   `setUpstream: true`. On `status: "ok"` — and **only** then, because that
-   status means `push_and_verify`'s SHA-matched `git ls-remote` has confirmed the
-   branch actually landed on the remote — set the slice's `subState` to `pushed`,
-   checkpoint `run-state.json`, and proceed to step 7. Never write
-   `subState: pushed` on a bare `git push` exit-0; the landing check is what the
-   `pushed` checkpoint attests to (and what the section-1 resume re-validates).
-   On `status: "error"` (any `errorCode` — `PUSH_FAILED`, `BRANCH_NOT_ON_REMOTE`,
-   `INVALID_INPUT`, `GIT_ERROR`) the slice has **FAILED**, the same wiring as
-   every other MCP-tool error in this section.
-
-   `push_and_verify` gates step 7's `gh pr create`: it pushes the branch and
-   then confirms via SHA-matched `git ls-remote` that it actually landed on the
-   remote. A `git push` that exits 0 but never lands is exactly the
-   confusing-`gh pr create`-error site #230 reports — verifying the branch is on
-   the remote *before* opening the PR removes that silent-failure mode.
+   This gates step 7's `gh pr create`: a `git push` that exits 0 but never lands
+   is exactly the confusing-`gh pr create`-error site #230 reports — verifying
+   the branch is on the remote *before* opening the PR removes that
+   silent-failure mode. The PR open itself (`gh pr create`) and the `pr-open`
+   checkpoint stay in the spine at step 7 — `finalize_slice` is git-only and
+   never shells `gh`.
 
 7. **Open the slice pull request.**
 
@@ -1005,31 +1006,36 @@ subagent's verbatim returned text and its `role`:
 9. **Finish the slice.** Once any of step 8's `gh pr merge --squash` paths
    (`MERGEABLE`, the clean-textual-merge 8a.3 path, or the conflict-resolved
    8a.6 path) has succeeded — the slice PR is now squash-merged into the
-   umbrella — set the slice's `subState` to `merged` and checkpoint
-   `run-state.json` **before** the label transition and worktree removal below.
-   `merged` is the integration-boundary anchor: a run resumed at
-   `subState: merged` skips every subagent and re-enters here at step 9 only,
-   never re-merging. Then set the slice `state` to `passed` and transition the
-   issue's tracker label — it is done and awaiting human review:
+   umbrella — run the merged-tail mechanics with the **`finalize_slice` MCP
+   tool** in phase `post-merge`. Call it with `phase: "post-merge"`,
+   `worktreePath` = the slice `worktreePath`, `repoPath` = the **main repo root**
+   (where `run-state.json` lives), `runId`, `sliceId` = the slice's
+   issue-id-string key, and `branch` = `orchestrate/slice-<N>`. The tool writes
+   the slice's `subState` to `merged` and checkpoints `run-state.json` **first**,
+   then removes the worktree (force — it may hold untracked build artifacts), then
+   force-reclaims the **local** slice branch (`git branch -D`, ordered after the
+   removal because a checked-out branch refuses the delete). `merged` is the
+   integration-boundary anchor: a run resumed at `subState: merged` skips every
+   subagent and re-enters here at step 9 only, never re-merging.
+
+   On `status: "ok"` (`verdict: "committed-pushed"`) the merged checkpoint,
+   worktree removal, and local-branch reclaim are all done. The tool is
+   idempotent: on a run resumed at `subState: merged` the worktree may already be
+   gone and the branch already reclaimed by an earlier pass — both count as
+   success, not failure. The `-D` force is mandatory because the squash-merge
+   rewrote the commit SHA, so the slice branch is **not** an ancestor of umbrella
+   and `git branch -d` would refuse it as "not fully merged." This completes
+   incremental reclamation: the **remote** half was done by `--delete-branch` at
+   step 8, the **local** half here. On `status: "failed"` the slice has
+   **FAILED**, wired like every other MCP-tool error in this section.
+
+   The forge-state half of finishing stays in the spine — it is **not**
+   `finalize_slice`'s concern (the tool is git-only and never shells `gh`). After
+   `finalize_slice` returns ok, set the slice `state` to `passed` and transition
+   the issue's tracker label — it is done and awaiting human review:
    `gh issue edit <N> --remove-label ready-for-agent --add-label ready-for-human`.
-   Then remove its worktree with the `remove_worktree` MCP tool (`worktreePath`,
-   `repoPath`, `force: true` — the worktree may hold untracked build artifacts).
-   Finally, reclaim the **local** slice branch from the repository root:
-
-   ```
-   git branch -D orchestrate/slice-<N>
-   ```
-
-   The `-D` (force) flag is mandatory: the squash-merge rewrote the commit SHA,
-   so the slice branch is **not** an ancestor of umbrella and `git branch -d`
-   would refuse it as "not fully merged." Run this **after** `remove_worktree` —
-   while the worktree still has the branch checked out, the delete is refused.
-   The delete is idempotent: on a run resumed at `subState: merged` the branch
-   may already be gone (an earlier pass reclaimed it), and an already-absent
-   branch is fine, not a failure. This completes incremental reclamation: the
-   **remote** half was done by `--delete-branch` at step 8, the **local** half
-   here. Incremental reclamation fires only on a `passed` / `subState: merged`
-   slice; a failed (preserved) slice's branch is left fully intact.
+   Incremental reclamation fires only on a `passed` / `subState: merged` slice; a
+   failed (preserved) slice's branch is left fully intact.
 
 ## 4. Context handoff
 

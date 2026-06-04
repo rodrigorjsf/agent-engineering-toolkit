@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs13, exportName) {
+    function addFormats(ajv, list, fs14, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs13[f]);
+        ajv.addFormat(f, fs14[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -22085,6 +22085,14 @@ function resolveRunDir(repoPath, runId) {
 // src/tools/render.ts
 var sliceStateEnum = external_exports.enum(["pending", "in-progress", "passed", "failed", "skipped"]);
 var tierEnum = external_exports.enum(["trivial", "standard", "complex"]);
+var subStateEnum = external_exports.enum([
+  "implemented",
+  "verified",
+  "reviewed",
+  "pushed",
+  "pr-open",
+  "merged"
+]);
 var sliceSchema = external_exports.object({
   issue: external_exports.number().int(),
   title: external_exports.string(),
@@ -22092,6 +22100,7 @@ var sliceSchema = external_exports.object({
   tier: tierEnum,
   blockedBy: external_exports.array(external_exports.string()),
   state: sliceStateEnum,
+  subState: subStateEnum.optional(),
   sliceBranch: external_exports.string(),
   worktreePath: external_exports.string().nullable(),
   pullRequest: external_exports.string().nullable(),
@@ -24619,6 +24628,288 @@ async function validateRunState(input) {
   return { status: "valid" };
 }
 
+// src/tools/finalize-slice.ts
+var fs13 = __toESM(require("fs"));
+var finalizeSliceInputSchema = external_exports.object({
+  phase: external_exports.enum(["commit-push", "post-merge"]).describe(
+    "Which finalization phase to run. 'commit-push' = \xA73 step 6: stage the named file set, guard an empty changeset, commit (subject + `Closes #<N>`), push-and-verify, and write `subState:'pushed'` on a confirmed landing. 'post-merge' = \xA73 step 9 (the thin tail): write `subState:'merged'`, remove the worktree, then force-reclaim the local slice branch (idempotent). Forge ops and the `pr-open` checkpoint stay in the spine."
+  ),
+  worktreePath: external_exports.string().describe(
+    "Absolute path of the slice WORKTREE. In 'commit-push' the stage/commit/push run here; in 'post-merge' it is the worktree removed. NOT where run-state.json lives \u2014 that is under `repoPath` (the main repo root)."
+  ),
+  repoPath: external_exports.string().describe(
+    "Absolute path of the MAIN repository root \u2014 the canonical run-state.json lives under it at `.orchestrate/runs/<runId>/run-state.json`, NOT under the slice worktree (a fresh checkout that gitignores `.orchestrate/runs/`). In 'post-merge' the worktree removal and the local `branch -D` are also driven from here (the worktree is gone by then)."
+  ),
+  runId: external_exports.string().describe(
+    "The orchestration run's id (`prd<N>-<timestamp>` or `backlog-<timestamp>`). Selects the per-run directory `.orchestrate/runs/<runId>/` under `repoPath` whose run-state.json this tool mutates."
+  ),
+  sliceId: external_exports.string().describe(
+    "The issue-id-string key of this slice in run-state's `slices` map. Its `subState` is the field this tool advances ('pushed' then 'merged')."
+  ),
+  branch: external_exports.string().describe(
+    "The slice's local branch name (e.g. `orchestrate/slice-7`). In 'commit-push' it is the branch pushed and verified; in 'post-merge' it is the local branch force-reclaimed after worktree removal."
+  ),
+  remote: external_exports.string().optional().default("origin").describe(
+    "Remote to push to and verify against in 'commit-push'. Defaults to `origin`. Unused in 'post-merge' (local reclaim only)."
+  ),
+  setUpstream: external_exports.boolean().optional().default(true).describe(
+    "When true, the 'commit-push' push sets the upstream tracking ref (`-u`) \u2014 the first push of a new slice branch. Default true."
+  ),
+  files: external_exports.array(external_exports.string()).optional().describe(
+    "The spine-computed EXACT file set to stage in 'commit-push' (the union of the validated implementer + reviewer `filesChanged`). Staged via `git add -- ...files` \u2014 NEVER `git add -A`/`-u`/`.`, so untracked build artifacts in the worktree are never committed. Required for 'commit-push'; ignored in 'post-merge'."
+  ),
+  commitSubject: external_exports.string().optional().describe(
+    "The commit subject line for 'commit-push' (e.g. `feat(x): <issue title>`). Committed via a first `-m`; the `Closes #<issueNumber>` trailer is the second `-m`. Required for 'commit-push'."
+  ),
+  issueNumber: external_exports.number().int().optional().describe(
+    "The GitHub issue number for the `Closes #<N>` commit trailer in 'commit-push'. Required for 'commit-push'."
+  )
+});
+var finalizeSliceOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "failed"]).describe(
+    "Outcome discriminant. 'ok' = the requested phase completed (commit + verified push, or the merged-tail removal); 'failed' = a git or run-state step failed \u2014 see `errorCode`."
+  ),
+  verdict: external_exports.enum(["committed-pushed", "failed"]).describe(
+    "The slice-finalization verdict. 'committed-pushed' on a successful phase (both phases report it \u2014 'commit-push' on a confirmed landing, 'post-merge' on the merged-tail completion); 'failed' otherwise."
+  ),
+  branch: external_exports.string().optional().describe("The branch acted on. Present when status='ok'."),
+  remote: external_exports.string().optional().describe(
+    "The remote the branch landed on. Present in a successful 'commit-push'."
+  ),
+  sha: external_exports.string().optional().describe(
+    "The commit SHA confirmed on the remote (matches the local branch tip). Present in a successful 'commit-push'."
+  ),
+  attempts: external_exports.number().optional().describe(
+    "How many landing-verification polls ran before the remote ref matched (>=1). Present in a successful 'commit-push'."
+  ),
+  worktreeRemoved: external_exports.boolean().optional().describe(
+    "True when the worktree was removed (or was already absent \u2014 idempotent). Present in a successful 'post-merge'."
+  ),
+  branchReclaimed: external_exports.boolean().optional().describe(
+    "True when the local slice branch was deleted (or was already absent \u2014 idempotent). Present in a successful 'post-merge'."
+  ),
+  errorCode: external_exports.enum([
+    "INVALID_INPUT",
+    "EMPTY_CHANGESET",
+    "PUSH_FAILED",
+    "BRANCH_NOT_ON_REMOTE",
+    "RUN_ID_INVALID",
+    "RUN_STATE_NOT_FOUND",
+    "RUN_STATE_INVALID",
+    "SLICE_NOT_IN_RUN_STATE",
+    "RUN_STATE_WRITE_FAILED",
+    "WORKTREE_REMOVE_FAILED",
+    "GIT_ERROR"
+  ]).optional().describe(
+    "Machine-readable failure category (git-only). 'INVALID_INPUT' = a branch/remote/path would be parsed by git as an option flag, or a required phase field is missing; 'EMPTY_CHANGESET' = nothing was staged (`git diff --cached --quiet` clean) \u2014 the slice produced no changes; 'PUSH_FAILED'/'BRANCH_NOT_ON_REMOTE' = bubbled from pushAndVerify (the push exited non-zero, or exited 0 but never landed at the expected SHA \u2014 the silent-failure mode); 'RUN_ID_INVALID' = the runId is malformed; 'RUN_STATE_NOT_FOUND'/'RUN_STATE_INVALID' = run-state.json is absent or not parseable; 'SLICE_NOT_IN_RUN_STATE' = `sliceId` is not a key in the `slices` map; 'RUN_STATE_WRITE_FAILED' = the checkpoint write failed; 'WORKTREE_REMOVE_FAILED' = the worktree could not be removed; 'GIT_ERROR' = another git command could not run."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='failed'."
+  )
+});
+function writeSubState(repoPath, runId, sliceId, subState) {
+  const resolved = resolveRunDir(repoPath, runId);
+  if (!resolved.ok) {
+    return {
+      ok: false,
+      errorCode: "RUN_ID_INVALID",
+      errorMessage: resolved.errorMessage
+    };
+  }
+  const statePath = resolved.paths.runStatePath;
+  let raw;
+  try {
+    raw = fs13.readFileSync(statePath, "utf8");
+  } catch {
+    return {
+      ok: false,
+      errorCode: "RUN_STATE_NOT_FOUND",
+      errorMessage: `No run-state.json found at ${statePath}.`
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      ok: false,
+      errorCode: "RUN_STATE_INVALID",
+      errorMessage: `run-state.json is not valid JSON: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`
+    };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {
+      ok: false,
+      errorCode: "RUN_STATE_INVALID",
+      errorMessage: "run-state.json is not a JSON object."
+    };
+  }
+  const obj = parsed;
+  const slices = obj.slices;
+  if (slices === null || typeof slices !== "object" || Array.isArray(slices)) {
+    return {
+      ok: false,
+      errorCode: "RUN_STATE_INVALID",
+      errorMessage: "run-state.json `slices` is not a map keyed by issue id."
+    };
+  }
+  const sliceMap = slices;
+  const slice = sliceMap[sliceId];
+  if (slice === null || typeof slice !== "object" || Array.isArray(slice)) {
+    return {
+      ok: false,
+      errorCode: "SLICE_NOT_IN_RUN_STATE",
+      errorMessage: `Slice '${sliceId}' is not a key in run-state.json's slices map.`
+    };
+  }
+  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+  slice.subState = subState;
+  slice.updatedAt = nowIso;
+  obj.updatedAt = nowIso;
+  try {
+    fs13.writeFileSync(statePath, JSON.stringify(obj, null, 2), "utf8");
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      errorCode: "RUN_STATE_WRITE_FAILED",
+      errorMessage: `Could not write run-state.json at ${statePath}: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`
+    };
+  }
+}
+function isAbsentRefError2(message) {
+  const m = message.toLowerCase();
+  return m.includes("remote ref does not exist") || m.includes("not found") || m.includes("does not exist") || m.includes("couldn't find remote ref") || /branch .* not found/.test(m);
+}
+async function deleteLocalBranch2(branch, repoPath) {
+  try {
+    await gitExecFile(["branch", "-D", "--", branch], repoPath);
+    return null;
+  } catch (err) {
+    const message = cleanGitError(err);
+    if (isAbsentRefError2(message)) {
+      return null;
+    }
+    return message;
+  }
+}
+async function finalizeSlice(input, opts) {
+  if (input.phase === "commit-push") {
+    return finalizeCommitPush(input, opts);
+  }
+  return finalizePostMerge(input);
+}
+async function finalizeCommitPush(input, opts) {
+  const { worktreePath, repoPath, runId, sliceId, branch } = input;
+  const remote = input.remote ?? "origin";
+  const setUpstream = input.setUpstream ?? true;
+  if (!input.files || input.commitSubject === void 0 || input.issueNumber === void 0) {
+    return failed(
+      "INVALID_INPUT",
+      "phase 'commit-push' requires `files`, `commitSubject`, and `issueNumber`."
+    );
+  }
+  const { files, commitSubject, issueNumber } = input;
+  const branchGuard = optionInjectionError("branch", branch);
+  if (branchGuard) return failed("INVALID_INPUT", branchGuard);
+  const remoteGuard = optionInjectionError("remote", remote);
+  if (remoteGuard) return failed("INVALID_INPUT", remoteGuard);
+  try {
+    await gitExecFile(["add", "--", ...files], worktreePath);
+  } catch (err) {
+    return failed("GIT_ERROR", cleanGitError(err));
+  }
+  let hasStaged = false;
+  try {
+    await gitExecFile(["diff", "--cached", "--quiet"], worktreePath);
+    hasStaged = false;
+  } catch {
+    hasStaged = true;
+  }
+  if (!hasStaged) {
+    return failed(
+      "EMPTY_CHANGESET",
+      "Nothing was staged \u2014 the slice produced no changes; not committing."
+    );
+  }
+  try {
+    await gitExecFile(
+      ["commit", "-m", commitSubject, "-m", `Closes #${issueNumber}`],
+      worktreePath
+    );
+  } catch (err) {
+    return failed("GIT_ERROR", cleanGitError(err));
+  }
+  const push = await pushAndVerify(
+    { repoPath: worktreePath, branch, remote, setUpstream },
+    opts
+  );
+  if (push.status === "error") {
+    return {
+      status: "failed",
+      verdict: "failed",
+      errorCode: push.errorCode ?? "GIT_ERROR",
+      errorMessage: push.errorMessage
+    };
+  }
+  const write = writeSubState(repoPath, runId, sliceId, "pushed");
+  if (!write.ok) {
+    return failed(write.errorCode, write.errorMessage);
+  }
+  return {
+    status: "ok",
+    verdict: "committed-pushed",
+    branch: push.branch,
+    remote: push.remote,
+    sha: push.sha,
+    attempts: push.attempts
+  };
+}
+async function finalizePostMerge(input) {
+  const { worktreePath, repoPath, runId, sliceId, branch } = input;
+  const branchGuard = optionInjectionError("branch", branch);
+  if (branchGuard) return failed("INVALID_INPUT", branchGuard);
+  const write = writeSubState(repoPath, runId, sliceId, "merged");
+  if (!write.ok) {
+    return failed(write.errorCode, write.errorMessage);
+  }
+  let worktreeRemoved = false;
+  const removed = await removeWorktree({
+    worktreePath,
+    repoPath,
+    force: true
+  });
+  if (removed.status === "ok" || removed.errorCode === "PATH_NOT_FOUND") {
+    worktreeRemoved = true;
+  } else {
+    return {
+      status: "failed",
+      verdict: "failed",
+      errorCode: "WORKTREE_REMOVE_FAILED",
+      errorMessage: removed.status === "refused" ? removed.refusalReason ?? "Worktree removal was refused." : removed.errorMessage ?? "Worktree removal failed."
+    };
+  }
+  const branchErr = await deleteLocalBranch2(branch, repoPath);
+  if (branchErr) {
+    return failed("GIT_ERROR", branchErr);
+  }
+  return {
+    status: "ok",
+    verdict: "committed-pushed",
+    branch,
+    worktreeRemoved,
+    branchReclaimed: true
+  };
+}
+function failed(errorCode, errorMessage) {
+  return {
+    status: "failed",
+    verdict: "failed",
+    errorCode,
+    errorMessage
+  };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
@@ -25172,6 +25463,31 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleValidateRunState
+);
+var handleFinalizeSlice = async (input) => {
+  const result = await finalizeSlice(input);
+  let text;
+  if (result.status === "ok") {
+    text = input.phase === "commit-push" ? `Slice committed and pushed: ${result.branch} landed at ${result.sha} on ${result.remote} (${result.attempts} verify attempt(s)); subState 'pushed' checkpointed.` : `Slice merged-tail finalized: subState 'merged' checkpointed, worktree removed (${result.worktreeRemoved}), local branch ${result.branch} reclaimed (${result.branchReclaimed}).`;
+  } else {
+    text = `finalize_slice failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "finalize_slice",
+  {
+    title: "Finalize a Reviewed Slice (git + run-state mechanics)",
+    description: "Owns the deterministic git + run-state machinery of landing one reviewed slice \u2014 the git-only half of \xA73 (Processing one slice), in two phases behind one tool. phase 'commit-push' (step 6): stages EXACTLY the spine-computed `files` set ('git add -- ...files', never 'git add -A'/'-u'/'.'), guards an empty changeset ('git diff --cached --quiet' \u2192 EMPTY_CHANGESET, no commit), commits with the two-`-m` form (subject + 'Closes #<N>' trailer), composes the push_and_verify landing check, and writes `subState:'pushed'` ONLY after the push is confirmed landed (a never-landing push bubbles PUSH_FAILED / BRANCH_NOT_ON_REMOTE). phase 'post-merge' (step 9, the thin tail): writes `subState:'merged'`, removes the worktree, then force-reclaims the local slice branch (ordered after removal, idempotent if already gone). run-state.json lives under the MAIN repo `repoPath`, NOT the slice `worktreePath`. Git-only via the hardened exec seam \u2014 it never shells `gh`; the forge ops (PR create, mergeability poll, squash-merge, label edit), the `pr-open` checkpoint, and the conflict-resolver path stay in the spine. Returns a discriminated `status` of 'ok' or 'failed' with a git-only `errorCode`, and never throws.",
+    inputSchema: finalizeSliceInputSchema.shape,
+    outputSchema: finalizeSliceOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleFinalizeSlice
 );
 async function main() {
   const transport = new StdioServerTransport();
