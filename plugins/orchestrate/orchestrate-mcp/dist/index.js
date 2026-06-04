@@ -25375,6 +25375,209 @@ function failed2(errorCode, errorMessage) {
   };
 }
 
+// src/tools/resolve-merge-conflict.ts
+var resolveMergeConflictInputSchema = external_exports.object({
+  operation: external_exports.enum(["prepare", "finalize"]).describe(
+    "Which conflict-merge lifecycle operation to run. 'prepare' (\xA73 step 8a, pre-resolver): abort any pre-existing in-progress merge (re-entrancy recovery), then fetch the umbrella and merge it into the slice worktree, returning `clean` (auto-committed, nothing to resolve) or `conflicted{conflictedFiles}` (the index is left unmerged for the resolver). 'finalize' (\xA73 step 8a, post-resolver): stage the resolved file set, scan the staged diff for residual conflict markers, and complete the merge commit \u2014 `completed` when no markers remain, or `markers_remain` (the merge is ABORTED, leaving the worktree clean) when any do."
+  ),
+  worktreePath: external_exports.string().describe(
+    "Absolute path of the slice WORKTREE the merge runs in. In 'prepare' the fetch+merge target it; in 'finalize' the stage/scan/commit target it. This is the only directory the operation mutates."
+  ),
+  umbrellaRef: external_exports.string().optional().describe(
+    "The umbrella branch name (e.g. `orchestrate/umbrella-<runId>`) merged into the worktree as `<remote>/<umbrellaRef>`. Required for 'prepare'; unused by 'finalize' (the merge is already in progress from 'prepare')."
+  ),
+  remote: external_exports.string().optional().default("origin").describe(
+    "Remote to fetch the umbrella from in 'prepare'. Defaults to `origin`. Unused by 'finalize'."
+  ),
+  resolvedFiles: external_exports.array(external_exports.string()).optional().describe(
+    "'finalize' only: the EXACT file set the conflict-resolver resolved, staged via `git add -- ...resolvedFiles` (NEVER `git add -A`/`-u`/`.`). The residual-marker scan runs on the resulting staged diff. Required for 'finalize'; unused by 'prepare'."
+  )
+});
+var resolveMergeConflictOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "failed"]).describe(
+    "Outcome discriminant. 'ok' = the operation reached a non-failure verdict (clean | completed); 'failed' = a blocking verdict or error (conflicted | markers_remain | error). The `verdict` field carries the specific outcome."
+  ),
+  verdict: external_exports.enum(["clean", "conflicted", "completed", "markers_remain", "error"]).describe(
+    "The operation's specific outcome. 'prepare' \u2192 `clean` (the umbrella merge applied with no conflicts and git auto-committed it \u2014 nothing to resolve) | `conflicted` (the merge left an unmerged index; see `conflictedFiles`). 'finalize' \u2192 `completed` (the resolved set staged cleanly with no residual markers and the merge commit was written) | `markers_remain` (residual conflict markers were found in the staged diff \u2014 the merge was ABORTED, leaving the worktree clean). `error` = a git or input failure (see `errorCode`)."
+  ),
+  conflictedFiles: external_exports.array(external_exports.string()).optional().describe(
+    "'prepare' `conflicted`: the unmerged paths the umbrella merge left in the index (`git diff --name-only --diff-filter=U`). A rename-conflict emits BOTH of its paths. This is the list the spine passes to the conflict-resolver."
+  ),
+  markerLines: external_exports.array(external_exports.string()).optional().describe(
+    "'finalize' `markers_remain`: the verbatim staged-diff lines (diff column included, e.g. `+<<<<<<< HEAD`) that still carried a residual conflict marker (`<<<<<<<`, `=======`, or `>>>>>>>`) \u2014 the reason the resolution was rejected. The merge was aborted before this is reported."
+  ),
+  errorCode: external_exports.enum(["INVALID_INPUT", "GIT_ERROR"]).optional().describe(
+    "Machine-readable failure category for `verdict: 'error'`. 'INVALID_INPUT' = a ref/remote would be parsed by git as an option flag, or a required field for the operation is missing; 'GIT_ERROR' = a git command failed for a reason other than a merge conflict (e.g. an unreachable remote)."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present for `conflicted`, `markers_remain`, and `error`."
+  )
+});
+var FETCH_ATTEMPTS2 = 3;
+var FETCH_BASE_DELAY_MS2 = 500;
+var FETCH_BACKOFF_FACTOR2 = 2;
+var FETCH_MAX_DELAY_MS2 = 8e3;
+var defaultSleep3 = (ms) => new Promise((r) => setTimeout(r, ms));
+var CONFLICT_MARKERS = ["<<<<<<<", "=======", ">>>>>>>"];
+function scanConflictMarkers(diffText) {
+  const offendingLines = [];
+  for (const rawLine of diffText.split("\n")) {
+    const line = rawLine.length > 0 && (rawLine[0] === "+" || rawLine[0] === "-" || rawLine[0] === " ") ? rawLine.slice(1) : rawLine;
+    if (CONFLICT_MARKERS.some((marker) => line.startsWith(marker))) {
+      offendingLines.push(rawLine);
+    }
+  }
+  return { hasMarkers: offendingLines.length > 0, offendingLines };
+}
+async function resolveMergeConflict(input, opts) {
+  switch (input.operation) {
+    case "prepare":
+      return prepare(input, opts);
+    case "finalize":
+      return finalize(input);
+  }
+}
+async function prepare(input, opts) {
+  const worktreePath = input.worktreePath;
+  const umbrellaRef = input.umbrellaRef;
+  const remote = input.remote ?? "origin";
+  if (umbrellaRef === void 0) {
+    return failed3(
+      "INVALID_INPUT",
+      "operation 'prepare' requires `umbrellaRef`."
+    );
+  }
+  const refGuard = optionInjectionError("umbrellaRef", umbrellaRef);
+  if (refGuard) return failed3("INVALID_INPUT", refGuard);
+  const remoteGuard = optionInjectionError("remote", remote);
+  if (remoteGuard) return failed3("INVALID_INPUT", remoteGuard);
+  let mergeInProgress = false;
+  try {
+    const { stdout } = await gitExecFile(
+      ["rev-parse", "--verify", "--quiet", "MERGE_HEAD"],
+      worktreePath
+    );
+    mergeInProgress = stdout.trim().length > 0;
+  } catch {
+    mergeInProgress = false;
+  }
+  if (mergeInProgress) {
+    await abortMergeBestEffort(worktreePath);
+  }
+  const fetchErr = await fetchWithRetry2([remote, umbrellaRef], worktreePath, opts);
+  if (fetchErr) {
+    return failed3("GIT_ERROR", fetchErr);
+  }
+  try {
+    await gitExecFile(
+      ["merge", "--no-edit", `${remote}/${umbrellaRef}`],
+      worktreePath
+    );
+  } catch (err) {
+    const conflictedFiles = await unmergedPaths(worktreePath);
+    if (conflictedFiles.length > 0) {
+      return {
+        status: "failed",
+        verdict: "conflicted",
+        conflictedFiles,
+        errorMessage: `Merging ${remote}/${umbrellaRef} into the slice worktree produced a conflict in ${conflictedFiles.length} path(s) \u2014 the unmerged index is left in place for the conflict-resolver.`
+      };
+    }
+    return failed3("GIT_ERROR", cleanGitError(err));
+  }
+  return { status: "ok", verdict: "clean" };
+}
+async function finalize(input) {
+  const worktreePath = input.worktreePath;
+  const resolvedFiles = input.resolvedFiles;
+  if (resolvedFiles === void 0) {
+    return failed3(
+      "INVALID_INPUT",
+      "operation 'finalize' requires `resolvedFiles`."
+    );
+  }
+  try {
+    await gitExecFile(["add", "--", ...resolvedFiles], worktreePath);
+  } catch (err) {
+    return failed3("GIT_ERROR", cleanGitError(err));
+  }
+  let stagedDiff;
+  try {
+    const { stdout } = await gitExecFile(
+      ["diff", "--cached"],
+      worktreePath
+    );
+    stagedDiff = stdout;
+  } catch (err) {
+    return failed3("GIT_ERROR", cleanGitError(err));
+  }
+  const scan = scanConflictMarkers(stagedDiff);
+  if (scan.hasMarkers) {
+    await abortMergeBestEffort(worktreePath);
+    return {
+      status: "failed",
+      verdict: "markers_remain",
+      markerLines: scan.offendingLines,
+      errorMessage: `Residual conflict markers remain in the staged diff after resolution (${scan.offendingLines.length} marker line(s)) \u2014 the merge was aborted, leaving the worktree clean. The one resolution attempt is spent.`
+    };
+  }
+  try {
+    await gitExecFile(["commit", "--no-edit"], worktreePath);
+  } catch (err) {
+    return failed3("GIT_ERROR", cleanGitError(err));
+  }
+  return { status: "ok", verdict: "completed" };
+}
+async function fetchWithRetry2(fetchArgs, repoPath, opts) {
+  const attempts = opts?.fetchAttempts ?? FETCH_ATTEMPTS2;
+  const baseDelayMs = opts?.baseDelayMs ?? FETCH_BASE_DELAY_MS2;
+  const factor = opts?.factor ?? FETCH_BACKOFF_FACTOR2;
+  const maxDelayMs = opts?.maxDelayMs ?? FETCH_MAX_DELAY_MS2;
+  const sleep = opts?.sleep ?? defaultSleep3;
+  let lastErr = null;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await gitExecFile(["fetch", ...fetchArgs], repoPath);
+      return null;
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts) {
+        const delay = Math.min(
+          baseDelayMs * Math.pow(factor, i - 1),
+          maxDelayMs
+        );
+        await sleep(delay);
+      }
+    }
+  }
+  return cleanGitError(lastErr);
+}
+async function unmergedPaths(repoPath) {
+  try {
+    const { stdout } = await gitExecFile(
+      ["diff", "--name-only", "--diff-filter=U"],
+      repoPath
+    );
+    return stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  } catch {
+    return [];
+  }
+}
+async function abortMergeBestEffort(repoPath) {
+  try {
+    await gitExecFile(["merge", "--abort"], repoPath);
+  } catch {
+  }
+}
+function failed3(errorCode, errorMessage) {
+  return {
+    status: "failed",
+    verdict: "error",
+    errorCode,
+    errorMessage
+  };
+}
+
 // src/index.ts
 var server = new McpServer({
   name: "orchestrate",
@@ -26041,6 +26244,43 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleRunWave
+);
+var handleResolveMergeConflict = async (input) => {
+  const result = await resolveMergeConflict(input);
+  let text;
+  switch (result.verdict) {
+    case "clean":
+      text = `Umbrella merge applied cleanly \u2014 nothing to resolve.`;
+      break;
+    case "conflicted":
+      text = `Umbrella merge conflicted in ${result.conflictedFiles?.length ?? 0} path(s) \u2014 the unmerged index is left for the resolver.`;
+      break;
+    case "completed":
+      text = `Merge completed \u2014 the resolved set staged cleanly with no residual markers.`;
+      break;
+    case "markers_remain":
+      text = `Resolution incomplete \u2014 residual conflict markers remain; the merge was aborted (worktree left clean).`;
+      break;
+    case "error":
+      text = `resolve_merge_conflict failed [${result.errorCode}]: ${result.errorMessage}`;
+      break;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "resolve_merge_conflict",
+  {
+    title: "Resolve a Merge Conflict (re-entrant lifecycle, two operations)",
+    description: "The two deterministic git operations around the conflict-resolver spawn (SKILL \xA73 step 8a), behind one tool selected by the `operation` discriminant \u2014 the resolver spawn, envelope validation, clean-path capability re-verify, and attempt-once policy all stay in the spine. 'prepare': RE-ENTRANT recovery first \u2014 a pre-existing in-progress merge (a stale `MERGE_HEAD` from an interrupted predecessor) is `git merge --abort`ed best-effort BEFORE the fresh fetch+merge, so a mid-merge successor recovers instead of wedging on 'you have not concluded your merge'; then fetch the umbrella and merge it into the slice worktree, returning `clean` (auto-committed, nothing to resolve) or `conflicted{conflictedFiles}` (the unmerged index is left for the resolver \u2014 a rename-conflict emits BOTH paths). 'finalize': stage the resolved file set (`git add -- ...`, never `-A`/`-u`/`.`), scan the staged diff for residual conflict markers (`<<<<<<<`/`=======`/`>>>>>>>`), and complete the merge commit \u2014 `completed` when none remain, or `markers_remain` (the merge is ABORTED, leaving the worktree clean) when any do. Git-only via the hardened exec seam, run-scoped (mutates nothing outside the passed worktree), shells no `gh`, and never throws \u2014 every failure mode is a structured `verdict`.",
+    inputSchema: resolveMergeConflictInputSchema.shape,
+    outputSchema: resolveMergeConflictOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleResolveMergeConflict
 );
 async function main() {
   const transport = new StdioServerTransport();
