@@ -6,3 +6,6 @@ next-steps.md
 # Session-local runtime artifacts
 .claude/worktrees/
 .claude/scheduled_tasks.lock
+
+# prime-issues skill: per-run temp analyses (written by investigators, deleted after posting)
+.prime-issues/
