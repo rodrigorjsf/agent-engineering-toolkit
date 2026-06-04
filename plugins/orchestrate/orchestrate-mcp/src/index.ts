@@ -143,6 +143,13 @@ import {
   type ResolveCleanupVerdictsInput,
   type ResolveCleanupVerdictsOutput,
 } from "./tools/resolve-cleanup-verdicts.js";
+import {
+  runWave,
+  runWaveInputSchema,
+  runWaveOutputSchema,
+  type RunWaveInput,
+  type RunWaveOutput,
+} from "./tools/run-wave.js";
 
 const server = new McpServer({
   name: "orchestrate",
@@ -1221,6 +1228,93 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleResolveCleanupVerdicts as unknown as AnyToolHandler
+);
+
+// ─── run_wave ─────────────────────────────────────────────────────────────────
+
+const handleRunWave: ToolHandler<RunWaveInput, RunWaveOutput> = async (
+  input
+) => {
+  const result = await runWave(input);
+  let text: string;
+  switch (result.verdict) {
+    case "refreshed":
+      text = `Umbrella base refreshed (fast-forwarded to ${result.sha}).`;
+      break;
+    case "diverged":
+      text = `Umbrella base diverged — ${result.errorMessage}`;
+      break;
+    case "processable":
+      text = `Slice is processable — every blocker is resolved.`;
+      break;
+    case "skip":
+      text = `Slice skipped — blocker ${result.blockerId} is unmet.`;
+      break;
+    case "skipped-first-merge":
+      text = `Re-verify skipped — first merged slice of the wave (no-op).`;
+      break;
+    case "passed":
+      text = `Slice re-verified — both correctness verbs passed after the umbrella merge.`;
+      break;
+    case "failed":
+      text = `Slice re-verify failed — the '${result.which}' verb failed after the umbrella merge.`;
+      break;
+    case "conflict":
+      text = `Slice re-verify hit a merge conflict — ${result.errorMessage}`;
+      break;
+    case "proceed":
+      text = `Integration gate passed — proceed to the next wave.`;
+      break;
+    case "halt":
+      text = `Integration gate failed — ${result.errorMessage}`;
+      break;
+    case "tolerate":
+      text = `Integration gate tolerated — no integration suite configured.`;
+      break;
+    case "error":
+      text = `run_wave failed [${result.errorCode}]: ${result.errorMessage}`;
+      break;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "run_wave",
+  {
+    title: "Run a Bracketed Deterministic Wave Operation",
+    description:
+      "A family of bracketed deterministic wave-loop operations behind one " +
+      "tool, selected by the `operation` discriminant, so only the higher-level " +
+      "policy that decides how a wave processes its slices stays the " +
+      "orchestrator's concern. 'refresh-base' (§2 step 1): fetch the remote " +
+      "umbrella and fast-forward the local umbrella ref to it (FETCH_HEAD + a " +
+      "`git merge-base` ancestor proof before the ref moves), or report " +
+      "`diverged` — distinct from a generic git error — when that is not a " +
+      "fast-forward, leaving the ref untouched. 'select-processable' (§2 step " +
+      "2): gate one slice on its in-partition (must be `passed`) and " +
+      "out-of-partition (must be `CLOSED`) blocker states — consumed from STATE " +
+      "PASSED IN, never read with `gh` (ADR-0008) — returning `processable` or " +
+      "`skip{blockerId}`. 'reverify-slice' (§2 step 4 inner re-verify): a no-op " +
+      "(`skipped-first-merge`) for the first merged slice of a wave; otherwise " +
+      "fetch + merge the umbrella into the slice worktree, then run the two " +
+      "correctness verbs (tests + build), returning `passed`, `failed{which}`, " +
+      "or `conflict` (the unmerged index is left IN PLACE and only flagged — " +
+      "resolution is a downstream concern). 'integration-gate' (§2 step 4a): " +
+      "run the per-wave integration suite, mapping `proceed` (passed), `halt` " +
+      "(failed/error), or `tolerate` (not configured). All loop state (umbrella " +
+      "ref, remote, first-merged flag) is PASSED IN, never inferred. Git-only " +
+      "via the hardened exec seam, run-scoped (mutates nothing outside the " +
+      "passed worktree), and never throws — every failure mode is a structured " +
+      "`verdict`.",
+    inputSchema: runWaveInputSchema.shape,
+    outputSchema: runWaveOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRunWave as unknown as AnyToolHandler
 );
 
 // ─── Start server ─────────────────────────────────────────────────────────────
