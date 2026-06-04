@@ -215,3 +215,4 @@ What works: start simple, add configuration only when the agent actually fails, 
 - [[long-context-lost-in-middle]]
 - [[spec-driven-development]]
 - [[human-layer]]
+- [[pi-context-zone]]

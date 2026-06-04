@@ -100,3 +100,9 @@ Read these in order when validating a Cursor IDE plugin artifact:
 - Using Claude agent constraints (`model: sonnet`, `tools:`) when auditing Cursor agent definitions
 - Loading Claude-only `.claude/rules/` files (e.g., `claude-memory.md`, `plugin-skills.md`) when validating Cursor artifacts — use Cursor-specific project rules bundled for this scope (`cursor-plugin-skills.md`, `cursor-agent-files.md`) instead, but do not apply Claude-only conventions
 - Checking `.mdc` files for `paths:` instead of `globs:` — `paths:` is a Claude leak and a contamination finding
+
+## Related pages
+
+- [[compliance-routing]]
+- [[validation-routing-claude]]
+- [[validation-routing-standalone]]

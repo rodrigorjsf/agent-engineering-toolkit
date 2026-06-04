@@ -1,6 +1,6 @@
 # Wiki Index
 
-Total pages: **41**
+Total pages: **45**
 
 ---
 
@@ -19,7 +19,7 @@ Total pages: **41**
 | Page                          | Summary                                                                |
 | ----------------------------- | ---------------------------------------------------------------------- |
 | [[evaluating-agents-paper]]   | ETH Zurich 2026 study: minimal configs outperform comprehensive ones   |
-| [[agent-workflows]]           | Fundamental loop, five core patterns, orchestration strategies         |
+| [[agent-workflows]]           | Fundamental loop, five core patterns, orchestration strategies, autonomy modes, dynamic workflows |
 | [[subagents]]                 | Cross-platform subagent comparison, context firewall pattern           |
 | [[agent-configuration-files]] | AGENTS.md, CLAUDE.md, .cursorrules patterns and hierarchy              |
 | [[agent-best-practices]]      | Cross-platform guide: harness model, context management, anti-patterns |
@@ -31,10 +31,14 @@ Total pages: **41**
 | Page                      | Summary                                                       |
 | ------------------------- | ------------------------------------------------------------- |
 | [[claude-code-skills]]    | SKILL.md format, frontmatter, string substitutions, locations |
-| [[claude-code-hooks]]     | Lifecycle events, hook types, exit codes, matchers            |
+| [[claude-code-hooks]]     | Lifecycle events, hook types, exit codes, matchers, /goal     |
 | [[claude-code-plugins]]   | Plugin structure, manifest, distribution, namespacing         |
-| [[claude-code-memory]]    | CLAUDE.md hierarchy, path-scoped rules, imports, auto memory  |
-| [[claude-code-subagents]] | Definition format, frontmatter fields, fork mode, agent teams  |
+| [[claude-code-memory]]    | CLAUDE.md hierarchy, path-scoped rules, imports, auto memory, claudeMdExcludes + start-dir caveat |
+| [[claude-code-subagents]] | Definition format, frontmatter fields, fork mode; teams covered on [[claude-code-agent-teams]] |
+| [[claude-code-agent-teams]] | Experimental multi-session teams: file-locked shared task list, point-to-point messaging, three team hooks, plan-approval, sizing |
+| [[claude-code-workflows]] | Dynamic workflows: JS script orchestrates dozens–hundreds of subagents; plan-in-code, results in script variables off the main context |
+| [[claude-code-worktrees]] | CLI-native git-worktree isolation: --worktree flag, base-branch selection, .worktreeinclude, change-aware cleanup, non-git VCS hooks |
+| [[monorepo-large-codebase-setup]] | Scoping Claude Code in monorepos/large repos: start-dir semantics, sparsePaths, additionalDirectories, Read deny rules, claudeMdExcludes, per-directory layering |
 
 ## Cursor IDE Platform
 

@@ -1,8 +1,8 @@
 # Claude Code Subagents
 
 **Summary**: Task-specific assistants defined as Markdown files with YAML frontmatter that run in isolated context windows within Claude Code sessions — supporting tool restriction, model selection, permission modes, persistent memory, and worktree isolation.
-**Sources**: creating-custom-subagents.md, claude-orchestrate-of-claude-code-sessions.md, analysis-creating-custom-subagents.md, research-subagent-best-practices.md
-**Last updated**: 2026-05-21
+**Sources**: creating-custom-subagents.md, claude-orchestrate-of-claude-code-sessions.md, analysis-creating-custom-subagents.md, research-subagent-best-practices.md, agent-teams.md, dynamic-workflows.md, parallel-sessions-worktrees.md
+**Last updated**: 2026-06-04
 
 ---
 
@@ -116,67 +116,7 @@ All hook events are supported. Key behaviors:
 
 ## Agent Teams (Experimental)
 
-Multiple Claude Code instances coordinating as a team. Enable with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`. Requires Claude Code v2.1.32+.
-
-### Architecture
-
-| Component     | Role                                                                            |
-| ------------- | ------------------------------------------------------------------------------- |
-| **Team lead** | Creates team, breaks work into tasks, coordinates progress, synthesizes results |
-| **Teammates** | Independent Claude Code instances, each with own context window                 |
-| **Task list** | Shared state — teammates claim tasks, mark complete                             |
-| **Mailbox**   | Direct messaging between lead and teammates, or between teammates               |
-
-### Task Workflow
-
-Tasks flow through states: **pending** → **in progress** → **completed**. Task dependencies are supported — a task won't become available until its dependencies are complete. File locking prevents race conditions when teammates access shared resources.
-
-### Communication
-
-- **Lead ↔ Teammate**: Direct messages via task list updates and mailbox
-- **Teammate ↔ Teammate**: Broadcast messages for coordination
-- Display modes: **in-process** (cycle with `Shift+Down`) or **split-panes** (tmux/iTerm2)
-
-### Team-Specific Hooks
-
-Two hook events exist specifically for agent teams:
-
-- `TeammateIdle` — fires when a teammate is about to go idle; block to keep it working
-- `TaskCompleted` — fires when a task is marked complete; block to prevent completion
-
-### Sizing Guidelines
-
-| Guideline          | Recommendation                                                                  |
-| ------------------ | ------------------------------------------------------------------------------- |
-| Team size          | **3–5 teammates** for most workflows                                            |
-| Tasks per teammate | **5–6 tasks** each keeps everyone productive                                    |
-| Scaling rule       | Add teammates only when work genuinely benefits from parallelism                |
-| Task granularity   | Self-contained units producing clear deliverables (function, test file, review) |
-
-Three focused teammates often outperform five scattered ones. Token costs scale linearly with teammate count, and coordination overhead increases with team size.
-
-### Team Use Cases
-
-- Parallel research from different angles
-- Cross-layer coordination (frontend, backend, tests simultaneously)
-- Model comparison on same task
-- Large PR reviews split by concern area
-
-### Team Anti-Patterns
-
-- Sequential, tightly-coupled tasks (use single session)
-- Same-file edits across teammates (causes overwrites)
-- Simple tasks that don't justify coordination overhead (higher token cost)
-- Running unattended too long (increases risk of wasted effort)
-
-### Current Limitations
-
-- No session resumption with in-process teammates (`/resume` and `/rewind` don't restore them)
-- Task status can lag — teammates sometimes fail to mark tasks complete
-- One team per session; no nested teams
-- Lead is fixed for the session lifetime
-- All teammates start with the lead's permission mode
-- Split panes require tmux or iTerm2 (not supported in VS Code terminal, Windows Terminal, or Ghostty)
+A fixed team lead spawns independent Claude Code teammate instances — each with its own context window — that share a file-locked task list and message each other point-to-point through a mailbox, governed by three team-specific hooks (source: agent-teams.md). This is distinct from single-session subagents (which report only to their caller and never talk to each other). See the canonical page [[claude-code-agent-teams]] for architecture, communication, team hooks, sizing, and limitations.
 
 ## Fork Mode (Experimental)
 
@@ -192,6 +132,11 @@ Enabling fork mode changes three things (source: creating-custom-subagents.md):
 
 You can start a fork yourself with `/fork` followed by a directive (e.g. `/fork draft unit tests for the parser changes so far`); Claude Code names the fork from the first words of the directive (source: creating-custom-subagents.md). Because a fork's system prompt and tool definitions are identical to the parent, its first request reuses the parent's prompt cache, making forking cheaper than spawning a fresh subagent for tasks that need the same context (source: creating-custom-subagents.md). A fork cannot spawn further forks (source: creating-custom-subagents.md).
 
+## Claude-Code-Specific Subagent Behavior
+
+- **Workflow-spawned subagents**: subagents spawned by a [[claude-code-workflows]] dynamic workflow always run in `acceptEdits` mode and inherit the session tool allowlist regardless of the session's permission mode — file edits are auto-approved, though un-allowlisted shell/web/MCP calls can still prompt mid-run (source: dynamic-workflows.md).
+- **Subagent worktrees**: subagent (and background-session) worktrees are auto-removed once older than the `cleanupPeriodDays` setting if they are clean (no uncommitted changes, untracked files, or unpushed commits), whereas `--worktree`-created worktrees are never swept; subagent worktrees inherit the same base branch as `--worktree` (source: parallel-sessions-worktrees.md). See [[claude-code-worktrees]].
+
 ## Key Constraint
 
 **Subagents cannot spawn other subagents** — this prevents infinite nesting. Use the `Agent(worker, researcher)` tool syntax to restrict which named subagents can be spawned from the parent context.
@@ -206,3 +151,7 @@ You can start a fork yourself with `/fork` followed by a directive (e.g. `/fork 
 - [[claude-code-hooks]]
 - [[agent-workflows]]
 - [[cursor-subagents]]
+- [[claude-code-agent-teams]]
+- [[claude-code-workflows]]
+- [[claude-code-worktrees]]
+- [[monorepo-large-codebase-setup]]

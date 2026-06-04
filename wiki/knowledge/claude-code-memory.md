@@ -1,8 +1,8 @@
 # Claude Code Memory
 
 **Summary**: The multi-layered system by which Claude Code maintains persistent project context across sessions — comprising CLAUDE.md and CLAUDE.local.md file hierarchies, path-scoped rules in `.claude/rules/`, auto memory from corrections, and import-based composition.
-**Sources**: how-claude-remembers-a-project.md, analysis-how-claude-remembers-a-project.md
-**Last updated**: 2026-05-22
+**Sources**: how-claude-remembers-a-project.md, analysis-how-claude-remembers-a-project.md, monorepos-and-large-repos.md
+**Last updated**: 2026-06-04
 
 ---
 
@@ -38,13 +38,17 @@ CLAUDE.md files live in several locations, listed below in **load order** — br
 | Project instructions | `./CLAUDE.md` or `./.claude/CLAUDE.md`                                                                                                | Team-shared, via source control        |
 | Local instructions   | `./CLAUDE.local.md`                                                                                                                   | Personal per-project, add to `.gitignore` |
 
-Within the directory tree, content is ordered from filesystem root down to the working directory; within each directory `CLAUDE.local.md` is appended after `CLAUDE.md`. Subdirectory `CLAUDE.md`/`CLAUDE.local.md` files (e.g. `./src/CLAUDE.md`) are not loaded at launch — they load on demand when Claude reads files in that directory.
+Within the directory tree, content is ordered from filesystem root down to the working directory; within each directory `CLAUDE.local.md` is appended after `CLAUDE.md`. Subdirectory `CLAUDE.md`/`CLAUDE.local.md` files (e.g. `./src/CLAUDE.md`) are not loaded at launch — they load on demand when Claude reads files in that directory. This on-demand rule holds only when you start Claude from the repository root or an ancestor of the subdirectory; when you **start Claude from a subdirectory**, it loads that directory's `CLAUDE.md` plus every ancestor's at launch (source: monorepos-and-large-repos.md).
+
+Project `.claude/settings.json` loads only from the starting directory and is **not** inherited from parent directories the way `CLAUDE.md` is, so each subdirectory's settings file must be self-contained (source: monorepos-and-large-repos.md).
 
 ### CLAUDE.local.md
 
 `CLAUDE.local.md` at the project root holds private per-project preferences (sandbox URLs, preferred test data) that should not be checked in (source: how-claude-remembers-a-project.md). It loads alongside `CLAUDE.md` and is treated the same way. Add it to `.gitignore` — running `/init` with the personal option does this for you. Because a gitignored `CLAUDE.local.md` only exists in the worktree where it was created, share personal instructions across worktrees by importing a home-directory file (`@~/.claude/my-project-instructions.md`) instead.
 
 The managed-policy layer can also be supplied as a `claudeMd` key inside `managed-settings.json` rather than a separate file; `claudeMd` set in user, project, or local settings has no effect.
+
+`claudeMdExcludes` is a static path/glob exclusion that skips matching `CLAUDE.md`/rules files — it is a settings-level list, not a per-task switch. Globs are matched against **absolute** paths, so prefix patterns with `**/` to match by basename or relative location. The arrays merge across user, project, local, and managed scopes, and the exclusion cannot remove a managed-policy `CLAUDE.md`. To focus on one part of the tree per task, start Claude from the relevant directory instead of editing exclusions (source: monorepos-and-large-repos.md).
 
 ## Path-Scoped Rules
 
@@ -113,3 +117,4 @@ Claude accumulates learnings across sessions without you writing anything — bu
 - [[context-engineering]]
 - [[claude-code-hooks]]
 - [[cursor-rules]]
+- [[monorepo-large-codebase-setup]]

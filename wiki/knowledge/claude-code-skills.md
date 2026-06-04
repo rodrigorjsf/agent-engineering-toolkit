@@ -1,8 +1,8 @@
 # Claude Code Skills
 
 **Summary**: Custom instruction packages that extend Claude Code's capabilities through SKILL.md files with YAML frontmatter — following the Agent Skills open standard with Claude-specific extensions for model selection, tool restriction, and context forking.
-**Sources**: extend-claude-with-skills.md, research-claude-code-skills-format.md, analysis-extend-claude-with-skills.md, analysis-research-claude-code-skills-format.md
-**Last updated**: 2026-05-22
+**Sources**: extend-claude-with-skills.md, research-claude-code-skills-format.md, analysis-extend-claude-with-skills.md, analysis-research-claude-code-skills-format.md, monorepos-and-large-repos.md
+**Last updated**: 2026-06-04
 
 ---
 
@@ -55,6 +55,10 @@ All fields are optional; only `description` is recommended (source: extend-claud
 2. **Project skills** — `.claude/skills/`
 3. **Personal skills** — `~/.claude/skills/`
 
+### Per-directory placement in large repos
+
+In a monorepo or large single-tree codebase, skills can also live under `<subdir>/.claude/skills/`, loading on demand by directory scope or by their `paths:` frontmatter glob (source: monorepos-and-large-repos.md). Which skills are in scope depends on the start directory: starting from the repository root, every touched subdirectory's skills accumulate as Claude reads files across the tree (source: monorepos-and-large-repos.md). When many skills exist, their descriptions are shortened in the listing, so lead each description with the request keywords most likely to trigger it (source: monorepos-and-large-repos.md). To find unused skills to retire, watch the OpenTelemetry `skill_activated` event (set `OTEL_LOG_TOOL_DETAILS=1`) and inspect its `invocation_trigger` attribute (source: monorepos-and-large-repos.md). See [[monorepo-large-codebase-setup]] for the full scoping setup.
+
 ## Progressive Disclosure
 
 | Tier                             | Loaded When       | Budget        |
@@ -100,3 +104,4 @@ Three additional bundled skills (Claude Code v2.1.145+) launch your app and conf
 - [[claude-code-plugins]]
 - [[cursor-skills]]
 - [[progressive-disclosure]]
+- [[monorepo-large-codebase-setup]]

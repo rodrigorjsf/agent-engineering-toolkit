@@ -1,8 +1,8 @@
 # Claude Code Plugins
 
 **Summary**: Distributable packages that bundle skills, agents, hooks, MCP/LSP servers, commands, and background monitors into a single installable unit with namespace isolation — the primary mechanism for sharing Claude Code extensions across teams and the community.
-**Sources**: claude-create-plugin-doc.md, analysis-claude-create-plugin-doc.md, research-claude-code-skills-format.md
-**Last updated**: 2026-05-22
+**Sources**: claude-create-plugin-doc.md, analysis-claude-create-plugin-doc.md, research-claude-code-skills-format.md, monorepos-and-large-repos.md
+**Last updated**: 2026-06-04
 
 ---
 
@@ -82,6 +82,12 @@ Monitor entries also support a `when` trigger and variable substitution (see the
 ## Default Settings
 
 A plugin can ship a `settings.json` at its root to apply default configuration when enabled. Only the `agent` and `subagentStatusLine` keys are honored. Setting `agent` activates one of the plugin's custom agents as the main thread — applying its system prompt, tool restrictions, and model — letting a plugin change how Claude Code behaves by default. `settings.json` takes priority over `settings` declared in `plugin.json`; unknown keys are silently ignored.
+
+## Code-Intelligence and LSP Plugins
+
+Code-intelligence plugins that ship an LSP server (e.g. `typescript-lsp@claude-plugins-official`) let Claude replace brute-force file scans with language-server lookups — go-to-definition, find-references, and symbol search instead of reading whole trees (source: monorepos-and-large-repos.md). Enable them repo-wide via `enabledPlugins` so every contributor gets the same code intelligence (source: monorepos-and-large-repos.md). They require the language-server binary installed on each machine plus network access to the plugin host — GitHub by default, or an internal Git host on restricted networks (source: monorepos-and-large-repos.md).
+
+Plugins (and MCP code-search/RAG servers) also centralize project conventions when per-directory `CLAUDE.md` layering stops scaling — when files drift, go stale, or have no root owner — by moving conventions into on-demand mechanisms rather than always-loaded memory (source: monorepos-and-large-repos.md). Plugin skills use the `plugin-name:skill-name` namespace, so conventions packaged this way never collide across installed plugins (source: monorepos-and-large-repos.md). See [[monorepo-large-codebase-setup]] for scoping Claude to the part of a large tree a task touches.
 
 ## Distribution
 
@@ -164,3 +170,4 @@ A local plugin (loaded via `--plugin-dir`) overrides a marketplace plugin with t
 - [[claude-code-subagents]]
 - [[cursor-plugins]]
 - [[agent-skills-standard]]
+- [[monorepo-large-codebase-setup]]

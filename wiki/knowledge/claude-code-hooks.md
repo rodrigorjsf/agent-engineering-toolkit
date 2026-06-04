@@ -1,8 +1,8 @@
 # Claude Code Hooks
 
 **Summary**: Deterministic automation points in the Claude Code lifecycle that execute shell commands, HTTP requests, MCP tool calls, LLM prompts, or agent-based verification at specific events — enabling formatting, validation, auditing, and control flow without relying on the model's judgment.
-**Sources**: automate-workflow-with-hooks.md, claude-hook-reference-doc.md, analysis-automate-workflow-with-hooks.md, analysis-claude-hook-reference-doc.md
-**Last updated**: 2026-05-22
+**Sources**: automate-workflow-with-hooks.md, claude-hook-reference-doc.md, analysis-automate-workflow-with-hooks.md, analysis-claude-hook-reference-doc.md, agent-teams.md, goals.md, monorepos-and-large-repos.md, parallel-sessions-worktrees.md
+**Last updated**: 2026-06-04
 
 ---
 
@@ -95,6 +95,8 @@ Tool events support an optional per-handler `if` field that uses permission-rule
 | ---------------- | ------------------------------------------------------------ | ------------------ | ---------------------------------- |
 | `WorktreeCreate` | Worktree created via `--worktree` or `isolation: "worktree"` | No matcher support | Yes — non-zero exit fails creation |
 | `WorktreeRemove` | Worktree removed at session exit or subagent finish          | No matcher support | No                                 |
+
+Because a `WorktreeCreate` hook **replaces the default git logic entirely**, `.worktreeinclude` is **not** processed when using `--worktree` — local config files (e.g. `.env`) must be copied inside the hook script instead (source: parallel-sessions-worktrees.md). See [[claude-code-worktrees]].
 
 ### MCP Elicitation Events
 
@@ -194,6 +196,10 @@ For structured control, return JSON on exit 0: `{hookSpecificOutput: {hookEventN
 
 Multiple events support injecting text into Claude's context via the `additionalContext` field in JSON output: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Notification`, and `SubagentStart`. Multiple hooks' values are concatenated. For `SessionStart`, `CLAUDE_ENV_FILE` enables persisting environment variables for all subsequent Bash commands in the session.
 
+### Monorepo Onboarding Hooks
+
+In a large monorepo, a `SessionStart` hook can print a path-to-plugin recommendation to stdout, which is added to context before the first prompt — so a session started in an unfamiliar subtree learns which plugin owns that area (source: monorepos-and-large-repos.md). Complementarily, a `Stop` hook receives the session-transcript path and can propose `CLAUDE.md` updates while the gap exposed during the session is still fresh (source: monorepos-and-large-repos.md). See [[monorepo-large-codebase-setup]].
+
 ## Async Hooks
 
 Set `"async": true` on command hooks to run them in the background without blocking Claude. Async hooks:
@@ -249,6 +255,10 @@ fi
 
 Use for decisions requiring judgment rather than deterministic rules.
 
+### `/goal` — Productized Session-Scoped Stop Hook
+
+The `/goal` command is a productized wrapper around a session-scoped prompt-based `Stop` hook: it sets a completion condition inline for the current session rather than living in a settings file across all sessions in scope (source: goals.md). After each turn a small fast model (Haiku by default) evaluates the condition and either continues — feeding its reason back as next-turn guidance — or clears the goal once the condition is met (source: goals.md). The evaluator **does not call tools or read files**; it judges only what Claude has already surfaced in the transcript, so an effective condition must be demonstrable in Claude's own output (source: goals.md). `/goal` is unavailable when `disableAllHooks` is set at any level or when `allowManagedHooksOnly` is set in managed settings, and it requires Claude Code v2.1.139+ (source: goals.md). See [[agent-workflows]] for how `/goal` compares with `/loop`, raw Stop hooks, and auto mode as session-continuing autonomous approaches.
+
 ## Agent-Based Hooks
 
 `type: "agent"` hooks spawn a subagent with tool access (Read, Grep, Glob, etc.) to verify conditions against the actual state of the codebase. Same `"ok"`/`"reason"` response format as prompt hooks, but supports up to 50 tool-use turns with a longer default timeout of 60 seconds. Use `$ARGUMENTS` as a placeholder for hook input JSON in the prompt.
@@ -296,5 +306,9 @@ Hooks can be defined directly in [[claude-code-skills]] and [[claude-code-subage
 - [[claude-code-plugins]]
 - [[claude-code-memory]]
 - [[claude-code-subagents]]
+- [[claude-code-agent-teams]]
+- [[claude-code-workflows]]
+- [[claude-code-worktrees]]
+- [[monorepo-large-codebase-setup]]
 - [[cursor-hooks]]
 - [[agent-workflows]]

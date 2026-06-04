@@ -9,3 +9,12 @@ next-steps.md
 
 # prime-issues skill: per-run temp analyses (written by investigators, deleted after posting)
 .prime-issues/
+
+# wiki-lint / wiki-ingest workflow runs: per-run scaffolding (corpus map, proposals, scratch)
+.wiki-run/
+
+sandcastle-ref
+
+.orchestrate
+
+.idea
