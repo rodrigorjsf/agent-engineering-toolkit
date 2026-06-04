@@ -1,8 +1,8 @@
 # Context Engineering
 
 **Summary**: The discipline of managing all context fed to an LLM — instructions, examples, retrieved data, tool outputs — to maximize signal density per token and minimize degradation from noise, staleness, and position effects.
-**Sources**: research-context-engineering-comprehensive.md, research-context-rot-and-management.md, a-guide-to-agents.md, research-whitespace-and-formatting.md, advanced-context-engineering-coding-agents-dev.md, agents-md-is-a-liability-paddo.md, context-engineering-commercial-agents-jeremy-daly.md, context-engineering-most-important-skill-dev.md, context-stops-being-scarce-paddo.md, million-token-context-window-syntackle.md, pi-context-zone-github.md, shedding-dead-context-ryan-spletzer.md
-**Last updated**: 2026-05-01
+**Sources**: research-context-engineering-comprehensive.md, research-context-rot-and-management.md, a-guide-to-agents.md, research-whitespace-and-formatting.md, advanced-context-engineering-coding-agents-dev.md, agents-md-is-a-liability-paddo.md, context-engineering-commercial-agents-jeremy-daly.md, context-engineering-most-important-skill-dev.md, context-stops-being-scarce-paddo.md, million-token-context-window-syntackle.md, pi-context-zone-github.md, shedding-dead-context-ryan-spletzer.md, dynamic-workflows.md, monorepos-and-large-repos.md
+**Last updated**: 2026-06-04
 
 ---
 
@@ -37,8 +37,9 @@ Place long documents at the top and queries at the bottom — this exploits the 
 
 1. **[[progressive-disclosure]]** — Load instructions conditionally (skills, path-scoped rules, subagent summaries) instead of dumping everything into the main prompt
 2. **Compaction** — Summarize accumulated context when nearing the window limit. The lightest-touch approach is **tool result clearing** (replacing verbose tool outputs with summaries). For conversations, ask the model to summarize. The simplest approach matches sophisticated alternatives.
-3. **Structured note-taking** — Agent writes notes persisted outside the context window (JSON state files, progress.txt, git commits). The agent can reload specific notes on demand rather than carrying all history in context. This is [[prompt-engineering]]'s state tracking applied to context management.
+3. **Structured note-taking** — Agent writes notes persisted outside the context window (JSON state files, progress.txt, git commits). The agent can reload specific notes on demand rather than carrying all history in context. This is [[prompt-engineering]]'s state tracking applied to context management. In long cross-package sessions, save the plan to a markdown file: a file survives compaction, where conversation history may not (source: monorepos-and-large-repos.md).
 4. **[[subagents]]** — Route complex research to isolated contexts; return only summaries (1,000–2,000 tokens) instead of tens of thousands of exploration tokens. JIT documentation is a variant: let the agent generate docs during planning, then use those docs (not the raw exploration) in execution.
+5. **Dynamic workflows** — Move the orchestration loop into a script the runtime executes, so intermediate agent results live in script variables instead of Claude's context window; the main context then holds only the final answer rather than the full exploration trail (source: dynamic-workflows.md). See [[claude-code-workflows]].
 
 ### Choosing a Strategy
 
@@ -74,6 +75,7 @@ Audit dead context:
 - Remove skills not relevant to current work
 - Test effective budget with a bare context first
 - IFScale benchmark: at 500 instructions, agents follow only ~68% and skip 1 in 3 (source: agents-md-is-a-liability-paddo.md)
+- Move conventions and reference content out of always-loaded CLAUDE.md into on-demand mechanisms — skills, plugins, or an MCP code-search/RAG server — so the convention text only enters context when the relevant area is touched (source: monorepos-and-large-repos.md)
 
 ## Large Context Windows and Their Limits
 
@@ -137,3 +139,5 @@ Well-formatted 1,000-token prompt beats a wall-of-text 900-token prompt. Cut con
 - [[long-context-lost-in-middle]]
 - [[harness-engineering]]
 - [[rpi-workflow]]
+- [[claude-code-workflows]]
+- [[pi-context-zone]]

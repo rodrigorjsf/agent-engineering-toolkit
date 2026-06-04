@@ -104,7 +104,7 @@ Without phase structure, a single long session accumulates noise:
 3. Verbose test output and build logs
 4. The entire context window fills past 40% utilization
 
-Past that threshold, model reasoning degrades — what the [[harness-engineering]] literature calls the "dumb zone." Fresh context windows per phase are the structural prevention mechanism. (source: agentic-software-modernization-markus-harrer.md)
+Past that threshold, model reasoning starts to degrade toward what the [[harness-engineering]] literature calls the "dumb zone" — though that source pins the sharp-degradation threshold higher, at >60% utilization; the ~40% figure here comes from agentic-software-modernization-markus-harrer.md. Fresh context windows per phase are the structural prevention mechanism. (source: agentic-software-modernization-markus-harrer.md, harness-engineering.md)
 
 ## Written Artifacts as Shared Truth
 

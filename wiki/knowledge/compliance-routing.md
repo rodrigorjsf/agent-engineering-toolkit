@@ -65,3 +65,9 @@ For a detailed routing guide including entry points, validation paths, and commo
 - [[validation-routing-claude]] — Claude Code plugin validation
 - [[validation-routing-cursor]] — Cursor IDE plugin validation
 - [[validation-routing-standalone]] — Standalone skills validation
+
+## Related pages
+
+- [[validation-routing-claude]]
+- [[validation-routing-cursor]]
+- [[validation-routing-standalone]]

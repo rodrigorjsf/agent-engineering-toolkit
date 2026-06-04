@@ -1,8 +1,8 @@
 # Skill Authoring
 
 **Summary**: Evidence-based practices for creating effective agent skills — covering the "start from real expertise" principle, context budgeting, progressive disclosure structure, eval-driven iteration, description optimization for trigger accuracy, and script bundling conventions.
-**Sources**: skill-authoring-best-practices.md, agentskills-best-practices.md, agentskills-evaluating-skills.md, agentskills-optimizing-descriptions.md, agentskills-using-scripts.md
-**Last updated**: 2026-04-18
+**Sources**: skill-authoring-best-practices.md, agentskills-best-practices.md, agentskills-evaluating-skills.md, agentskills-optimizing-descriptions.md, agentskills-using-scripts.md, monorepos-and-large-repos.md
+**Last updated**: 2026-06-04
 
 ---
 
@@ -191,10 +191,15 @@ The `name` + `description` fields cost ~**100 tokens** and load at startup for *
 
 Target **~50 tokens** for description — enough for precise triggering, low enough to scale across many skills.
 
+## Large-Repo Skill Hygiene
+
+When a repo accumulates many skills — e.g. a monorepo where every touched subdirectory's `.claude/skills/` accumulate "into the hundreds" — descriptions get shortened, so lead each description with the request keywords that should trigger it (source: monorepos-and-large-repos.md). Retire dead skills: use OTEL `skill_activated` telemetry and inspect the `invocation_trigger` field to find skills that are never activated and remove them (source: monorepos-and-large-repos.md). See [[monorepo-large-codebase-setup]] for per-directory skill placement and scoping by start directory.
+
 ## Related pages
 
 - [[agent-skills-standard]]
 - [[claude-code-skills]]
 - [[cursor-skills]]
+- [[monorepo-large-codebase-setup]]
 - [[persuasion-in-ai]]
 - [[progressive-disclosure]]

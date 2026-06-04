@@ -1,8 +1,8 @@
 # Agent Workflows
 
 **Summary**: Proven patterns for structuring LLM agent work — from the fundamental Explore → Plan → Code → Verify loop to multi-agent architectures and progressive context strategies that prevent one-shotting complex projects.
-**Sources**: research-agent-workflows-and-patterns.md, a-guide-to-agents.md, analysis-a-guide-to-agents.md
-**Last updated**: 2026-04-18
+**Sources**: research-agent-workflows-and-patterns.md, a-guide-to-agents.md, analysis-a-guide-to-agents.md, dynamic-workflows.md, goals.md, parallel-sessions-worktrees.md
+**Last updated**: 2026-06-04
 
 ---
 
@@ -52,6 +52,19 @@ Team lead coordinates multiple agents working in parallel:
 - Direct communication between teammates
 - Available in Claude Code via Agent Teams (experimental)
 
+Claude Code now also provides a *codified* orchestrator primitive — dynamic workflows — where the plan lives in a rerunnable script rather than in Claude's turn-by-turn decisions (source: dynamic-workflows.md). See [[claude-code-workflows]]. Worktrees are the file-isolation substrate underneath these parallel/orchestrator patterns (source: parallel-sessions-worktrees.md); see [[claude-code-worktrees]].
+
+## Session-Continuing Autonomous Approaches
+
+Several Claude Code mechanisms keep a session working autonomously; they differ by *what starts the next turn* (source: goals.md):
+
+- **`/goal`** — the next turn starts when the previous one finishes, and the run stops when a fresh small model confirms the condition is met (source: goals.md)
+- **`/loop`** — the next turn starts on a time interval (source: goals.md)
+- **Stop hook** — fires after every turn (source: goals.md)
+- **auto mode** — does *not* start a new turn; it only auto-approves tool calls within one (source: goals.md)
+
+`/goal` and auto mode are complementary: auto mode removes per-tool prompts while `/goal` removes per-turn prompts (source: goals.md).
+
 ## Context Management During Workflows
 
 | Strategy                        | Complexity | Effectiveness                      |
@@ -78,3 +91,6 @@ Boris Cherny's principle applies: prefer simple, straightforward solutions over 
 - [[context-engineering]]
 - [[claude-code-subagents]]
 - [[cursor-subagents]]
+- [[claude-code-workflows]]
+- [[claude-code-agent-teams]]
+- [[claude-code-worktrees]]

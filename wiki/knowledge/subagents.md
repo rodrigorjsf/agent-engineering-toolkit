@@ -1,8 +1,8 @@
 # Subagents
 
 **Summary**: Specialized assistants running in isolated context windows with custom system prompts and restricted tool sets — the primary mechanism for keeping main agent context clean while enabling complex parallel work across both Claude Code and Cursor platforms.
-**Sources**: creating-custom-subagents.md, subagents-guide.md, research-subagent-best-practices.md, analysis-creating-custom-subagents.md, analysis-research-subagent-best-practices.md, research-plan-implement-rpi.md, skill-issue-harness-engineering-for-coding-agents.md
-**Last updated**: 2026-05-21
+**Sources**: creating-custom-subagents.md, subagents-guide.md, research-subagent-best-practices.md, analysis-creating-custom-subagents.md, analysis-research-subagent-best-practices.md, research-plan-implement-rpi.md, skill-issue-harness-engineering-for-coding-agents.md, dynamic-workflows.md, agent-teams.md
+**Last updated**: 2026-06-04
 
 ---
 
@@ -113,6 +113,10 @@ Two concrete applications (source: skill-issue-harness-engineering-for-coding-ag
 
 The mistake is treating subagents as role-based workers ("the researcher", "the planner") when their real value is as **context windows you can throw away**. See [[harness-engineering]] for how this integrates with the full harness model.
 
+**Workflows are an orchestration layer above subagents.** Dynamic workflows are a new orchestration layer that sits *above* subagents: the workflow script spawns and coordinates many subagents (up to 16 concurrent, 1,000 total per run) and holds their intermediate results in script variables, while subagents remain the worker primitive (source: dynamic-workflows.md). This reinforces the context-firewall framing — the orchestration loop and intermediate results stay off the main context. See [[claude-code-workflows]].
+
+**Compared with agent teammates.** Subagents and agent teammates differ on one axis: communication. A subagent runs in an isolated context window and reports its result only back to the caller, never to other subagents; an agent teammate is a fully independent Claude Code session that messages other teammates directly and self-coordinates through a shared task list (source: agent-teams.md). The subagent isolation is the context firewall; teammates trade that firewall for peer-to-peer coordination. See [[claude-code-agent-teams]].
+
 ## Related pages
 
 - [[claude-code-subagents]]
@@ -123,3 +127,5 @@ The mistake is treating subagents as role-based workers ("the researcher", "the 
 - [[harness-engineering]]
 - [[rpi-workflow]]
 - [[context-engineering]]
+- [[claude-code-workflows]]
+- [[claude-code-agent-teams]]

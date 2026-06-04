@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-06-04 — Ingest: 5 new Claude Code vendor docs + lint fixes
+
+Summarize: Pages created (4): claude-code-agent-teams, claude-code-workflows, monorepo-large-codebase-setup, claude-code-worktrees. Source: goals.md ingested as extends only (no new page — it is a session-scoped Stop-hook wrapper). Pages extended: claude-code-subagents (Agent Teams section demoted to a stub pointing at the canonical page; corrected the stale "broadcast" claim → point-to-point, and "two team hooks" → three), agent-workflows, claude-code-hooks, claude-code-memory (fixed subdirectory-load claim for the start-from-subdir case; added claudeMdExcludes), subagents, context-engineering, claude-code-skills, skill-authoring, claude-code-plugins, agent-configuration-files. Lint fixes applied: resolved the pi-context-zone orphan (backlinks from context-engineering + harness-engineering); corrected the rpi-workflow ↔ harness-engineering dumb-zone threshold mis-attribution (40% from markus-harrer vs 60% from harness-engineering, now attributed separately); added ## Related pages to the four Compliance & Validation routing pages. Index updated 41 → 45. Sources: agent-teams.md, dynamic-workflows.md, goals.md, monorepos-and-large-repos.md, parallel-sessions-worktrees.md.
+
+**Lint pass (same run).** Mechanical checks over 41 pages (deterministic, ground truth): P0 dangling links 0, dead index entries 0, pages missing from index 0; P1 orphan 1 (pi-context-zone — fixed), format 4 (routing pages lacked `## Related pages` — fixed); P2 asymmetric backlinks ~120 (expected noise, one-way prose mentions are allowed — not acted on). Reasoning checks (8 topical clusters): 1 contradiction found and fixed (rpi-workflow ↔ harness-engineering dumb-zone threshold mis-attribution); 7 of 8 clusters clean. Post-write re-lint over all 45 pages: 0 P0, 0 orphans, 0 format violations; all 16 intended bidirectional pairs resolve both ways.
+
+**Lint findings deferred (not acted on — future work):**
+- *Citation-sparse pages (13):* agent-skills-standard, compliance-routing, context-rot, cursor-mcp, cursor-subagents, evaluating-agents-paper, multilingual-performance, persuasion-in-ai, skill-body-convention, validation-routing-claude/cursor/standalone, whitespace-and-formatting — no inline `(source:)` markers (page-level heuristic, low confidence; synthesized concept pages legitimately cite via `**Sources**:` frontmatter only). Verify or accept as-is per page.
+- *Concept-gap candidates for future ingest (no source doc yet — would be synthesis pages):* tool-calling/tool-use (recurs across 11 pages, only the schema-constrained slice is owned by structured-outputs), agent-evaluation/benchmarking (14 pages cite evals; no page owns the methodology — evaluating-agents-paper is one specific study), context-compaction (9 pages; only touched by context-engineering), permission/sandbox model (9+ pages; gating model described per-tool, never as one concept). Promotion candidates (well-homed today, split only if cluster grows): A2A (section of agent-protocols), constrained-decoding (section of structured-outputs).
+
+---
+
 ## 2026-05-21 — Update: subagent pages reflect current Claude Code facts
 
 **Pages updated (2):** `claude-code-subagents.md`, `subagents.md`

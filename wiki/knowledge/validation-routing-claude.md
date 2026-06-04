@@ -97,3 +97,9 @@ Read these in order when validating a Claude Code plugin artifact:
 - Loading `docs/cursor/` to check `.mdc` activation modes when auditing a Claude skill that mentions rules — Claude rules use `paths:`, not `globs:`
 - Using Cursor agent constraints (model: inherit, readonly: true) when auditing Claude agent definitions
 - Treating general-llm research (Tier 4) as sole authority instead of corroboration
+
+## Related pages
+
+- [[compliance-routing]]
+- [[validation-routing-cursor]]
+- [[validation-routing-standalone]]

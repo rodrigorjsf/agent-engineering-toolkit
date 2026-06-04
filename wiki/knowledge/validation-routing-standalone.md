@@ -127,3 +127,9 @@ Read these in order when validating a standalone skill artifact:
 - Accepting "delegate to codebase-analyzer" as valid for standalone (it is valid ONLY in Claude plugin skills)
 - Using Claude hook or subagent docs as supporting authority for standalone artifacts
 - Checking that `.claude/rules/` are referenced by standalone skill **prose or by neutral-skill templates** — they should NOT be there. (Templates of platform-targeted skills like `init-claude`/`improve-claude` MAY reference `.claude/rules/` per ADR-0005.)
+
+## Related pages
+
+- [[compliance-routing]]
+- [[validation-routing-claude]]
+- [[validation-routing-cursor]]
