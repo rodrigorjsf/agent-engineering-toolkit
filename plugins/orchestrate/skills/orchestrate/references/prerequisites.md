@@ -14,7 +14,13 @@ The target project's `.orchestrate/` configuration — `commands.json`,
 first run** by the `bootstrap_config` MCP tool (section 1, Fresh run, step 1),
 or committed ahead of time from the plugin's `templates/`. Without
 `commands.json` the capability tools return `not-configured`, which is
-tolerated. When the project's capability commands need installed dependencies,
+tolerated. **When the bootstrapper writes an empty `commands.json` (`{}`)** —
+because no recognized project type was detected — it emits a `warnings[]` field
+in its result and surfaces the warning in its human-readable output. This means
+`run_tests` and `run_build` will report `not-configured`, and a slice can merge
+green with no verification. If you see this warning, edit
+`.orchestrate/commands.json` to add your project's test and build commands
+before starting the run. When the project's capability commands need installed dependencies,
 `commands.json` must also set an `install` command — `create_worktree` runs it
 in every fresh worktree, which checks out only tracked files and so has no
 dependency directory of its own, and the implementer/conflict-resolver
@@ -24,7 +30,11 @@ npm/cargo/python projects — for the JS ecosystem the package manager is keyed
 on the lockfile (`pnpm-lock.yaml`→pnpm, `yarn.lock`→yarn,
 `package-lock.json`→npm, defaulting to **pnpm** with no lock), and the install
 is the mutating/resolving form (`pnpm install` / `npm install`, never
-`npm ci`). A project that overrides `install` with a strict reproducible form
+`npm ci`). Maven and Gradle projects are also detected (test, build, and
+typecheck commands are set), but receive **no `install` verb** — JVM build
+tools resolve dependencies on demand and an install step would fail in a
+pom-less worktree; neither ecosystem has a canonical linter, so `lint` is also
+omitted. A project that overrides `install` with a strict reproducible form
 (`npm ci`, `--frozen-lockfile`) forfeits in-slice new-dependency support — a
 subagent has no shell to regenerate the lockfile. Without `routing.json` the
 `resolve_routing` tool errors

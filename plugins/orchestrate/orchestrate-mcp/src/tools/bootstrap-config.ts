@@ -46,8 +46,10 @@ const MODEL_CONTEXT_WINDOW: Readonly<Record<string, number>> = {
   opus: DEFAULT_CONTEXT_WINDOW_TOKENS,
   sonnet: DEFAULT_CONTEXT_WINDOW_TOKENS,
   haiku: DEFAULT_CONTEXT_WINDOW_TOKENS,
+  "claude-opus-4-8[1m]": ONE_MILLION_TOKENS,
   "claude-opus-4-7[1m]": ONE_MILLION_TOKENS,
   "claude-opus-4-1[1m]": ONE_MILLION_TOKENS,
+  "claude-sonnet-4-6[1m]": ONE_MILLION_TOKENS,
   "claude-sonnet-4-5[1m]": ONE_MILLION_TOKENS,
   "claude-sonnet-4[1m]": ONE_MILLION_TOKENS,
 };
@@ -127,7 +129,7 @@ export const bootstrapConfigOutputSchema = z.object({
         "failed and the configuration is incomplete."
     ),
   projectType: z
-    .enum(["npm", "cargo", "python", "make", "none"])
+    .enum(["npm", "cargo", "python", "maven", "gradle", "make", "none"])
     .optional()
     .describe(
       "The detected project type. 'none' means no recognized manifest — " +
@@ -141,13 +143,14 @@ export const bootstrapConfigOutputSchema = z.object({
         "positive integer — never NaN. Present when status='ok'."
     ),
   contextWindowSource: z
-    .enum(["explicit", "model-table", "default"])
+    .enum(["explicit", "model-table", "model-suffix", "default"])
     .optional()
     .describe(
       "How contextWindowTokens was resolved. 'explicit' = a valid " +
         "contextWindowTokens input; 'model-table' = a recognized model id; " +
-        "'default' = an unknown/absent model fell back to 200000. Present " +
-        "when status='ok'."
+        "'model-suffix' = an unlisted id whose trailing [Nm] capacity suffix " +
+        "was parsed to N×1000000; 'default' = an unknown/absent model fell " +
+        "back to 200000. Present when status='ok'."
     ),
   files: z
     .object({
@@ -190,6 +193,17 @@ export const bootstrapConfigOutputSchema = z.object({
     .describe(
       "Cleaned, human-readable failure description. Present when status='error'."
     ),
+  warnings: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Advisory warnings about the bootstrapped configuration. Non-empty only " +
+        "when status='ok' and the freshly-written commands.json is empty ({}) — " +
+        "meaning no recognized project type was detected and the capability gates " +
+        "(run_tests, run_build, etc.) will report 'not-configured', allowing a " +
+        "slice to merge green with no verification. Empty array when the written " +
+        "commands map is non-empty. Present when status='ok'."
+    ),
 });
 
 // ─── TS types — derived from the schemas (single source of truth) ─────────────
@@ -216,14 +230,15 @@ function toJsonFile(value: unknown): string {
 /** How the context-window token count was resolved. */
 type ContextWindowResolution = {
   tokens: number;
-  source: "explicit" | "model-table" | "default";
+  source: "explicit" | "model-table" | "model-suffix" | "default";
 };
 
 /**
  * Resolves the context-window token count from the bootstrap input. Precedence:
  *   1. An explicit `contextWindowTokens` that is a positive integer.
  *   2. An exact model-table hit.
- *   3. The {@link DEFAULT_CONTEXT_WINDOW_TOKENS} fallback.
+ *   3. A trailing `[Nm]` capacity suffix on the model id, parsed to N×1M.
+ *   4. The {@link DEFAULT_CONTEXT_WINDOW_TOKENS} fallback.
  *
  * Always returns a positive integer — never NaN — so a malformed input can
  * never write a broken value into handoff.json.
@@ -244,6 +259,22 @@ export function resolveContextWindow(
     const fromTable = MODEL_CONTEXT_WINDOW[input.model];
     if (fromTable !== undefined) {
       return { tokens: fromTable, source: "model-table" };
+    }
+
+    // Bracket-only, post-miss fallback: parse a trailing `[Nm]` capacity token
+    // (e.g. the `[1m]` in `claude-future-x[1m]`) to N×1M. This is orthogonal to
+    // the exact-match table invariant — it never matches the table by
+    // substring and never inspects the model FAMILY; it reads only the
+    // end-anchored bracketed capacity token and runs solely after an exact
+    // table miss, so it cannot alter any exact-table outcome. The `N > 0` guard
+    // sends a pathological `[0m]` through to the default, preserving the
+    // never-zero/never-NaN contract.
+    const suffixMatch = /\[(\d+)m\]$/.exec(input.model);
+    if (suffixMatch !== undefined && suffixMatch !== null) {
+      const n = Number.parseInt(suffixMatch[1], 10);
+      if (n > 0) {
+        return { tokens: n * ONE_MILLION_TOKENS, source: "model-suffix" };
+      }
     }
   }
 
@@ -503,6 +534,23 @@ export function bootstrapConfig(
     };
   }
 
+  // Emit a loud warning when the bootstrapper just wrote an empty commands.json
+  // ({}). This happens for unrecognized project types ('none') where no manifest
+  // is detected. An empty map means all capability gates (run_tests, run_build,
+  // etc.) will report 'not-configured' — a slice can merge green with no
+  // verification, which is a common source of false-green merges.
+  const commandsMapEmpty =
+    Object.keys(validatedCommands.data).length === 0;
+  const warnings: string[] =
+    commandsResult.kind === "written" && commandsMapEmpty
+      ? [
+          "commands.json was written empty ({}): no recognized project type detected. " +
+            "The capability gates run_tests and run_build will report 'not-configured' — " +
+            "a slice can merge green with no verification. " +
+            "Edit .orchestrate/commands.json to add your project's test and build commands.",
+        ]
+      : [];
+
   return {
     status: "ok",
     projectType,
@@ -515,5 +563,6 @@ export function bootstrapConfig(
     },
     runsDir: runsDirExisted ? "already-present" : "created",
     gitignore: gitignoreResult.kind,
+    warnings,
   };
 }

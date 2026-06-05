@@ -934,6 +934,9 @@ const handleBootstrapConfig: ToolHandler<
       `(${filesNote}; context window ${result.contextWindowTokens} tokens, ` +
       `source: ${result.contextWindowSource}; runs dir ${result.runsDir}; ` +
       `.gitignore ${result.gitignore}).`;
+    if (result.warnings && result.warnings.length > 0) {
+      text += ` WARNING: ${result.warnings.join(" ")}`;
+    }
   } else {
     text = `Bootstrap failed [${result.errorCode}]: ${result.errorMessage}`;
   }

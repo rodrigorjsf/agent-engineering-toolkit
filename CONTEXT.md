@@ -170,7 +170,7 @@ The exported function in `backlog-partitioner.ts` that narrows the full backlog 
 _Avoid_: backlog filter, PRD filter (too generic)
 
 **Capability detector** (`detect-project` module):
-A pure module in `orchestrate-mcp/src/tools/detect-project.ts` that inspects a repository root's top-level manifest files and returns the **Capability command map** for the detected project type. Input: a repository root path. Output: a command map or empty object. No side effects. Detection precedence: npm (`package.json`) > Cargo (`Cargo.toml`) > Python (`pyproject.toml`) > Make (`Makefile`) > none. A repository with no recognized manifest yields an empty map — never a fallback npm map.
+A pure module in `orchestrate-mcp/src/tools/detect-project.ts` that inspects a repository root's top-level manifest files and returns the **Capability command map** for the detected project type. Input: a repository root path. Output: a command map or empty object. No side effects. Detection precedence: npm (`package.json`) > Cargo (`Cargo.toml`) > Python (`pyproject.toml`) > Maven (`pom.xml`) > Gradle (`build.gradle` / `build.gradle.kts`) > Make (`Makefile`) > none. A repository with no recognized manifest yields an empty map — never a fallback npm map.
 _Avoid_: project sniffer, auto-configurator, manifest scanner
 
 **Capability command map**:

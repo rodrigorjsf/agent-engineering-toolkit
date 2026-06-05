@@ -24034,6 +24034,9 @@ var DETECTION_RULES = [
   { manifest: "package.json", type: "npm" },
   { manifest: "Cargo.toml", type: "cargo" },
   { manifest: "pyproject.toml", type: "python" },
+  { manifest: "pom.xml", type: "maven" },
+  { manifest: "build.gradle", type: "gradle" },
+  { manifest: "build.gradle.kts", type: "gradle" },
   { manifest: "Makefile", type: "make" }
 ];
 var COMMAND_MAPS = {
@@ -24050,6 +24053,18 @@ var COMMAND_MAPS = {
     build: ["python", "-m", "build"],
     lint: ["ruff", "check", "."],
     install: ["pip", "install", "-e", "."]
+  },
+  maven: {
+    tests: ["mvn", "-B", "test"],
+    typecheck: ["mvn", "-B", "-DskipTests", "compile"],
+    build: ["mvn", "-B", "-DskipTests", "package"]
+    // install and lint intentionally absent — see doc comment above
+  },
+  gradle: {
+    tests: ["./gradlew", "test"],
+    typecheck: ["./gradlew", "classes"],
+    build: ["./gradlew", "assemble"]
+    // install and lint intentionally absent — see doc comment above
   },
   make: {
     tests: ["make", "test"],
@@ -24111,8 +24126,10 @@ var MODEL_CONTEXT_WINDOW = {
   opus: DEFAULT_CONTEXT_WINDOW_TOKENS,
   sonnet: DEFAULT_CONTEXT_WINDOW_TOKENS,
   haiku: DEFAULT_CONTEXT_WINDOW_TOKENS,
+  "claude-opus-4-8[1m]": ONE_MILLION_TOKENS,
   "claude-opus-4-7[1m]": ONE_MILLION_TOKENS,
   "claude-opus-4-1[1m]": ONE_MILLION_TOKENS,
+  "claude-sonnet-4-6[1m]": ONE_MILLION_TOKENS,
   "claude-sonnet-4-5[1m]": ONE_MILLION_TOKENS,
   "claude-sonnet-4[1m]": ONE_MILLION_TOKENS
 };
@@ -24154,14 +24171,14 @@ var bootstrapConfigOutputSchema = external_exports.object({
   status: external_exports.enum(["ok", "error"]).describe(
     "Outcome discriminant. 'ok' = the bootstrap completed (every file either written or already present); 'error' = a filesystem write failed and the configuration is incomplete."
   ),
-  projectType: external_exports.enum(["npm", "cargo", "python", "make", "none"]).optional().describe(
+  projectType: external_exports.enum(["npm", "cargo", "python", "maven", "gradle", "make", "none"]).optional().describe(
     "The detected project type. 'none' means no recognized manifest \u2014 commands.json is written empty. Present when status='ok'."
   ),
   contextWindowTokens: external_exports.number().optional().describe(
     "The context-window token count written into handoff.json. Always a positive integer \u2014 never NaN. Present when status='ok'."
   ),
-  contextWindowSource: external_exports.enum(["explicit", "model-table", "default"]).optional().describe(
-    "How contextWindowTokens was resolved. 'explicit' = a valid contextWindowTokens input; 'model-table' = a recognized model id; 'default' = an unknown/absent model fell back to 200000. Present when status='ok'."
+  contextWindowSource: external_exports.enum(["explicit", "model-table", "model-suffix", "default"]).optional().describe(
+    "How contextWindowTokens was resolved. 'explicit' = a valid contextWindowTokens input; 'model-table' = a recognized model id; 'model-suffix' = an unlisted id whose trailing [Nm] capacity suffix was parsed to N\xD71000000; 'default' = an unknown/absent model fell back to 200000. Present when status='ok'."
   ),
   files: external_exports.object({
     commandsJson: external_exports.enum(["written", "already-present"]),
@@ -24181,6 +24198,9 @@ var bootstrapConfigOutputSchema = external_exports.object({
   ),
   errorMessage: external_exports.string().optional().describe(
     "Cleaned, human-readable failure description. Present when status='error'."
+  ),
+  warnings: external_exports.array(external_exports.string()).optional().describe(
+    "Advisory warnings about the bootstrapped configuration. Non-empty only when status='ok' and the freshly-written commands.json is empty ({}) \u2014 meaning no recognized project type was detected and the capability gates (run_tests, run_build, etc.) will report 'not-configured', allowing a slice to merge green with no verification. Empty array when the written commands map is non-empty. Present when status='ok'."
   )
 });
 function firstLine7(message) {
@@ -24200,6 +24220,13 @@ function resolveContextWindow(input) {
     const fromTable = MODEL_CONTEXT_WINDOW[input.model];
     if (fromTable !== void 0) {
       return { tokens: fromTable, source: "model-table" };
+    }
+    const suffixMatch = /\[(\d+)m\]$/.exec(input.model);
+    if (suffixMatch !== void 0 && suffixMatch !== null) {
+      const n = Number.parseInt(suffixMatch[1], 10);
+      if (n > 0) {
+        return { tokens: n * ONE_MILLION_TOKENS, source: "model-suffix" };
+      }
     }
   }
   return { tokens: DEFAULT_CONTEXT_WINDOW_TOKENS, source: "default" };
@@ -24372,6 +24399,10 @@ function bootstrapConfig(input) {
       errorMessage: `Failed to update .gitignore: ${gitignoreResult.message}`
     };
   }
+  const commandsMapEmpty = Object.keys(validatedCommands.data).length === 0;
+  const warnings = commandsResult.kind === "written" && commandsMapEmpty ? [
+    "commands.json was written empty ({}): no recognized project type detected. The capability gates run_tests and run_build will report 'not-configured' \u2014 a slice can merge green with no verification. Edit .orchestrate/commands.json to add your project's test and build commands."
+  ] : [];
   return {
     status: "ok",
     projectType,
@@ -24383,7 +24414,8 @@ function bootstrapConfig(input) {
       handoffJson: handoffResult.kind
     },
     runsDir: runsDirExisted ? "already-present" : "created",
-    gitignore: gitignoreResult.kind
+    gitignore: gitignoreResult.kind,
+    warnings
   };
 }
 
@@ -26026,6 +26058,9 @@ var handleBootstrapConfig = async (input) => {
     ].filter((n) => n !== null);
     const filesNote = written.length > 0 ? `wrote ${written.join(", ")}` : "all config files already present";
     text = `Bootstrapped .orchestrate/ config for a ${result.projectType} project (${filesNote}; context window ${result.contextWindowTokens} tokens, source: ${result.contextWindowSource}; runs dir ${result.runsDir}; .gitignore ${result.gitignore}).`;
+    if (result.warnings && result.warnings.length > 0) {
+      text += ` WARNING: ${result.warnings.join(" ")}`;
+    }
   } else {
     text = `Bootstrap failed [${result.errorCode}]: ${result.errorMessage}`;
   }

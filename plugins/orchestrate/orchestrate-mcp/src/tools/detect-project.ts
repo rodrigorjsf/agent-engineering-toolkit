@@ -6,12 +6,24 @@ import * as fs from "fs";
  * A recognized project type, or 'none' when no manifest is detected.
  *
  * Detection precedence (manifest-first, then Make):
- *   npm (package.json) > cargo (Cargo.toml) > python (pyproject.toml) > make (Makefile) > none
+ *   npm (package.json) > cargo (Cargo.toml) > python (pyproject.toml) >
+ *   maven (pom.xml) > gradle (build.gradle / build.gradle.kts) > make (Makefile) > none
  *
  * Python detection uses `pyproject.toml` only (the modern standard as of PEP 517/518).
  * `setup.py` is legacy and intentionally excluded.
+ *
+ * Maven/Gradle: both omit `install` and `lint` by design — JVM build tools resolve
+ * dependencies on demand; an `install` verb would fail in the pom-less worktree of a
+ * skeleton-creating first slice; neither ecosystem has a canonical linter.
  */
-export type ProjectType = "npm" | "cargo" | "python" | "make" | "none";
+export type ProjectType =
+  | "npm"
+  | "cargo"
+  | "python"
+  | "maven"
+  | "gradle"
+  | "make"
+  | "none";
 
 /**
  * A capability command map — the four fixed capability verbs the orchestrate
@@ -80,12 +92,20 @@ export function detectJsPackageManager(
  * Ordered detection rules. The first match wins — earlier entries have higher
  * priority. `Makefile` is last because it often wraps another toolchain;
  * language-specific manifests take precedence over a thin Make wrapper.
+ *
+ * JVM manifests (`pom.xml`, `build.gradle`, `build.gradle.kts`) rank after
+ * Python and before Makefile — language manifests take precedence over a Make
+ * wrapper. Two gradle entries cover both the Groovy (`.gradle`) and Kotlin
+ * (`.gradle.kts`) DSL variants.
  */
 const DETECTION_RULES: ReadonlyArray<{ manifest: string; type: ProjectType }> =
   [
     { manifest: "package.json", type: "npm" },
     { manifest: "Cargo.toml", type: "cargo" },
     { manifest: "pyproject.toml", type: "python" },
+    { manifest: "pom.xml", type: "maven" },
+    { manifest: "build.gradle", type: "gradle" },
+    { manifest: "build.gradle.kts", type: "gradle" },
     { manifest: "Makefile", type: "make" },
   ];
 
@@ -100,7 +120,11 @@ const DETECTION_RULES: ReadonlyArray<{ manifest: string; type: ProjectType }> =
  *
  * The map type is `CapabilityCommandMap` (install OPTIONAL) — `cargo` and
  * `python` carry an `install` (the mutating dependency-resolve step), but
- * `make` omits it: the ledger specifies no install verb for a thin Make wrapper.
+ * `make`, `maven`, and `gradle` omit it:
+ *   - `make`: the ledger specifies no install verb for a thin Make wrapper.
+ *   - `maven`/`gradle`: JVM tools resolve dependencies on demand; an `install`
+ *     verb would fail in the pom-less worktree of a skeleton-creating first
+ *     slice. Neither ecosystem has a canonical linter, so `lint` is also absent.
  *
  * Python commands assume the standard modern toolchain:
  *   - `pytest`   for tests (de-facto standard)
@@ -108,6 +132,11 @@ const DETECTION_RULES: ReadonlyArray<{ manifest: string; type: ProjectType }> =
  *   - `python -m build` for building
  *   - `ruff check .` for linting (modern replacement for flake8)
  *   - `pip install -e .` for install (editable install of the local package)
+ *
+ * Maven commands use `-B` (batch/non-interactive) for CI compatibility.
+ * Gradle commands use the wrapper (`./gradlew`) so the project-local version is
+ * used; `assemble` avoids re-running the test suite; `classes` compiles the
+ * whole main source set (covers Kotlin `.kts` repos, unlike `compileJava`).
  */
 const COMMAND_MAPS: Record<
   Exclude<ProjectType, "none" | "npm">,
@@ -126,6 +155,18 @@ const COMMAND_MAPS: Record<
     build: ["python", "-m", "build"],
     lint: ["ruff", "check", "."],
     install: ["pip", "install", "-e", "."],
+  },
+  maven: {
+    tests: ["mvn", "-B", "test"],
+    typecheck: ["mvn", "-B", "-DskipTests", "compile"],
+    build: ["mvn", "-B", "-DskipTests", "package"],
+    // install and lint intentionally absent — see doc comment above
+  },
+  gradle: {
+    tests: ["./gradlew", "test"],
+    typecheck: ["./gradlew", "classes"],
+    build: ["./gradlew", "assemble"],
+    // install and lint intentionally absent — see doc comment above
   },
   make: {
     tests: ["make", "test"],
@@ -167,8 +208,8 @@ export function buildJsCommandMap(
  * repository root. Pure — no I/O; the caller supplies the manifest list.
  *
  * Returns the first match from {@link DETECTION_RULES}, applying
- * manifest-first priority (npm > cargo > python > make). Returns 'none' when
- * no recognized manifest is present.
+ * manifest-first priority (npm > cargo > python > maven > gradle > make).
+ * Returns 'none' when no recognized manifest is present.
  */
 export function detectProjectType(manifestsPresent: string[]): ProjectType {
   const present = new Set(manifestsPresent);
@@ -184,10 +225,11 @@ export function detectProjectType(manifestsPresent: string[]): ProjectType {
  * Returns the command map for a given project type. Pure — no I/O.
  *
  * For 'none', returns an empty object (`{}`). For a recognized type, returns
- * the four capability verbs plus the `install` setup verb where one exists:
- * npm/cargo/python carry `install`; `make` does not. For an `npm` project the
- * whole verb set is keyed on `jsPackageManager` (lockfile-resolved by the
- * caller, defaulting to pnpm when none is supplied).
+ * the capability verbs plus the `install` setup verb where one exists:
+ * npm/cargo/python carry `install`; `make`, `maven`, and `gradle` do not.
+ * `maven` and `gradle` also omit `lint`. For an `npm` project the whole verb
+ * set is keyed on `jsPackageManager` (lockfile-resolved by the caller,
+ * defaulting to pnpm when none is supplied).
  */
 export function buildCommandMap(
   type: ProjectType,
