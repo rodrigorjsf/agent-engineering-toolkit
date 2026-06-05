@@ -46,6 +46,11 @@ and the successor launcher; without it, built-in defaults apply (see
 it enables the investigator and reviewer subagents' structural code search,
 which otherwise falls back to text search.
 
+To run the one-time setup and inspect the partition and wave plan before
+committing the full execution, use the pre-flight mode: `/orchestrate preflight
+<PRD#>` runs Fresh-run steps 1–6 (including this bootstrap), then stops before
+the wave loop; `/orchestrate <PRD#>` in a fresh session resumes it.
+
 ## Fresh-run config bootstrap (`bootstrap_config`)
 
 On a fresh run (section 1, Fresh run, step 1), bootstrap the configuration if
