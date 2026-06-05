@@ -24181,6 +24181,9 @@ var bootstrapConfigOutputSchema = external_exports.object({
   ),
   errorMessage: external_exports.string().optional().describe(
     "Cleaned, human-readable failure description. Present when status='error'."
+  ),
+  warnings: external_exports.array(external_exports.string()).optional().describe(
+    "Advisory warnings about the bootstrapped configuration. Non-empty only when status='ok' and the freshly-written commands.json is empty ({}) \u2014 meaning no recognized project type was detected and the capability gates (run_tests, run_build, etc.) will report 'not-configured', allowing a slice to merge green with no verification. Empty array when the written commands map is non-empty. Present when status='ok'."
   )
 });
 function firstLine7(message) {
@@ -24372,6 +24375,10 @@ function bootstrapConfig(input) {
       errorMessage: `Failed to update .gitignore: ${gitignoreResult.message}`
     };
   }
+  const commandsMapEmpty = Object.keys(validatedCommands.data).length === 0;
+  const warnings = commandsResult.kind === "written" && commandsMapEmpty ? [
+    "commands.json was written empty ({}): no recognized project type detected. The capability gates run_tests and run_build will report 'not-configured' \u2014 a slice can merge green with no verification. Edit .orchestrate/commands.json to add your project's test and build commands."
+  ] : [];
   return {
     status: "ok",
     projectType,
@@ -24383,7 +24390,8 @@ function bootstrapConfig(input) {
       handoffJson: handoffResult.kind
     },
     runsDir: runsDirExisted ? "already-present" : "created",
-    gitignore: gitignoreResult.kind
+    gitignore: gitignoreResult.kind,
+    warnings
   };
 }
 
@@ -26026,6 +26034,9 @@ var handleBootstrapConfig = async (input) => {
     ].filter((n) => n !== null);
     const filesNote = written.length > 0 ? `wrote ${written.join(", ")}` : "all config files already present";
     text = `Bootstrapped .orchestrate/ config for a ${result.projectType} project (${filesNote}; context window ${result.contextWindowTokens} tokens, source: ${result.contextWindowSource}; runs dir ${result.runsDir}; .gitignore ${result.gitignore}).`;
+    if (result.warnings && result.warnings.length > 0) {
+      text += ` WARNING: ${result.warnings.join(" ")}`;
+    }
   } else {
     text = `Bootstrap failed [${result.errorCode}]: ${result.errorMessage}`;
   }
