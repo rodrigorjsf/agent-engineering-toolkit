@@ -113,8 +113,12 @@ metadata, not source — the target project should gitignore
 - `subState` — fine-grained position **within** §3 processing of an
   `in-progress` slice, one of
   `implemented|verified|reviewed|pushed|pr-open|merged`, written at every §3
-  transition; `null`/absent before §3 step 4 completes. It is the **resume
-  anchor** for an interrupted in-progress slice (see *Resume*). `pushed` is
+  transition; the key is **absent before §3 step 4 completes — omit the key
+  entirely; an explicit `null` is rejected** (the schema
+  `subState: subStateEnum.optional()` accepts an absent key but rejects a
+  literal `null`, so `"subState": null` fails `validate_run_state`). It is
+  the **resume anchor** for an interrupted in-progress slice
+  (see *Resume*). `pushed` is
   recorded **only after** `git ls-remote` confirms the branch landed; `merged`
   (slice PR squash-merged into the umbrella, step 8) precedes the slice reaching
   coarse `state: passed` (step 9).

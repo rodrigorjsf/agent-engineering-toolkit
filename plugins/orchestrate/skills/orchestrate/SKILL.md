@@ -68,18 +68,29 @@ project's `.orchestrate/` config may be bootstrapped on the first run by
 `bootstrap_config` or committed ahead of time. See
 `references/prerequisites.md`.
 
-## 0. Modes — run vs. clean
+## 0. Modes — run, clean, preflight
 
-This skill has two modes, selected by the invocation argument.
+This skill has three modes, selected by the invocation argument.
 
-- **No `clean` argument** (`/orchestrate` or `/orchestrate <PRD#>`) — the normal
-  orchestration run. Proceed through sections 1–4 below.
+- **No `clean`/`preflight` argument** (`/orchestrate` or `/orchestrate <PRD#>`) —
+  the normal orchestration run. Proceed through sections 1–4 below.
 - **The `clean` argument** (`/orchestrate clean`, optionally
   `/orchestrate clean --force`, or `/orchestrate clean --failed <runId>`) — the
   **`/orchestrate-clean` mode**. Run **only** the cleanup path, then **stop**.
   Do **not** discover or start a run, do not read the backlog, do not create
   branches. The on-demand sweep, `--force`, and the single-run
   `--failed <runId>` gate-bypassing reclaim are in `references/clean-mode.md`.
+- **The `preflight` argument** (`/orchestrate preflight <PRD#>`) — the
+  **pre-flight pass** mode: the staged-inspection gate (not token relocation).
+  **Detect-and-stop guard, evaluated here before section 1:** scan every
+  `.orchestrate/runs/*/run-state.json` for any run whose `runId` starts
+  `prd<N>-` for the invoked `<N>` (the trailing dash is load-bearing — `prd2-`
+  must not match `prd29-`), **regardless of status** (this scan is broader than
+  section 1's `in-progress`-only run-discovery — a concluded-but-uncleaned run
+  still counts). If any match exists → report that run and **stop**; never fall
+  through to section 1. On **zero matches**, run **only** `references/preflight-mode.md`
+  (fresh-run steps 1–6, then the resumable checkpoint), then **stop before the
+  wave loop** — do not create worktrees or slice branches, do not enter section 2.
 
 ## 1. Start or resume the run
 
@@ -267,13 +278,13 @@ the `run-state.json` checkpoint exactly as section 1 describes. See
 The watchdog binds to the correct run by matching this session's identity:
 it compares the hook event's `session_id` against each in-progress run's
 `driverSessionId`, and writes the flag only under the matching run's directory.
-When several runs proceed concurrently and the session cannot be disambiguated,
-the watchdog writes no flag — that run stays correct and merely loses automatic
-context-handoff. The same **degraded mode** applies when `driverSessionId` is
-`null` because `$ORCHESTRATE_SESSION_ID` was unavailable at run start (section 1,
-checkpoint/resume semantics): the run is unaffected except that it will not hand
-off automatically, and the operator was already told to resume it manually if
-needed.
+When exactly one run is in-progress, the watchdog flags that run even without
+a matching identity — with a single run there is no wrong run to flag, so
+`driverSessionId: null` (because `$ORCHESTRATE_SESSION_ID` was unavailable at
+run start) does **not** suppress handoff. **Degraded mode** — no automatic
+context-handoff for that invocation — applies only when several runs proceed
+concurrently and the session cannot be disambiguated; the watchdog writes no flag
+rather than risk flagging the wrong run, and the run stays correct.
 
 To hand off:
 

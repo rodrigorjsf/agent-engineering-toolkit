@@ -190,6 +190,26 @@ On startup the orchestrator scans every in-progress run and matches it by the `p
 
 When a partitioned run's child issue is blocked by an issue **outside** the partition, the orchestrator verifies that external blocker's real state on the tracker before the dependent slice runs — if the blocker is still open, the dependent slice is skipped with a reason naming it.
 
+### Running a pre-flight pass before committing to a run
+
+Before committing the full multi-wave execution, you can inspect the partition and wave plan first. The `preflight` mode runs the one-time setup — config bootstrap, backlog fetch, partition derivation, dependency-wave planning, and umbrella branch creation — then **stops before the wave loop**, leaving a resumable checkpoint:
+
+```bash
+/orchestrate preflight 195
+```
+
+The run is left `in-progress` with all slices `pending` and `completedWaves: 0`. The orchestrator writes a `.orchestrate/runs/<runId>/preflight-handoff.md` with the resume invocation and preconditions. Review the partition and wave plan there; when you are ready to execute, resume in a fresh session:
+
+```bash
+/orchestrate 195
+```
+
+The resume path is the normal exactly-one-match path — it picks up the checkpoint from step 6 and enters wave 0, with no new semantics.
+
+**Staged-inspection gate — the value.** The pre-flight pass is a reviewable partition + wave plan checkpoint: you see which issues the run will process and in what wave order, and you decide whether to proceed before the expensive wave execution begins. Every slice is still `pending` at the stop point — no worktrees or slice branches have been created, only the umbrella branch exists.
+
+**Detect-and-stop idempotency.** A second `/orchestrate preflight 195` while a run for PRD #195 already exists — whether `in-progress` or `completed`-but-not-yet-cleaned — is blocked. The orchestrator reports that run's `runId` and status, and stops. This prevents a duplicate run being minted from the same backlog. The block lifts once `/orchestrate clean` removes the concluded run.
+
 ### Cleaning up concluded runs
 
 Each run leaves a footprint behind — its run directory under `.orchestrate/runs/`, its worktrees, and its umbrella and slice branches. Every `/orchestrate` invocation begins with a **start-of-run sweep** that removes the footprint of any run whose final integration pull request has already merged into `development`, so leftovers do not accumulate.

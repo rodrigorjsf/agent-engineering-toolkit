@@ -1,6 +1,6 @@
-# Modes — run vs. clean, and the `/orchestrate-clean` mode
+# Modes — run, clean, preflight, and the `/orchestrate-clean` mode
 
-This skill has two modes, selected by the invocation argument.
+This skill has three modes, selected by the invocation argument.
 
 - **No `clean` argument** (`/orchestrate` or `/orchestrate <PRD#>`) — the normal
   orchestration run. Proceed through sections 1–4 of the spine.
