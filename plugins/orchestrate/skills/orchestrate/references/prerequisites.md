@@ -30,7 +30,11 @@ npm/cargo/python projects — for the JS ecosystem the package manager is keyed
 on the lockfile (`pnpm-lock.yaml`→pnpm, `yarn.lock`→yarn,
 `package-lock.json`→npm, defaulting to **pnpm** with no lock), and the install
 is the mutating/resolving form (`pnpm install` / `npm install`, never
-`npm ci`). A project that overrides `install` with a strict reproducible form
+`npm ci`). Maven and Gradle projects are also detected (test, build, and
+typecheck commands are set), but receive **no `install` verb** — JVM build
+tools resolve dependencies on demand and an install step would fail in a
+pom-less worktree; neither ecosystem has a canonical linter, so `lint` is also
+omitted. A project that overrides `install` with a strict reproducible form
 (`npm ci`, `--frozen-lockfile`) forfeits in-slice new-dependency support — a
 subagent has no shell to regenerate the lockfile. Without `routing.json` the
 `resolve_routing` tool errors

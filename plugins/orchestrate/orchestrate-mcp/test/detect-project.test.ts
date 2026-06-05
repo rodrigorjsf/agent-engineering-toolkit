@@ -58,6 +58,18 @@ describe("detectProjectType (pure)", () => {
     expect(detectProjectType(["pyproject.toml"])).toBe("python");
   });
 
+  it("returns 'maven' when pom.xml is present", () => {
+    expect(detectProjectType(["pom.xml"])).toBe("maven");
+  });
+
+  it("returns 'gradle' when build.gradle is present", () => {
+    expect(detectProjectType(["build.gradle"])).toBe("gradle");
+  });
+
+  it("returns 'gradle' when build.gradle.kts is present (Kotlin DSL repo)", () => {
+    expect(detectProjectType(["build.gradle.kts"])).toBe("gradle");
+  });
+
   it("returns 'make' when Makefile is present", () => {
     expect(detectProjectType(["Makefile"])).toBe("make");
   });
@@ -77,6 +89,22 @@ describe("detectProjectType (pure)", () => {
 
   it("prefers python over Makefile when both are present", () => {
     expect(detectProjectType(["Makefile", "pyproject.toml"])).toBe("python");
+  });
+
+  it("prefers maven over Makefile when both are present", () => {
+    expect(detectProjectType(["Makefile", "pom.xml"])).toBe("maven");
+  });
+
+  it("prefers gradle over Makefile when both are present", () => {
+    expect(detectProjectType(["Makefile", "build.gradle"])).toBe("gradle");
+  });
+
+  it("prefers gradle (kts) over Makefile when both are present", () => {
+    expect(detectProjectType(["Makefile", "build.gradle.kts"])).toBe("gradle");
+  });
+
+  it("prefers python over maven when both are present", () => {
+    expect(detectProjectType(["pom.xml", "pyproject.toml"])).toBe("python");
   });
 
   it("prefers npm over python when both are present", () => {
@@ -130,6 +158,28 @@ describe("buildCommandMap (pure)", () => {
     expect(map.build).toEqual(["python", "-m", "build"]);
     expect(map.lint).toEqual(["ruff", "check", "."]);
     expect(map.install).toEqual(["pip", "install", "-e", "."]);
+  });
+
+  it("returns the maven command map for 'maven', WITHOUT install or lint", () => {
+    const map = buildCommandMap("maven");
+    expect(map.tests).toEqual(["mvn", "-B", "test"]);
+    expect(map.typecheck).toEqual(["mvn", "-B", "-DskipTests", "compile"]);
+    expect(map.build).toEqual(["mvn", "-B", "-DskipTests", "package"]);
+    // maven has no install verb — resolves deps on demand
+    expect("install" in map).toBe(false);
+    // maven has no lint verb — no canonical linter
+    expect("lint" in map).toBe(false);
+  });
+
+  it("returns the gradle command map for 'gradle', WITHOUT install or lint", () => {
+    const map = buildCommandMap("gradle");
+    expect(map.tests).toEqual(["./gradlew", "test"]);
+    expect(map.typecheck).toEqual(["./gradlew", "classes"]);
+    expect(map.build).toEqual(["./gradlew", "assemble"]);
+    // gradle has no install verb — resolves deps on demand
+    expect("install" in map).toBe(false);
+    // gradle has no lint verb — no canonical linter
+    expect("lint" in map).toBe(false);
   });
 
   it("returns the make command map for 'make', WITHOUT an install verb", () => {
@@ -273,6 +323,36 @@ describe("detectCommandMap", () => {
     expect(map.tests).toEqual(["pytest"]);
     expect(map.typecheck).toEqual(["mypy", "."]);
     expect(map.install).toEqual(["pip", "install", "-e", "."]);
+  });
+
+  it("detects maven from pom.xml, without install or lint", () => {
+    const dir = repo({ "pom.xml": "<project/>" });
+    const map = detectCommandMap(dir);
+    expect(map.tests).toEqual(["mvn", "-B", "test"]);
+    expect(map.typecheck).toEqual(["mvn", "-B", "-DskipTests", "compile"]);
+    expect(map.build).toEqual(["mvn", "-B", "-DskipTests", "package"]);
+    expect("install" in map).toBe(false);
+    expect("lint" in map).toBe(false);
+  });
+
+  it("detects gradle from build.gradle, without install or lint", () => {
+    const dir = repo({ "build.gradle": "plugins { id 'java' }" });
+    const map = detectCommandMap(dir);
+    expect(map.tests).toEqual(["./gradlew", "test"]);
+    expect(map.typecheck).toEqual(["./gradlew", "classes"]);
+    expect(map.build).toEqual(["./gradlew", "assemble"]);
+    expect("install" in map).toBe(false);
+    expect("lint" in map).toBe(false);
+  });
+
+  it("detects gradle from build.gradle.kts (Kotlin DSL-only repo), without install or lint", () => {
+    const dir = repo({ "build.gradle.kts": "plugins { java }" });
+    const map = detectCommandMap(dir);
+    expect(map.tests).toEqual(["./gradlew", "test"]);
+    expect(map.typecheck).toEqual(["./gradlew", "classes"]);
+    expect(map.build).toEqual(["./gradlew", "assemble"]);
+    expect("install" in map).toBe(false);
+    expect("lint" in map).toBe(false);
   });
 
   it("detects make from Makefile", () => {
