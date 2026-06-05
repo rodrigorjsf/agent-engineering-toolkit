@@ -24034,6 +24034,9 @@ var DETECTION_RULES = [
   { manifest: "package.json", type: "npm" },
   { manifest: "Cargo.toml", type: "cargo" },
   { manifest: "pyproject.toml", type: "python" },
+  { manifest: "pom.xml", type: "maven" },
+  { manifest: "build.gradle", type: "gradle" },
+  { manifest: "build.gradle.kts", type: "gradle" },
   { manifest: "Makefile", type: "make" }
 ];
 var COMMAND_MAPS = {
@@ -24050,6 +24053,18 @@ var COMMAND_MAPS = {
     build: ["python", "-m", "build"],
     lint: ["ruff", "check", "."],
     install: ["pip", "install", "-e", "."]
+  },
+  maven: {
+    tests: ["mvn", "-B", "test"],
+    typecheck: ["mvn", "-B", "-DskipTests", "compile"],
+    build: ["mvn", "-B", "-DskipTests", "package"]
+    // install and lint intentionally absent — see doc comment above
+  },
+  gradle: {
+    tests: ["./gradlew", "test"],
+    typecheck: ["./gradlew", "classes"],
+    build: ["./gradlew", "assemble"]
+    // install and lint intentionally absent — see doc comment above
   },
   make: {
     tests: ["make", "test"],
@@ -24154,7 +24169,7 @@ var bootstrapConfigOutputSchema = external_exports.object({
   status: external_exports.enum(["ok", "error"]).describe(
     "Outcome discriminant. 'ok' = the bootstrap completed (every file either written or already present); 'error' = a filesystem write failed and the configuration is incomplete."
   ),
-  projectType: external_exports.enum(["npm", "cargo", "python", "make", "none"]).optional().describe(
+  projectType: external_exports.enum(["npm", "cargo", "python", "maven", "gradle", "make", "none"]).optional().describe(
     "The detected project type. 'none' means no recognized manifest \u2014 commands.json is written empty. Present when status='ok'."
   ),
   contextWindowTokens: external_exports.number().optional().describe(

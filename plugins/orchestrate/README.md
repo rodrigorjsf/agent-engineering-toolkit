@@ -81,6 +81,8 @@ The `detect-project` module (`orchestrate-mcp/src/tools/detect-project.ts`) auto
 | `package.json` | npm | `npm test`, `npm run typecheck`, `npm run build`, `npm run lint` |
 | `Cargo.toml` | Cargo | `cargo test`, `cargo check`, `cargo build`, `cargo clippy` |
 | `pyproject.toml` | Python | `pytest`, `mypy .`, `python -m build`, `ruff check .` |
+| `pom.xml` | Maven | `mvn -B test`, `mvn -B -DskipTests compile`, `mvn -B -DskipTests package` |
+| `build.gradle` / `build.gradle.kts` | Gradle | `./gradlew test`, `./gradlew classes`, `./gradlew assemble` |
 | `Makefile` | Make | `make test`, `make typecheck`, `make build`, `make lint` |
 | _(none found)_ | none | empty map — no capability tool is wired to a failing command |
 
@@ -107,7 +109,7 @@ A manifest-less repository yields `{}` — never an npm fallback — so no capab
 
 The `bootstrap_config` MCP tool makes a first-ever run set up its own `.orchestrate/` configuration with no manual steps. On a fresh run — when the repository has no `.orchestrate/` directory — the orchestrator calls it before planning the backlog. It:
 
-- Composes the **capability detector** above and writes a project-appropriate `.orchestrate/commands.json`. The shipped `templates/commands.json` is an empty `{}` safe default — the bootstrapper is the canonical source of a project-aware config. For an npm project it also sets `install: ["npm", "ci"]`; for cargo, Python, Make, or an unrecognized project it omits `install` (a wrong install command is worse than none).
+- Composes the **capability detector** above and writes a project-appropriate `.orchestrate/commands.json`. The shipped `templates/commands.json` is an empty `{}` safe default — the bootstrapper is the canonical source of a project-aware config. For an npm project it also sets `install: ["npm", "install"]`; for cargo, Python, Maven, Gradle, Make, or an unrecognized project it omits `install` (a wrong install command is worse than none).
 - Writes `.orchestrate/handoff.json` with a context-window size **derived from the running model**, not a static 200k constant. The model id (or an explicit token count) is passed as a tool input — the MCP process cannot see the calling LLM's model. A small explicit table maps the model to its window; an unknown or absent model falls back to `200000`.
 - Writes `.orchestrate/routing.json` from the shipped defaults.
 - Creates `.orchestrate/runs/` and idempotently appends `.orchestrate/runs/` to the repository's `.gitignore` — exactly once, even across repeated bootstraps.
@@ -244,11 +246,11 @@ Maps each capability verb to the **argv array** that runs it. The argv form is e
   "typecheck": ["npm", "run", "typecheck"],
   "build": ["npm", "run", "build"],
   "lint": ["npm", "run", "lint"],
-  "install": ["npm", "ci"]
+  "install": ["npm", "install"]
 }
 ```
 
-The optional `install` verb runs once in each fresh worktree before the capability commands. `bootstrap_config` sets it to `["npm", "ci"]` for an npm project and omits it for every other project type — a wrong install command is worse than none.
+The optional `install` verb runs once in each fresh worktree before the capability commands. `bootstrap_config` sets it to `["npm", "install"]` for an npm project and omits it for every other project type — a wrong install command is worse than none.
 
 ### `.orchestrate/routing.json`
 

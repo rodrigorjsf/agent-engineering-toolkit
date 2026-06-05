@@ -127,7 +127,7 @@ export const bootstrapConfigOutputSchema = z.object({
         "failed and the configuration is incomplete."
     ),
   projectType: z
-    .enum(["npm", "cargo", "python", "make", "none"])
+    .enum(["npm", "cargo", "python", "maven", "gradle", "make", "none"])
     .optional()
     .describe(
       "The detected project type. 'none' means no recognized manifest — " +
