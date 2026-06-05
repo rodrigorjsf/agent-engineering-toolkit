@@ -175,6 +175,46 @@ describe("bootstrapConfig — commands.json per project type", () => {
   });
 });
 
+// ─── Empty-config warning ─────────────────────────────────────────────────────
+
+describe("bootstrapConfig — empty-config warnings", () => {
+  it("warns when the freshly-written commands.json is empty (no manifest detected)", () => {
+    const dir = repo(); // no manifest → 'none' project type → empty commands map
+    const r = bootstrapConfig({ repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.warnings).toBeDefined();
+    expect(r.warnings!.length).toBeGreaterThan(0);
+    // The warning must name the no-op gates
+    expect(r.warnings![0]).toContain("run_tests");
+    expect(r.warnings![0]).toContain("run_build");
+    // Must name the consequence (false-green merge risk)
+    expect(r.warnings![0]).toContain("not-configured");
+  });
+
+  it("emits no warnings when commands.json is written non-empty (recognized project type)", () => {
+    const dir = repo("package.json"); // npm project → non-empty commands map
+    const r = bootstrapConfig({ repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.warnings).toBeDefined();
+    expect(r.warnings).toEqual([]);
+  });
+
+  it("emits no warnings when commands.json already existed (not freshly written)", () => {
+    // Pre-write an empty commands.json — the bootstrapper skips writing it.
+    const dir = repo(); // no manifest → 'none' project type
+    fs.mkdirSync(path.join(dir, ".orchestrate"));
+    fs.writeFileSync(path.join(dir, ".orchestrate", "commands.json"), "{}\n");
+
+    const r = bootstrapConfig({ repoPath: dir });
+
+    // File was already-present, not freshly written → no warning.
+    expect(r.files!.commandsJson).toBe("already-present");
+    expect(r.warnings).toEqual([]);
+  });
+});
+
 // ─── Model-derived context window ─────────────────────────────────────────────
 
 describe("bootstrapConfig — model-derived context window", () => {

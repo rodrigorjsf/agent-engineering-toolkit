@@ -190,6 +190,17 @@ export const bootstrapConfigOutputSchema = z.object({
     .describe(
       "Cleaned, human-readable failure description. Present when status='error'."
     ),
+  warnings: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Advisory warnings about the bootstrapped configuration. Non-empty only " +
+        "when status='ok' and the freshly-written commands.json is empty ({}) — " +
+        "meaning no recognized project type was detected and the capability gates " +
+        "(run_tests, run_build, etc.) will report 'not-configured', allowing a " +
+        "slice to merge green with no verification. Empty array when the written " +
+        "commands map is non-empty. Present when status='ok'."
+    ),
 });
 
 // ─── TS types — derived from the schemas (single source of truth) ─────────────
@@ -503,6 +514,23 @@ export function bootstrapConfig(
     };
   }
 
+  // Emit a loud warning when the bootstrapper just wrote an empty commands.json
+  // ({}). This happens for unrecognized project types ('none') where no manifest
+  // is detected. An empty map means all capability gates (run_tests, run_build,
+  // etc.) will report 'not-configured' — a slice can merge green with no
+  // verification, which is a common source of false-green merges.
+  const commandsMapEmpty =
+    Object.keys(validatedCommands.data).length === 0;
+  const warnings: string[] =
+    commandsResult.kind === "written" && commandsMapEmpty
+      ? [
+          "commands.json was written empty ({}): no recognized project type detected. " +
+            "The capability gates run_tests and run_build will report 'not-configured' — " +
+            "a slice can merge green with no verification. " +
+            "Edit .orchestrate/commands.json to add your project's test and build commands.",
+        ]
+      : [];
+
   return {
     status: "ok",
     projectType,
@@ -515,5 +543,6 @@ export function bootstrapConfig(
     },
     runsDir: runsDirExisted ? "already-present" : "created",
     gitignore: gitignoreResult.kind,
+    warnings,
   };
 }
