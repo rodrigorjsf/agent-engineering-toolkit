@@ -293,6 +293,105 @@ describe("bootstrapConfig — model-derived context window", () => {
     expect(r.contextWindowTokens).toBe(200000);
     expect(r.contextWindowSource).toBe("default");
   });
+
+  it("maps a newly-listed 1M model id via the exact table", () => {
+    const dir = repo("package.json");
+    const r = bootstrapConfig({
+      repoPath: dir,
+      model: "claude-opus-4-8[1m]",
+    });
+
+    expect(r.contextWindowTokens).toBe(1000000);
+    expect(r.contextWindowSource).toBe("model-table");
+    const handoff = readConfig(dir, "handoff.json") as {
+      watchdog: { contextWindowTokens: number };
+    };
+    expect(handoff.watchdog.contextWindowTokens).toBe(1000000);
+  });
+
+  it("parses a trailing [1m] suffix on an unlisted id to 1000000", () => {
+    const dir = repo("package.json");
+    const r = bootstrapConfig({
+      repoPath: dir,
+      model: "claude-future-x[1m]",
+    });
+
+    expect(r.contextWindowTokens).toBe(1000000);
+    expect(r.contextWindowSource).toBe("model-suffix");
+    const handoff = readConfig(dir, "handoff.json") as {
+      watchdog: { contextWindowTokens: number };
+    };
+    expect(handoff.watchdog.contextWindowTokens).toBe(1000000);
+  });
+
+  it("parses a trailing [2m] suffix as N×1M (2000000)", () => {
+    const dir = repo("package.json");
+    const r = bootstrapConfig({
+      repoPath: dir,
+      model: "claude-future-x[2m]",
+    });
+
+    expect(r.contextWindowTokens).toBe(2000000);
+    expect(r.contextWindowSource).toBe("model-suffix");
+    const handoff = readConfig(dir, "handoff.json") as {
+      watchdog: { contextWindowTokens: number };
+    };
+    expect(handoff.watchdog.contextWindowTokens).toBe(2000000);
+  });
+
+  it("does not misclassify an unrelated family id with no bracket", () => {
+    const dir = repo("package.json");
+    const r = bootstrapConfig({
+      repoPath: dir,
+      model: "claude-opus-4-8",
+    });
+
+    expect(r.contextWindowTokens).toBe(200000);
+    expect(r.contextWindowSource).toBe("default");
+    const handoff = readConfig(dir, "handoff.json") as {
+      watchdog: { contextWindowTokens: number };
+    };
+    expect(handoff.watchdog.contextWindowTokens).toBe(200000);
+  });
+
+  it("sends a pathological [0m] suffix through to the default", () => {
+    const dir = repo("package.json");
+    const r = bootstrapConfig({
+      repoPath: dir,
+      model: "claude-future-x[0m]",
+    });
+
+    expect(Number.isInteger(r.contextWindowTokens)).toBe(true);
+    expect(r.contextWindowTokens).toBe(200000);
+    expect(r.contextWindowSource).toBe("default");
+  });
+
+  it("reaches every contextWindowSource value", () => {
+    const explicit = bootstrapConfig({
+      repoPath: repo("package.json"),
+      model: "opus",
+      contextWindowTokens: 500000,
+    });
+    expect(explicit.contextWindowSource).toBe("explicit");
+
+    const table = bootstrapConfig({
+      repoPath: repo("package.json"),
+      model: "claude-sonnet-4-6[1m]",
+    });
+    expect(table.contextWindowSource).toBe("model-table");
+
+    const suffix = bootstrapConfig({
+      repoPath: repo("package.json"),
+      model: "claude-future-y[1m]",
+    });
+    expect(suffix.contextWindowSource).toBe("model-suffix");
+
+    const fallback = bootstrapConfig({
+      repoPath: repo("package.json"),
+      model: "some-future-model",
+    });
+    expect(fallback.contextWindowSource).toBe("default");
+  });
 });
 
 // ─── Config-file idempotence ──────────────────────────────────────────────────
