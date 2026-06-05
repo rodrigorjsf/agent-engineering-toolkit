@@ -278,13 +278,13 @@ the `run-state.json` checkpoint exactly as section 1 describes. See
 The watchdog binds to the correct run by matching this session's identity:
 it compares the hook event's `session_id` against each in-progress run's
 `driverSessionId`, and writes the flag only under the matching run's directory.
-When several runs proceed concurrently and the session cannot be disambiguated,
-the watchdog writes no flag — that run stays correct and merely loses automatic
-context-handoff. The same **degraded mode** applies when `driverSessionId` is
-`null` because `$ORCHESTRATE_SESSION_ID` was unavailable at run start (section 1,
-checkpoint/resume semantics): the run is unaffected except that it will not hand
-off automatically, and the operator was already told to resume it manually if
-needed.
+When exactly one run is in-progress, the watchdog flags that run even without
+a matching identity — with a single run there is no wrong run to flag, so
+`driverSessionId: null` (because `$ORCHESTRATE_SESSION_ID` was unavailable at
+run start) does **not** suppress handoff. **Degraded mode** — no automatic
+context-handoff for that invocation — applies only when several runs proceed
+concurrently and the session cannot be disambiguated; the watchdog writes no flag
+rather than risk flagging the wrong run, and the run stays correct.
 
 To hand off:
 
