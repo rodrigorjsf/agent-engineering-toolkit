@@ -3,7 +3,7 @@
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "DISABLE_PROMPT_CACHING": "false",
     "ENABLE_TOOL_SEARCH": "true",
-    "CLAUDE_CODE_DISABLE_THINKING": "false"
+    "CLAUDE_CODE_DISABLE_THINKING": "0"
   },
   "permissions": {
     "deny": [
