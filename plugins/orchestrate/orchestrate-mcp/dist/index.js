@@ -24126,8 +24126,10 @@ var MODEL_CONTEXT_WINDOW = {
   opus: DEFAULT_CONTEXT_WINDOW_TOKENS,
   sonnet: DEFAULT_CONTEXT_WINDOW_TOKENS,
   haiku: DEFAULT_CONTEXT_WINDOW_TOKENS,
+  "claude-opus-4-8[1m]": ONE_MILLION_TOKENS,
   "claude-opus-4-7[1m]": ONE_MILLION_TOKENS,
   "claude-opus-4-1[1m]": ONE_MILLION_TOKENS,
+  "claude-sonnet-4-6[1m]": ONE_MILLION_TOKENS,
   "claude-sonnet-4-5[1m]": ONE_MILLION_TOKENS,
   "claude-sonnet-4[1m]": ONE_MILLION_TOKENS
 };
@@ -24175,8 +24177,8 @@ var bootstrapConfigOutputSchema = external_exports.object({
   contextWindowTokens: external_exports.number().optional().describe(
     "The context-window token count written into handoff.json. Always a positive integer \u2014 never NaN. Present when status='ok'."
   ),
-  contextWindowSource: external_exports.enum(["explicit", "model-table", "default"]).optional().describe(
-    "How contextWindowTokens was resolved. 'explicit' = a valid contextWindowTokens input; 'model-table' = a recognized model id; 'default' = an unknown/absent model fell back to 200000. Present when status='ok'."
+  contextWindowSource: external_exports.enum(["explicit", "model-table", "model-suffix", "default"]).optional().describe(
+    "How contextWindowTokens was resolved. 'explicit' = a valid contextWindowTokens input; 'model-table' = a recognized model id; 'model-suffix' = an unlisted id whose trailing [Nm] capacity suffix was parsed to N\xD71000000; 'default' = an unknown/absent model fell back to 200000. Present when status='ok'."
   ),
   files: external_exports.object({
     commandsJson: external_exports.enum(["written", "already-present"]),
@@ -24218,6 +24220,13 @@ function resolveContextWindow(input) {
     const fromTable = MODEL_CONTEXT_WINDOW[input.model];
     if (fromTable !== void 0) {
       return { tokens: fromTable, source: "model-table" };
+    }
+    const suffixMatch = /\[(\d+)m\]$/.exec(input.model);
+    if (suffixMatch !== void 0 && suffixMatch !== null) {
+      const n = Number.parseInt(suffixMatch[1], 10);
+      if (n > 0) {
+        return { tokens: n * ONE_MILLION_TOKENS, source: "model-suffix" };
+      }
     }
   }
   return { tokens: DEFAULT_CONTEXT_WINDOW_TOKENS, source: "default" };
