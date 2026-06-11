@@ -1,6 +1,6 @@
 ---
 name: orchestrate
-description: Implement a backlog of ready-for-agent GitHub issues end to end — order them into dependency waves, run implementer and reviewer subagents in isolated worktrees, merge slice pull requests into an umbrella branch, and checkpoint progress so an interrupted run resumes. Use when the user wants to autonomously orchestrate agent-driven implementation of tracked issues, or invokes /orchestrate — including /orchestrate clean to remove the footprint of concluded runs.
+description: Implement a backlog of ready-for-agent GitHub issues end to end — order them into dependency waves, run implementer and reviewer subagents in isolated worktrees, merge slice pull requests into an umbrella branch, and checkpoint progress so an interrupted run resumes. Use when the user wants to autonomously orchestrate agent-driven implementation of tracked issues, or invokes /orchestrate in one of its three modes — a normal run (/orchestrate or /orchestrate <PRD#>); /orchestrate clean (including --force, or --failed <runId>) to remove the footprint of concluded or crashed runs; or /orchestrate preflight <PRD#>, the pre-flight pass that stages and inspects a run's setup before the wave loop.
 ---
 
 # Orchestrate
