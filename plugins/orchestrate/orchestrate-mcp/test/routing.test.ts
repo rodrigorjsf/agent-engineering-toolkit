@@ -6,7 +6,15 @@ import {
   resolveRouting,
   resolveRoutingFromConfig,
   routingConfigSchema,
+  routingConfigSchemaV1,
+  routingConfigSchemaV2,
+  upgradeV1ToV2,
+  loadRoutingConfig,
+  applyLabels,
   type RoutingConfig,
+  type RoutingConfigV2,
+  type TierRoutingV2,
+  type LabelsConfig,
 } from "../src/tools/routing.js";
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
@@ -237,5 +245,307 @@ describe("routingConfigSchema continuationBudget (#234)", () => {
 
     expect(r.status).toBe("error");
     expect(r.errorCode).toBe("CONFIG_INVALID");
+  });
+});
+
+// ─── v2 schema (ADR-0015) ─────────────────────────────────────────────────────
+
+/** A well-formed v2 config used as the baseline for the v2 schema tests. */
+const VALID_CONFIG_V2: RoutingConfigV2 = {
+  version: 2,
+  tiers: {
+    trivial: {
+      investigator: null,
+      implementer: { model: "haiku", variant: "standard" },
+      reviewer: { model: "sonnet", variant: "standard" },
+      "conflict-resolver": { model: "sonnet", variant: "standard" },
+    },
+    standard: {
+      investigator: { model: "haiku", variant: "standard" },
+      implementer: { model: "sonnet", variant: "standard" },
+      reviewer: { model: "opus", variant: "standard" },
+      "conflict-resolver": { model: "opus", variant: "standard" },
+    },
+    complex: {
+      investigator: { model: "opus", variant: "deep" },
+      implementer: { model: "opus", variant: "deep" },
+      reviewer: { model: "opus", variant: "deep" },
+      "conflict-resolver": { model: "opus", variant: "deep" },
+    },
+  },
+  labels: {},
+  run: { intraWaveConcurrency: "parallel", continuationBudget: 2 },
+};
+
+describe("routingConfigSchemaV2", () => {
+  it("validates the new shape (version/tiers/labels/run)", () => {
+    expect(routingConfigSchemaV2.safeParse(VALID_CONFIG_V2).success).toBe(true);
+  });
+
+  it("accepts variant: 'standard' and variant: 'deep'", () => {
+    const parsed = routingConfigSchemaV2.parse(VALID_CONFIG_V2);
+    expect(parsed.tiers.trivial.implementer.variant).toBe("standard");
+    expect(parsed.tiers.complex.implementer.variant).toBe("deep");
+  });
+
+  it("rejects an invalid variant value", () => {
+    const bad = {
+      ...VALID_CONFIG_V2,
+      tiers: {
+        ...VALID_CONFIG_V2.tiers,
+        trivial: {
+          ...VALID_CONFIG_V2.tiers.trivial,
+          implementer: { model: "haiku", variant: "bogus" },
+        },
+      },
+    };
+    expect(routingConfigSchemaV2.safeParse(bad).success).toBe(false);
+  });
+
+  it("rejects a v2 config whose version is not the literal 2", () => {
+    expect(
+      routingConfigSchemaV2.safeParse({ ...VALID_CONFIG_V2, version: 1 }).success
+    ).toBe(false);
+  });
+
+  it("defaults labels to {} and run knobs when omitted", () => {
+    const { labels: _l, run: _r, ...noLabelsOrRun } = VALID_CONFIG_V2;
+    const parsed = routingConfigSchemaV2.parse(noLabelsOrRun);
+    expect(parsed.labels).toEqual({});
+    expect(parsed.run.intraWaveConcurrency).toBe("parallel");
+    expect(parsed.run.continuationBudget).toBe(2);
+  });
+
+  it("validates a labels block with set + fallback", () => {
+    const withLabel = {
+      ...VALID_CONFIG_V2,
+      labels: {
+        "route:fable": {
+          roles: ["implementer"],
+          set: { model: "fable", variant: "deep" },
+          fallback: { model: "opus", maxRetries: 1 },
+        },
+      },
+    };
+    expect(routingConfigSchemaV2.safeParse(withLabel).success).toBe(true);
+  });
+
+  it("still requires all three tiers under `tiers`", () => {
+    const { complex: _c, ...missingTier } = VALID_CONFIG_V2.tiers;
+    expect(
+      routingConfigSchemaV2.safeParse({ ...VALID_CONFIG_V2, tiers: missingTier })
+        .success
+    ).toBe(false);
+  });
+});
+
+// ─── v1 → v2 upgrade (explicit mapper) ────────────────────────────────────────
+
+describe("upgradeV1ToV2 / loadRoutingConfig", () => {
+  // The canonical on-disk v1 fixture: it OMITS continuationBudget and orders
+  // intraWaveConcurrency: "sequential" first — the exact shape of the repo's
+  // own live .orchestrate/routing.json before v2.
+  const V1_ON_DISK = {
+    intraWaveConcurrency: "sequential",
+    trivial: {
+      investigator: null,
+      implementer: { model: "sonnet", effort: "standard" },
+      reviewer: { model: "sonnet", effort: "standard" },
+      "conflict-resolver": { model: "sonnet", effort: "standard" },
+    },
+    standard: {
+      investigator: null,
+      implementer: { model: "sonnet", effort: "standard" },
+      reviewer: { model: "opus", effort: "standard" },
+      "conflict-resolver": { model: "opus", effort: "standard" },
+    },
+    complex: {
+      investigator: { model: "opus", effort: "deep" },
+      implementer: { model: "opus", effort: "deep" },
+      reviewer: { model: "opus", effort: "deep" },
+      "conflict-resolver": { model: "opus", effort: "deep" },
+    },
+  };
+
+  it("maps every tier's effort → variant", () => {
+    const v1 = routingConfigSchemaV1.parse(V1_ON_DISK);
+    const { config } = upgradeV1ToV2(v1);
+
+    expect(config.version).toBe(2);
+    expect(config.tiers.trivial.implementer).toEqual({
+      model: "sonnet",
+      variant: "standard",
+    });
+    expect(config.tiers.complex.implementer).toEqual({
+      model: "opus",
+      variant: "deep",
+    });
+    // A null investigator survives the upgrade as null.
+    expect(config.tiers.trivial.investigator).toBeNull();
+    expect(config.tiers.complex.investigator).toEqual({
+      model: "opus",
+      variant: "deep",
+    });
+  });
+
+  it("preserves continuationBudget: 0 and intraWaveConcurrency: 'sequential' verbatim", () => {
+    // A v1 file that explicitly sets continuationBudget: 0 with sequential.
+    const v1raw = { ...V1_ON_DISK, continuationBudget: 0 };
+    const result = loadRoutingConfig(v1raw);
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.config.run.continuationBudget).toBe(0);
+    expect(result.config.run.intraWaveConcurrency).toBe("sequential");
+    // And the deprecation warning is present.
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(result.warnings[0]).toContain("v1");
+  });
+
+  it("lifts the v1 default continuationBudget (2) into run when the key is omitted", () => {
+    // V1_ON_DISK omits continuationBudget → v1 schema defaults it to 2.
+    const result = loadRoutingConfig(V1_ON_DISK);
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.config.run.continuationBudget).toBe(2);
+    expect(result.config.run.intraWaveConcurrency).toBe("sequential");
+  });
+
+  it("does NOT silently reset run knobs (a naive v2 re-parse would)", () => {
+    // The bug the explicit mapper guards against: re-parsing a v1 file under the
+    // v2 schema strips the top-level knobs. The loader must preserve them.
+    const naive = routingConfigSchemaV2.safeParse(V1_ON_DISK);
+    expect(naive.success).toBe(false); // v1 shape is NOT valid v2 — caught loudly.
+
+    const result = loadRoutingConfig(V1_ON_DISK);
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    // The knob survived rather than resetting to the parallel default.
+    expect(result.config.run.intraWaveConcurrency).toBe("sequential");
+  });
+
+  it("attaches a deprecation warning on v1 upgrade", () => {
+    const result = loadRoutingConfig(V1_ON_DISK);
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.warnings.length).toBe(1);
+    expect(result.warnings[0]).toContain("deprecated");
+  });
+
+  it("loads a v2 file directly with no warning", () => {
+    const result = loadRoutingConfig(VALID_CONFIG_V2);
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.warnings).toEqual([]);
+    expect(result.config.run.intraWaveConcurrency).toBe("parallel");
+  });
+
+  it("returns a structured error for an unsupported version", () => {
+    const result = loadRoutingConfig({ ...VALID_CONFIG_V2, version: 99 });
+    expect(result.status).toBe("error");
+    if (result.status !== "error") return;
+    expect(result.errorMessage).toContain("version");
+  });
+
+  it("returns a structured error for a malformed v1 shape (never throws)", () => {
+    const result = loadRoutingConfig({ trivial: {} });
+    expect(result.status).toBe("error");
+    if (result.status !== "error") return;
+    expect(result.errorMessage).toContain("v1");
+  });
+});
+
+// ─── Label-override merge (pure) ──────────────────────────────────────────────
+
+describe("applyLabels", () => {
+  const tier: TierRoutingV2 = VALID_CONFIG_V2.tiers.standard;
+
+  const labels: LabelsConfig = {
+    "route:fable": {
+      roles: ["implementer"],
+      set: { model: "fable", variant: "deep" },
+      fallback: { model: "opus", maxRetries: 1 },
+    },
+    "route:opus-review": {
+      roles: ["reviewer"],
+      set: { model: "opus", variant: "deep" },
+    },
+    // A second label that ALSO patches implementer — used for conflict tests.
+    "route:opus-impl": {
+      roles: ["implementer"],
+      set: { model: "opus", variant: "deep" },
+    },
+  };
+
+  it("applies the override to the named role only, leaving others untouched", () => {
+    const r = applyLabels(tier, ["route:fable"], labels);
+
+    expect(r.error).toBeUndefined();
+    expect(r.routing.implementer).toEqual({ model: "fable", variant: "deep" });
+    // Every other role is unchanged from the tier baseline.
+    expect(r.routing.reviewer).toEqual(tier.reviewer);
+    expect(r.routing["conflict-resolver"]).toEqual(tier["conflict-resolver"]);
+    expect(r.routing.investigator).toEqual(tier.investigator);
+  });
+
+  it("does not mutate the input tier routing", () => {
+    const before = JSON.parse(JSON.stringify(tier));
+    applyLabels(tier, ["route:fable"], labels);
+    expect(tier).toEqual(before);
+  });
+
+  it("applies two non-conflicting labels to their distinct roles", () => {
+    const r = applyLabels(tier, ["route:fable", "route:opus-review"], labels);
+
+    expect(r.error).toBeUndefined();
+    expect(r.routing.implementer).toEqual({ model: "fable", variant: "deep" });
+    expect(r.routing.reviewer).toEqual({ model: "opus", variant: "deep" });
+  });
+
+  it("returns a structured error when two labels patch the same role", () => {
+    const r = applyLabels(tier, ["route:fable", "route:opus-impl"], labels);
+
+    expect(r.error).toBeDefined();
+    expect(r.error).toContain("implementer");
+    expect(r.error).toContain("route:fable");
+    expect(r.error).toContain("route:opus-impl");
+    // On conflict the routing is returned unchanged (no partial application).
+    expect(r.routing).toEqual(tier);
+  });
+
+  it("returns a structured warning for a route:* label absent from config", () => {
+    const r = applyLabels(tier, ["route:unknown"], labels);
+
+    expect(r.error).toBeUndefined();
+    expect(r.warnings.length).toBe(1);
+    expect(r.warnings[0]).toContain("route:unknown");
+    // Never a silent no-op: routing is untouched but the warning is loud.
+    expect(r.routing).toEqual(tier);
+  });
+
+  it("resolves and returns the per-label fallback spec", () => {
+    const r = applyLabels(tier, ["route:fable"], labels);
+
+    expect(r.fallbacks).toEqual([
+      {
+        role: "implementer",
+        label: "route:fable",
+        fallback: { model: "opus", maxRetries: 1 },
+      },
+    ]);
+  });
+
+  it("returns no fallback for a label without one", () => {
+    const r = applyLabels(tier, ["route:opus-review"], labels);
+    expect(r.fallbacks).toEqual([]);
+  });
+
+  it("is a no-op (no error, no warning) when no labels are applied", () => {
+    const r = applyLabels(tier, [], labels);
+    expect(r.error).toBeUndefined();
+    expect(r.warnings).toEqual([]);
+    expect(r.fallbacks).toEqual([]);
+    expect(r.routing).toEqual(tier);
   });
 });
