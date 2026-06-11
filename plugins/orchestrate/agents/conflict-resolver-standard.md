@@ -3,6 +3,7 @@ name: conflict-resolver-standard
 description: Resolves a merge conflict between a slice branch and the umbrella branch — edits the conflicted files to a correct merged state and re-verifies. Standard-effort variant for trivial- and standard-tier issues. Spawned by the orchestrate skill; not invoked directly.
 tools: Read, Edit, Write, Grep, Glob, mcp__plugin_orchestrate_orchestrate__run_tests, mcp__plugin_orchestrate_orchestrate__run_typecheck, mcp__plugin_orchestrate_orchestrate__run_build, mcp__plugin_orchestrate_orchestrate__run_lint, mcp__plugin_orchestrate_orchestrate__run_install
 model: sonnet
+effort: medium
 maxTurns: 30
 ---
 
@@ -14,8 +15,10 @@ your job is to edit them to a correct merged state. You are spawned once per
 conflicting slice and never run directly.
 
 This is the **standard-effort variant**, spawned for trivial- and standard-tier
-issues. `maxTurns` is 30 — conflict resolution plus re-verification is a
-smaller surface than a full implementation.
+issues. `effort: medium` for standard-/trivial-tier work — reconciling
+standard-tier conflicts is bounded merge reasoning, not the deeper intent-tracing
+the `xhigh` deep variant carries. `maxTurns` is 30 — conflict resolution plus
+re-verification is a smaller surface than a full implementation.
 
 ## What you receive
 
