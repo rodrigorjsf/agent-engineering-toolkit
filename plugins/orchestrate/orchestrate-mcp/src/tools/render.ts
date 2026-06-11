@@ -2,6 +2,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { z } from "zod";
 import { resolveRunDir, type RunPaths } from "../run-dir.js";
+import { roleConfigSchemaV2, labelFallbackSchema } from "./routing.js";
 
 // ─── Schemas — z.object is the single source of truth; TS types via z.infer ───
 
@@ -20,6 +21,19 @@ const subStateEnum = z.enum([
   "merged",
 ]);
 
+// Resolved routing frozen at slice creation — captures per-role model+variant,
+// an optional label fallback spec, and whether the fallback was already used.
+// The entire field is OPTIONAL on the slice so pre-existing checkpoints (written
+// before this field was added) continue to validate (backward-compat, criterion 3).
+const resolvedRoutingSchema = z.object({
+  investigator: roleConfigSchemaV2.nullable(),
+  implementer: roleConfigSchemaV2,
+  reviewer: roleConfigSchemaV2,
+  "conflict-resolver": roleConfigSchemaV2,
+  fallback: labelFallbackSchema.optional(),
+  fallbackTaken: z.boolean().default(false),
+});
+
 const sliceSchema = z.object({
   issue: z.number().int(),
   title: z.string(),
@@ -33,6 +47,7 @@ const sliceSchema = z.object({
   pullRequest: z.string().nullable(),
   failureReason: z.string().nullable(),
   updatedAt: z.string(),
+  resolvedRouting: resolvedRoutingSchema.optional(),
 });
 
 export const runStateSchema = z.object({

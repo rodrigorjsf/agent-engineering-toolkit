@@ -22311,6 +22311,14 @@ var subStateEnum = external_exports.enum([
   "pr-open",
   "merged"
 ]);
+var resolvedRoutingSchema = external_exports.object({
+  investigator: roleConfigSchemaV2.nullable(),
+  implementer: roleConfigSchemaV2,
+  reviewer: roleConfigSchemaV2,
+  "conflict-resolver": roleConfigSchemaV2,
+  fallback: labelFallbackSchema.optional(),
+  fallbackTaken: external_exports.boolean().default(false)
+});
 var sliceSchema = external_exports.object({
   issue: external_exports.number().int(),
   title: external_exports.string(),
@@ -22323,7 +22331,8 @@ var sliceSchema = external_exports.object({
   worktreePath: external_exports.string().nullable(),
   pullRequest: external_exports.string().nullable(),
   failureReason: external_exports.string().nullable(),
-  updatedAt: external_exports.string()
+  updatedAt: external_exports.string(),
+  resolvedRouting: resolvedRoutingSchema.optional()
 });
 var runStateSchema = external_exports.object({
   runId: external_exports.string(),
