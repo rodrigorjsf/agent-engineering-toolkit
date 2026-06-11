@@ -34,11 +34,11 @@ import {
   type PlanWavesOutput,
 } from "./tools/plan-waves.js";
 import {
-  resolveRoutingFromConfig,
-  resolveRoutingInputSchema,
-  resolveRoutingOutputSchema,
-  type ResolveRoutingInput,
-  type ResolveRoutingOutput,
+  resolveRoutingV2FromConfig,
+  resolveRoutingV2InputSchema,
+  resolveRoutingV2OutputSchema,
+  type ResolveRoutingV2Input,
+  type ResolveRoutingV2Output,
 } from "./tools/routing.js";
 import {
   renderDashboardArtifact,
@@ -470,20 +470,27 @@ registerTool(
 // ─── resolve_routing ──────────────────────────────────────────────────────────
 
 const handleResolveRouting: ToolHandler<
-  ResolveRoutingInput,
-  ResolveRoutingOutput
+  ResolveRoutingV2Input,
+  ResolveRoutingV2Output
 > = async (input) => {
-  const result = resolveRoutingFromConfig(input);
+  const result = resolveRoutingV2FromConfig(input);
   let text: string;
   if (result.status === "ok") {
     const r = result.routing!;
     const inv = r.investigator
-      ? `investigator ${r.investigator.effort}`
+      ? `investigator ${r.investigator.variant}/${r.investigator.model}`
       : "no investigator";
+    const fallbackStr =
+      result.fallbacks && result.fallbacks.length > 0
+        ? ` fallback: ${result.fallbacks
+            .map((f) => `${f.role}→${f.fallback.model}(x${f.fallback.maxRetries})`)
+            .join(", ")};`
+        : "";
     text =
       `Routing for tier '${result.tier}': ${inv}, ` +
-      `implementer ${r.implementer.effort}/${r.implementer.model}, ` +
-      `reviewer ${r.reviewer.effort}/${r.reviewer.model}, ` +
+      `implementer ${r.implementer.variant}/${r.implementer.model}, ` +
+      `reviewer ${r.reviewer.variant}/${r.reviewer.model},` +
+      `${fallbackStr} ` +
       `continuation budget ${result.continuationBudget}.`;
   } else {
     text = `Routing resolution failed [${result.errorCode}]: ${result.errorMessage}`;
@@ -499,17 +506,20 @@ registerTool(
   {
     title: "Resolve Complexity Routing",
     description:
-      "Resolves which model and effort variant to spawn for each role — " +
+      "Resolves which model and subagent variant to spawn for each role — " +
       "investigator, implementer, reviewer, conflict-resolver — given an " +
       "issue's assessed complexity tier. Reads the tier-to-role mapping from " +
-      ".orchestrate/routing.json. A null investigator means that tier skips " +
-      "the investigation pass. Also echoes the resolved run-wide " +
-      "`continuationBudget` — how many times the orchestrator may re-spawn the " +
-      "implementer in the same worktree after an 'incomplete' envelope " +
-      "(default 2). Returns a discriminated `status` of 'ok' or " +
-      "'error' (routing.json missing or malformed).",
-    inputSchema: resolveRoutingInputSchema.shape,
-    outputSchema: resolveRoutingOutputSchema.shape,
+      ".orchestrate/routing.json (supports both v1 and v2 schemas; v1 files " +
+      "are transparently upgraded in memory). Accepts optional `labels` — the " +
+      "slice issue's GitHub labels — and applies any configured `route:*` " +
+      "label overrides deterministically. A null investigator means that tier " +
+      "skips the investigation pass. Returns per-role `variant` (not `effort`), " +
+      "the resolved run-wide `continuationBudget`, resolved label fallback " +
+      "specs, and structured label warnings. A same-role label conflict " +
+      "surfaces as a structured `LABEL_CONFLICT` error, never a silent pick. " +
+      "Returns a discriminated `status` of 'ok' or 'error'.",
+    inputSchema: resolveRoutingV2InputSchema.shape,
+    outputSchema: resolveRoutingV2OutputSchema.shape,
   },
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.

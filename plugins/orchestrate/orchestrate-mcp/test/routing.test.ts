@@ -11,6 +11,7 @@ import {
   upgradeV1ToV2,
   loadRoutingConfig,
   applyLabels,
+  resolveRoutingV2FromConfig,
   type RoutingConfig,
   type RoutingConfigV2,
   type TierRoutingV2,
@@ -547,5 +548,226 @@ describe("applyLabels", () => {
     expect(r.warnings).toEqual([]);
     expect(r.fallbacks).toEqual([]);
     expect(r.routing).toEqual(tier);
+  });
+});
+
+// ─── resolveRoutingV2FromConfig (handler-level tests) ─────────────────────────
+
+/** A v1 on-disk config — used to test the transparent upgrade path. */
+const V1_CONFIG_FOR_V2_HANDLER: RoutingConfig = {
+  trivial: {
+    investigator: null,
+    implementer: { model: "sonnet", effort: "standard" },
+    reviewer: { model: "sonnet", effort: "standard" },
+    "conflict-resolver": { model: "sonnet", effort: "standard" },
+  },
+  standard: {
+    investigator: null,
+    implementer: { model: "sonnet", effort: "standard" },
+    reviewer: { model: "opus", effort: "standard" },
+    "conflict-resolver": { model: "opus", effort: "standard" },
+  },
+  complex: {
+    investigator: { model: "opus", effort: "deep" },
+    implementer: { model: "opus", effort: "deep" },
+    reviewer: { model: "opus", effort: "deep" },
+    "conflict-resolver": { model: "opus", effort: "deep" },
+  },
+  intraWaveConcurrency: "parallel",
+  continuationBudget: 2,
+};
+
+/** A v2 on-disk config with a labels block for testing label overrides. */
+const V2_CONFIG_WITH_LABELS: RoutingConfigV2 = {
+  version: 2,
+  tiers: {
+    trivial: {
+      investigator: null,
+      implementer: { model: "haiku", variant: "standard" },
+      reviewer: { model: "sonnet", variant: "standard" },
+      "conflict-resolver": { model: "sonnet", variant: "standard" },
+    },
+    standard: {
+      investigator: { model: "haiku", variant: "standard" },
+      implementer: { model: "sonnet", variant: "standard" },
+      reviewer: { model: "opus", variant: "standard" },
+      "conflict-resolver": { model: "opus", variant: "standard" },
+    },
+    complex: {
+      investigator: { model: "opus", variant: "deep" },
+      implementer: { model: "opus", variant: "deep" },
+      reviewer: { model: "opus", variant: "deep" },
+      "conflict-resolver": { model: "opus", variant: "deep" },
+    },
+  },
+  labels: {
+    "route:fable": {
+      roles: ["implementer"],
+      set: { model: "fable", variant: "deep" },
+      fallback: { model: "opus", maxRetries: 1 },
+    },
+    "route:opus-review": {
+      roles: ["reviewer"],
+      set: { model: "opus", variant: "deep" },
+    },
+    // Conflicts with route:fable on implementer.
+    "route:opus-impl": {
+      roles: ["implementer"],
+      set: { model: "opus", variant: "deep" },
+    },
+  },
+  run: { intraWaveConcurrency: "parallel", continuationBudget: 3 },
+};
+
+describe("resolveRoutingV2FromConfig", () => {
+  it("resolves a tier from a v1 routing.json (transparent upgrade), output uses variant not effort", () => {
+    const dir = project(V1_CONFIG_FOR_V2_HANDLER);
+    const r = resolveRoutingV2FromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.tier).toBe("standard");
+    // Output uses variant, not effort.
+    expect(r.routing!.implementer).toEqual({ model: "sonnet", variant: "standard" });
+    expect(r.routing!.reviewer).toEqual({ model: "opus", variant: "standard" });
+    // No effort key in output.
+    expect((r.routing!.implementer as Record<string, unknown>)["effort"]).toBeUndefined();
+  });
+
+  it("includes a v1-deprecation warning when loading a v1 config", () => {
+    const dir = project(V1_CONFIG_FOR_V2_HANDLER);
+    const r = resolveRoutingV2FromConfig({ tier: "trivial", repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.warnings!.length).toBeGreaterThan(0);
+    expect(r.warnings![0]).toContain("v1");
+  });
+
+  it("returns no warnings and uses variant when loading a v2 config without labels", () => {
+    const dir = project(V2_CONFIG_WITH_LABELS);
+    const r = resolveRoutingV2FromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.warnings).toEqual([]);
+    expect(r.routing!.implementer.variant).toBe("standard");
+    expect(r.continuationBudget).toBe(3);
+  });
+
+  it("applies a label override to the named role, outputs variant", () => {
+    const dir = project(V2_CONFIG_WITH_LABELS);
+    const r = resolveRoutingV2FromConfig({
+      tier: "standard",
+      repoPath: dir,
+      labels: ["route:fable"],
+    });
+
+    expect(r.status).toBe("ok");
+    expect(r.routing!.implementer).toEqual({ model: "fable", variant: "deep" });
+    // Other roles unchanged.
+    expect(r.routing!.reviewer).toEqual(V2_CONFIG_WITH_LABELS.tiers.standard.reviewer);
+  });
+
+  it("resolves and returns the fallback spec when the label carries one", () => {
+    const dir = project(V2_CONFIG_WITH_LABELS);
+    const r = resolveRoutingV2FromConfig({
+      tier: "standard",
+      repoPath: dir,
+      labels: ["route:fable"],
+    });
+
+    expect(r.status).toBe("ok");
+    expect(r.fallbacks).toEqual([
+      {
+        role: "implementer",
+        label: "route:fable",
+        fallback: { model: "opus", maxRetries: 1 },
+      },
+    ]);
+  });
+
+  it("returns empty fallbacks when the label carries no fallback", () => {
+    const dir = project(V2_CONFIG_WITH_LABELS);
+    const r = resolveRoutingV2FromConfig({
+      tier: "standard",
+      repoPath: dir,
+      labels: ["route:opus-review"],
+    });
+
+    expect(r.status).toBe("ok");
+    expect(r.fallbacks).toEqual([]);
+  });
+
+  it("returns status='error' with errorCode='LABEL_CONFLICT' on same-role conflict", () => {
+    const dir = project(V2_CONFIG_WITH_LABELS);
+    const r = resolveRoutingV2FromConfig({
+      tier: "standard",
+      repoPath: dir,
+      labels: ["route:fable", "route:opus-impl"],
+    });
+
+    expect(r.status).toBe("error");
+    expect(r.errorCode).toBe("LABEL_CONFLICT");
+    expect(r.errorMessage).toContain("implementer");
+    expect(r.errorMessage).toContain("route:fable");
+    expect(r.errorMessage).toContain("route:opus-impl");
+  });
+
+  it("returns a structured warning for a route:* label absent from config", () => {
+    const dir = project(V2_CONFIG_WITH_LABELS);
+    const r = resolveRoutingV2FromConfig({
+      tier: "standard",
+      repoPath: dir,
+      labels: ["route:unknown-label"],
+    });
+
+    expect(r.status).toBe("ok");
+    expect(r.warnings!.some((w) => w.includes("route:unknown-label"))).toBe(true);
+    // Routing is untouched (the original tier routing for standard applies).
+    expect(r.routing!.implementer).toEqual(V2_CONFIG_WITH_LABELS.tiers.standard.implementer);
+  });
+
+  it("silently ignores non-route:* labels (no warning produced for ordinary GitHub labels)", () => {
+    const dir = project(V2_CONFIG_WITH_LABELS);
+    const r = resolveRoutingV2FromConfig({
+      tier: "standard",
+      repoPath: dir,
+      labels: ["bug", "enhancement", "needs-triage"],
+    });
+
+    expect(r.status).toBe("ok");
+    // No warnings from the ordinary labels — they are filtered out before applyLabels.
+    expect(r.warnings).toEqual([]);
+  });
+
+  it("returns empty fallbacks and no warnings when no labels are passed", () => {
+    const dir = project(V2_CONFIG_WITH_LABELS);
+    const r = resolveRoutingV2FromConfig({ tier: "complex", repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.fallbacks).toEqual([]);
+    expect(r.warnings).toEqual([]);
+  });
+
+  it("returns errorCode='CONFIG_NOT_FOUND' when routing.json is absent", () => {
+    const dir = project(null);
+    const r = resolveRoutingV2FromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("error");
+    expect(r.errorCode).toBe("CONFIG_NOT_FOUND");
+  });
+
+  it("returns errorCode='CONFIG_INVALID' for malformed JSON", () => {
+    const dir = project("{ not valid json");
+    const r = resolveRoutingV2FromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("error");
+    expect(r.errorCode).toBe("CONFIG_INVALID");
+  });
+
+  it("echoes the continuationBudget from the v2 run block", () => {
+    const dir = project(V2_CONFIG_WITH_LABELS);
+    const r = resolveRoutingV2FromConfig({ tier: "trivial", repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.continuationBudget).toBe(3);
   });
 });
