@@ -24352,26 +24352,38 @@ var MODEL_CONTEXT_WINDOW = {
   "claude-sonnet-4[1m]": ONE_MILLION_TOKENS
 };
 var DEFAULT_ROUTING_CONFIG = {
-  trivial: {
-    investigator: null,
-    implementer: { model: "sonnet", effort: "standard" },
-    reviewer: { model: "sonnet", effort: "standard" },
-    "conflict-resolver": { model: "sonnet", effort: "standard" }
+  version: 2,
+  tiers: {
+    trivial: {
+      investigator: null,
+      implementer: { model: "haiku", variant: "standard" },
+      reviewer: { model: "sonnet", variant: "standard" },
+      "conflict-resolver": { model: "sonnet", variant: "standard" }
+    },
+    standard: {
+      investigator: { model: "haiku", variant: "standard" },
+      implementer: { model: "sonnet", variant: "standard" },
+      reviewer: { model: "opus", variant: "standard" },
+      "conflict-resolver": { model: "opus", variant: "standard" }
+    },
+    complex: {
+      investigator: { model: "opus", variant: "deep" },
+      implementer: { model: "opus", variant: "deep" },
+      reviewer: { model: "opus", variant: "deep" },
+      "conflict-resolver": { model: "opus", variant: "deep" }
+    }
   },
-  standard: {
-    investigator: null,
-    implementer: { model: "sonnet", effort: "standard" },
-    reviewer: { model: "opus", effort: "standard" },
-    "conflict-resolver": { model: "opus", effort: "standard" }
+  labels: {
+    "route:fable": {
+      roles: ["implementer"],
+      set: { model: "fable", variant: "deep" },
+      fallback: { model: "opus", maxRetries: 1 }
+    }
   },
-  complex: {
-    investigator: { model: "opus", effort: "deep" },
-    implementer: { model: "opus", effort: "deep" },
-    reviewer: { model: "opus", effort: "deep" },
-    "conflict-resolver": { model: "opus", effort: "deep" }
-  },
-  intraWaveConcurrency: "parallel",
-  continuationBudget: 2
+  run: {
+    intraWaveConcurrency: "parallel",
+    continuationBudget: 2
+  }
 };
 var RUNS_GITIGNORE_LINE = ".orchestrate/runs/";
 var bootstrapConfigInputSchema = external_exports.object({

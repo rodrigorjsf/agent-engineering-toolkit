@@ -57,31 +57,54 @@ const MODEL_CONTEXT_WINDOW: Readonly<Record<string, number>> = {
 // ─── Shipped defaults ─────────────────────────────────────────────────────────
 
 /**
- * The default `routing.json` content the bootstrapper writes. Routing has no
- * project-type axis, so this is a fixed literal — kept byte-for-byte equivalent
- * (modulo formatting) to `templates/routing.json`.
+ * The default `routing.json` content the bootstrapper writes. Native v2 shape —
+ * `version: 2` present so a fresh-repo bootstrap produces NO deprecation
+ * warning. Kept byte-for-byte equivalent (modulo formatting) to
+ * `templates/routing.json`.
+ *
+ * Tier matrix (ADR-0015):
+ * - trivial: investigator=null; implementer=haiku/standard; reviewer=sonnet/standard;
+ *   conflict-resolver=sonnet/standard (deliberate cross-model merge gate).
+ * - standard: investigator=haiku/standard (NEW — was null); implementer=sonnet/standard;
+ *   reviewer=opus/standard; conflict-resolver=opus/standard.
+ * - complex: all roles = opus/deep (unchanged).
+ * - labels: route:fable → implementer patched to fable/deep with opus fallback.
+ * - run: intraWaveConcurrency=parallel; continuationBudget=2 (same values as v1,
+ *   now under the run block).
  */
-const DEFAULT_ROUTING_CONFIG = {
-  trivial: {
-    investigator: null,
-    implementer: { model: "sonnet", effort: "standard" },
-    reviewer: { model: "sonnet", effort: "standard" },
-    "conflict-resolver": { model: "sonnet", effort: "standard" },
+export const DEFAULT_ROUTING_CONFIG = {
+  version: 2,
+  tiers: {
+    trivial: {
+      investigator: null,
+      implementer: { model: "haiku", variant: "standard" },
+      reviewer: { model: "sonnet", variant: "standard" },
+      "conflict-resolver": { model: "sonnet", variant: "standard" },
+    },
+    standard: {
+      investigator: { model: "haiku", variant: "standard" },
+      implementer: { model: "sonnet", variant: "standard" },
+      reviewer: { model: "opus", variant: "standard" },
+      "conflict-resolver": { model: "opus", variant: "standard" },
+    },
+    complex: {
+      investigator: { model: "opus", variant: "deep" },
+      implementer: { model: "opus", variant: "deep" },
+      reviewer: { model: "opus", variant: "deep" },
+      "conflict-resolver": { model: "opus", variant: "deep" },
+    },
   },
-  standard: {
-    investigator: null,
-    implementer: { model: "sonnet", effort: "standard" },
-    reviewer: { model: "opus", effort: "standard" },
-    "conflict-resolver": { model: "opus", effort: "standard" },
+  labels: {
+    "route:fable": {
+      roles: ["implementer"],
+      set: { model: "fable", variant: "deep" },
+      fallback: { model: "opus", maxRetries: 1 },
+    },
   },
-  complex: {
-    investigator: { model: "opus", effort: "deep" },
-    implementer: { model: "opus", effort: "deep" },
-    reviewer: { model: "opus", effort: "deep" },
-    "conflict-resolver": { model: "opus", effort: "deep" },
+  run: {
+    intraWaveConcurrency: "parallel",
+    continuationBudget: 2,
   },
-  intraWaveConcurrency: "parallel",
-  continuationBudget: 2,
 } as const;
 
 /** The `.gitignore` entry covering every run's ephemeral per-run directory. */
