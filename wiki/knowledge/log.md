@@ -2,6 +2,16 @@
 
 ---
 
+## 2026-06-11 — Ingest: 8 Claude Code vendor docs (4 new pages + 4 content updates)
+
+**New pages (4):** `claude-code-commands.md` — complete slash command reference (built-in, bundled skills/workflows, MCP prompt commands, removed commands); `claude-code-env-vars.md` — full environment variable reference (all variable groups: auth, model config, feature toggles, observability, subagents, hooks, plugins, MCP, and more); `claude-code-mcp.md` — MCP integration reference (transport types, installation scopes, OAuth/headersHelper, plugin MCP servers, push channels, managed MCP, Claude Code as MCP server); `claude-code-tools.md` — built-in tool catalog with permission rule formats and per-tool detail sections for 40+ tools.
+
+**Updated pages (4):** `claude-code-hooks.md` — added MessageDisplay event (display-only, 10s timeout), asyncRewake field, defer permissionDecision, terminalSequence JSON output field, reloadSkills SessionStart field, hook type support matrix, updated updatedPermissions entries schema (addRules/replaceRules/removeRules/setMode/addDirectories/removeDirectories); `claude-code-plugins.md` — added displayName, defaultEnabled fields, full optional manifest structure, userConfig details, installation scopes table, skills-directory plugins, plugin caching/symlink rules, full CLI commands reference (init/install/uninstall/prune/enable/disable/update), themes section, LSP optional fields table, official LSP plugins; `claude-code-subagents.md` — expanded built-in subagents table, /agents command UI (Running/Library tabs), CLI --agents flag with JSON example, model resolution 4-step order, Agent(agent_type) spawn restrictions, MCP restriction v2.1.153, fork mode updated to v2.1.161 (enabled by default); `agent-protocols.md`, `claude-code-skills.md`, `claude-code-workflows.md` — cross-references to new pages added.
+
+**Index updated:** 45 → 49. Sources: claude-code-commands.md, env-var-ref.md, claude-code-with-mcp.md, tools-ref.md, claude-hook-reference-doc.md, plugin-ref.md, creating-custom-subagents.md (8 source docs total).
+
+---
+
 ## 2026-06-04 — Ingest: 5 new Claude Code vendor docs + lint fixes
 
 Summarize: Pages created (4): claude-code-agent-teams, claude-code-workflows, monorepo-large-codebase-setup, claude-code-worktrees. Source: goals.md ingested as extends only (no new page — it is a session-scoped Stop-hook wrapper). Pages extended: claude-code-subagents (Agent Teams section demoted to a stub pointing at the canonical page; corrected the stale "broadcast" claim → point-to-point, and "two team hooks" → three), agent-workflows, claude-code-hooks, claude-code-memory (fixed subdirectory-load claim for the start-from-subdir case; added claudeMdExcludes), subagents, context-engineering, claude-code-skills, skill-authoring, claude-code-plugins, agent-configuration-files. Lint fixes applied: resolved the pi-context-zone orphan (backlinks from context-engineering + harness-engineering); corrected the rpi-workflow ↔ harness-engineering dumb-zone threshold mis-attribution (40% from markus-harrer vs 60% from harness-engineering, now attributed separately); added ## Related pages to the four Compliance & Validation routing pages. Index updated 41 → 45. Sources: agent-teams.md, dynamic-workflows.md, goals.md, monorepos-and-large-repos.md, parallel-sessions-worktrees.md.

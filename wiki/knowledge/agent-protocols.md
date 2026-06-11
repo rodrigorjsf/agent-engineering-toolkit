@@ -224,3 +224,4 @@ The rule of thumb: MCP for everything an agent does alone with external tools; A
 - [[claude-code-skills]]
 - [[claude-code-plugins]]
 - [[progressive-disclosure]]
+- [[claude-code-mcp]] — practical Claude Code implementation reference for MCP integration

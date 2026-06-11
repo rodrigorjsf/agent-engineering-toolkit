@@ -105,3 +105,5 @@ Three additional bundled skills (Claude Code v2.1.145+) launch your app and conf
 - [[cursor-skills]]
 - [[progressive-disclosure]]
 - [[monorepo-large-codebase-setup]]
+- [[claude-code-commands]] — bundled skills surface as slash commands; the commands page is the canonical listing of all bundled skills
+- [[claude-code-tools]] — the tools reference documents the Skill tool and its allowed-tools permission rule syntax

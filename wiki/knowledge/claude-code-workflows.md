@@ -62,9 +62,12 @@ A workflow spawns many agents, so a single run can use meaningfully more tokens 
 Workflows are available in the CLI, the Desktop app, the IDE extensions, non-interactive mode with `claude -p`, and the Agent SDK, and the same disable settings apply on every surface (source: dynamic-workflows.md). To turn them off for yourself, toggle Dynamic workflows off in `/config`, set `"disableWorkflows": true` in `~/.claude/settings.json`, or set `CLAUDE_CODE_DISABLE_WORKFLOWS=1` (source: dynamic-workflows.md). To turn them off for a whole organization, set `"disableWorkflows": true` in managed settings or use the toggle on the Claude Code admin settings page (source: dynamic-workflows.md). When workflows are disabled, the bundled workflow commands are unavailable, the `workflow` keyword no longer triggers a run, and `ultracode` is removed from the `/effort` menu (source: dynamic-workflows.md).
 
 ## Related pages
+
 - [[agent-workflows]]
 - [[subagents]]
 - [[claude-code-subagents]]
 - [[context-engineering]]
 - [[harness-engineering]]
 - [[structured-outputs]]
+- [[claude-code-commands]] — the `/workflows` and `/deep-research` commands are the interactive entry points for dynamic workflows
+- [[claude-code-tools]] — the Workflow tool entry and its permission requirement

@@ -1,6 +1,6 @@
 # Wiki Index
 
-Total pages: **45**
+Total pages: **49**
 
 ---
 
@@ -30,9 +30,13 @@ Total pages: **45**
 
 | Page                      | Summary                                                       |
 | ------------------------- | ------------------------------------------------------------- |
+| [[claude-code-commands]]  | Complete slash command reference: built-in, bundled skills/workflows, MCP prompt commands, removed commands |
+| [[claude-code-env-vars]]  | Full environment variable reference: auth, model config, feature toggles, observability, all variable groups |
+| [[claude-code-mcp]]       | MCP integration: transport types, installation scopes, OAuth, plugin MCP servers, push channels, connectors |
+| [[claude-code-tools]]     | Built-in tool catalog with permission rule formats, per-tool detail sections for 40+ tools |
 | [[claude-code-skills]]    | SKILL.md format, frontmatter, string substitutions, locations |
 | [[claude-code-hooks]]     | Lifecycle events, hook types, exit codes, matchers, /goal     |
-| [[claude-code-plugins]]   | Plugin structure, manifest, distribution, namespacing         |
+| [[claude-code-plugins]]   | Plugin structure, manifest, distribution, namespacing, CLI commands |
 | [[claude-code-memory]]    | CLAUDE.md hierarchy, path-scoped rules, imports, auto memory, claudeMdExcludes + start-dir caveat |
 | [[claude-code-subagents]] | Definition format, frontmatter fields, fork mode; teams covered on [[claude-code-agent-teams]] |
 | [[claude-code-agent-teams]] | Experimental multi-session teams: file-locked shared task list, point-to-point messaging, three team hooks, plan-approval, sizing |
