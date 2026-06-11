@@ -530,6 +530,205 @@ export function loadRoutingConfig(parsed: unknown): LoadRoutingResult {
   };
 }
 
+// ─── v2 tool input/output schemas ─────────────────────────────────────────────
+
+/**
+ * Input schema for the v2 `resolve_routing` tool. Adds optional `labels` —
+ * the slice issue's GitHub labels, passed verbatim by the orchestrator.
+ * Only labels with a `route:` prefix (or any label present in the `labels`
+ * config block) are forwarded to `applyLabels`; the rest are silently ignored.
+ */
+export const resolveRoutingV2InputSchema = z.object({
+  tier: z
+    .enum(COMPLEXITY_TIERS)
+    .describe(
+      "The complexity tier the orchestrator assessed the issue into. " +
+        "'trivial' = a small, localized change; 'standard' = an ordinary " +
+        "feature or fix; 'complex' = broad, cross-cutting, or high-risk work."
+    ),
+  repoPath: z
+    .string()
+    .optional()
+    .describe(
+      "Path to the project root holding .orchestrate/routing.json. Defaults " +
+        "to the MCP server process's current working directory — callers " +
+        "should pass it explicitly."
+    ),
+  labels: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "The slice issue's GitHub labels, passed verbatim. Only labels present " +
+        "in routing.json's `labels` block or matching the `route:` prefix are " +
+        "applied as overrides; all others are ignored."
+    ),
+});
+
+/** One resolved label fallback as returned in the v2 output. */
+export const resolvedFallbackOutputSchema = z.object({
+  role: z
+    .enum(ROUTING_ROLES)
+    .describe("The role this fallback applies to."),
+  label: z
+    .string()
+    .describe("The label name that contributed this fallback."),
+  fallback: labelFallbackSchema.describe(
+    "The model-fallback spec to use when the primary model fails."
+  ),
+});
+
+/**
+ * Output schema for the v2 `resolve_routing` tool. Uses `variant` (not
+ * `effort`); carries per-label fallbacks and structured label warnings.
+ */
+export const resolveRoutingV2OutputSchema = z.object({
+  status: z
+    .enum(["ok", "error"])
+    .describe(
+      "Outcome discriminant. 'ok' = the tier resolved; 'error' = routing.json " +
+        "is missing, malformed, or has a conflicting label override."
+    ),
+  tier: z
+    .enum(COMPLEXITY_TIERS)
+    .optional()
+    .describe("The tier that was resolved. Present when status='ok'."),
+  routing: tierRoutingSchemaV2
+    .optional()
+    .describe(
+      "The resolved per-role routing for the tier (v2: uses `variant`, not " +
+        "`effort`). `investigator` is null when this tier skips the " +
+        "investigation pass. Present when status='ok'."
+    ),
+  continuationBudget: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe(
+      "The resolved continuation budget for this run — how many implementer " +
+        "re-spawns are allowed after an 'incomplete' envelope. Present when " +
+        "status='ok'."
+    ),
+  fallbacks: z
+    .array(resolvedFallbackOutputSchema)
+    .optional()
+    .describe(
+      "Resolved label fallback specs for the tier. Each entry names the role, " +
+        "the label that contributed it, and the fallback model spec. Present " +
+        "when status='ok'; empty array when no labels carry a fallback."
+    ),
+  warnings: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Structured warnings — v1 deprecation notices and unconfigured `route:*` " +
+        "label warnings. Present when status='ok'; empty array when clean."
+    ),
+  errorCode: z
+    .enum(["CONFIG_NOT_FOUND", "CONFIG_INVALID", "LABEL_CONFLICT"])
+    .optional()
+    .describe(
+      "Machine-readable failure category. Present when status='error'. " +
+        "'CONFIG_NOT_FOUND' = no .orchestrate/routing.json; 'CONFIG_INVALID' " +
+        "= it is malformed JSON or does not match the expected shape; " +
+        "'LABEL_CONFLICT' = two applied labels both patch the same role."
+    ),
+  errorMessage: z
+    .string()
+    .optional()
+    .describe(
+      "Cleaned, human-readable failure description. Present when status='error'."
+    ),
+});
+
+// ─── v2 TS types ──────────────────────────────────────────────────────────────
+
+export type ResolveRoutingV2Input = z.infer<typeof resolveRoutingV2InputSchema>;
+export type ResolveRoutingV2Output = z.infer<typeof resolveRoutingV2OutputSchema>;
+
+// ─── v2 resolver (I/O + orchestration) ───────────────────────────────────────
+
+/**
+ * Loads `.orchestrate/routing.json` via the version-dispatch loader, resolves
+ * the routing for `input.tier`, and applies any configured label overrides.
+ * Never throws — every failure mode is a structured result.
+ *
+ * Label filtering: only labels present in routing.json's `labels` block OR
+ * matching the `route:` prefix are forwarded to `applyLabels`. All others are
+ * silently dropped so ordinary GitHub labels (`bug`, `enhancement`, etc.) do
+ * not produce spurious warnings.
+ */
+export function resolveRoutingV2FromConfig(
+  input: ResolveRoutingV2Input
+): ResolveRoutingV2Output {
+  const cwd = input.repoPath ?? process.cwd();
+  const configPath = path.join(cwd, ".orchestrate", "routing.json");
+
+  let raw: string;
+  try {
+    raw = fs.readFileSync(configPath, "utf8");
+  } catch {
+    return {
+      status: "error",
+      errorCode: "CONFIG_NOT_FOUND",
+      errorMessage:
+        `No .orchestrate/routing.json found in ${cwd}. Copy the orchestrate ` +
+        `plugin's templates/routing.json to .orchestrate/routing.json.`,
+    };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "CONFIG_INVALID",
+      errorMessage: `.orchestrate/routing.json is not valid JSON: ${firstLine(
+        err instanceof Error ? err.message : String(err)
+      )}`,
+    };
+  }
+
+  const loadResult = loadRoutingConfig(parsed);
+  if (loadResult.status === "error") {
+    return {
+      status: "error",
+      errorCode: "CONFIG_INVALID",
+      errorMessage: loadResult.errorMessage,
+    };
+  }
+
+  const { config, warnings: loaderWarnings } = loadResult;
+  const tierRouting = config.tiers[input.tier];
+  const labelsConfig = config.labels ?? {};
+
+  // Filter the raw label list to those that are configured OR have the route:
+  // prefix. This prevents ordinary GitHub labels from producing spurious
+  // "unconfigured" warnings while still catching route:* typos.
+  const relevantLabels = (input.labels ?? []).filter(
+    (name) => name.startsWith("route:") || name in labelsConfig
+  );
+
+  const labelResult = applyLabels(tierRouting, relevantLabels, labelsConfig);
+  if (labelResult.error) {
+    return {
+      status: "error",
+      errorCode: "LABEL_CONFLICT",
+      errorMessage: labelResult.error,
+    };
+  }
+
+  return {
+    status: "ok",
+    tier: input.tier,
+    routing: labelResult.routing,
+    continuationBudget: config.run.continuationBudget,
+    fallbacks: labelResult.fallbacks,
+    warnings: [...loaderWarnings, ...labelResult.warnings],
+  };
+}
+
 // ─── Label-override merge (pure) ──────────────────────────────────────────────
 
 /** The resolved fallback for a tier's routing after label application. */

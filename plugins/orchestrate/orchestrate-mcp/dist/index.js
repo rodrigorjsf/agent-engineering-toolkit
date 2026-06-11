@@ -21982,6 +21982,7 @@ var routingConfigSchema = external_exports.object({
     "How many times the orchestrator may re-spawn the implementer in the same worktree after an 'incomplete' envelope (re-spawns BEYOND the initial run). 0 disables continuation (incomplete FAILs immediately, the legacy behavior). Defaults to 2."
   )
 });
+var routingConfigSchemaV1 = routingConfigSchema;
 var resolveRoutingInputSchema = external_exports.object({
   tier: external_exports.enum(COMPLEXITY_TIERS).describe(
     "The complexity tier the orchestrator assessed the issue into. 'trivial' = a small, localized change; 'standard' = an ordinary feature or fix; 'complex' = broad, cross-cutting, or high-risk work."
@@ -22008,53 +22009,9 @@ var resolveRoutingOutputSchema = external_exports.object({
     "The resolved continuation budget for this run \u2014 how many implementer re-spawns are allowed after an 'incomplete' envelope. Present when status='ok'."
   )
 });
-function resolveRouting(tier, config2) {
-  return config2[tier];
-}
 function firstLine2(message) {
   const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
   return line ?? message.trim();
-}
-function resolveRoutingFromConfig(input) {
-  const cwd = input.repoPath ?? process.cwd();
-  const configPath = path3.join(cwd, ".orchestrate", "routing.json");
-  let raw;
-  try {
-    raw = fs3.readFileSync(configPath, "utf8");
-  } catch {
-    return {
-      status: "error",
-      errorCode: "CONFIG_NOT_FOUND",
-      errorMessage: `No .orchestrate/routing.json found in ${cwd}. Copy the orchestrate plugin's templates/routing.json to .orchestrate/routing.json.`
-    };
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    return {
-      status: "error",
-      errorCode: "CONFIG_INVALID",
-      errorMessage: `.orchestrate/routing.json is not valid JSON: ${firstLine2(
-        err instanceof Error ? err.message : String(err)
-      )}`
-    };
-  }
-  const config2 = routingConfigSchema.safeParse(parsed);
-  if (!config2.success) {
-    const detail = config2.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
-    return {
-      status: "error",
-      errorCode: "CONFIG_INVALID",
-      errorMessage: `.orchestrate/routing.json does not match the expected shape: ${detail}`
-    };
-  }
-  return {
-    status: "ok",
-    tier: input.tier,
-    routing: resolveRouting(input.tier, config2.data),
-    continuationBudget: config2.data.continuationBudget
-  };
 }
 var roleConfigSchemaV2 = external_exports.object({
   model: external_exports.string().min(1).describe("Model id to spawn the role's subagent with (e.g. 'sonnet', 'opus')."),
@@ -22102,6 +22059,214 @@ var routingConfigSchemaV2 = external_exports.object({
   labels: labelsConfigSchema.optional().default({}).describe("Label-override map; empty by default."),
   run: runConfigSchema.optional().default({}).describe("Run-wide policy block; knob defaults apply when omitted.")
 });
+function upgradeRole(role) {
+  return { model: role.model, variant: role.effort };
+}
+function upgradeTier(tier) {
+  return {
+    investigator: tier.investigator ? upgradeRole(tier.investigator) : null,
+    implementer: upgradeRole(tier.implementer),
+    reviewer: upgradeRole(tier.reviewer),
+    "conflict-resolver": upgradeRole(tier["conflict-resolver"])
+  };
+}
+function upgradeV1ToV2(v1) {
+  const config2 = {
+    version: 2,
+    tiers: {
+      trivial: upgradeTier(v1.trivial),
+      standard: upgradeTier(v1.standard),
+      complex: upgradeTier(v1.complex)
+    },
+    labels: {},
+    run: {
+      intraWaveConcurrency: v1.intraWaveConcurrency,
+      continuationBudget: v1.continuationBudget
+    }
+  };
+  return {
+    config: config2,
+    warnings: [
+      "routing.json uses the deprecated v1 schema (no `version` field). It was upgraded to v2 in memory: per-role `effort` \u2192 `variant`, and the top-level `intraWaveConcurrency`/`continuationBudget` keys moved under a `run` block. Re-bootstrap or migrate the file to silence this warning."
+    ]
+  };
+}
+function formatIssues(error2) {
+  return error2.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+}
+function loadRoutingConfig(parsed) {
+  const version2 = parsed && typeof parsed === "object" && "version" in parsed ? parsed.version : void 0;
+  if (version2 === void 0) {
+    const v1 = routingConfigSchemaV1.safeParse(parsed);
+    if (!v1.success) {
+      return {
+        status: "error",
+        errorMessage: `routing.json does not match the v1 schema: ${formatIssues(
+          v1.error
+        )}`
+      };
+    }
+    const upgraded = upgradeV1ToV2(v1.data);
+    return {
+      status: "ok",
+      config: upgraded.config,
+      warnings: upgraded.warnings
+    };
+  }
+  if (version2 === 2) {
+    const v2 = routingConfigSchemaV2.safeParse(parsed);
+    if (!v2.success) {
+      return {
+        status: "error",
+        errorMessage: `routing.json does not match the v2 schema: ${formatIssues(
+          v2.error
+        )}`
+      };
+    }
+    return { status: "ok", config: v2.data, warnings: [] };
+  }
+  return {
+    status: "error",
+    errorMessage: `routing.json has an unsupported \`version\`: ${JSON.stringify(
+      version2
+    )}. Supported versions: 1 (no \`version\` field) and 2.`
+  };
+}
+var resolveRoutingV2InputSchema = external_exports.object({
+  tier: external_exports.enum(COMPLEXITY_TIERS).describe(
+    "The complexity tier the orchestrator assessed the issue into. 'trivial' = a small, localized change; 'standard' = an ordinary feature or fix; 'complex' = broad, cross-cutting, or high-risk work."
+  ),
+  repoPath: external_exports.string().optional().describe(
+    "Path to the project root holding .orchestrate/routing.json. Defaults to the MCP server process's current working directory \u2014 callers should pass it explicitly."
+  ),
+  labels: external_exports.array(external_exports.string()).optional().describe(
+    "The slice issue's GitHub labels, passed verbatim. Only labels present in routing.json's `labels` block or matching the `route:` prefix are applied as overrides; all others are ignored."
+  )
+});
+var resolvedFallbackOutputSchema = external_exports.object({
+  role: external_exports.enum(ROUTING_ROLES).describe("The role this fallback applies to."),
+  label: external_exports.string().describe("The label name that contributed this fallback."),
+  fallback: labelFallbackSchema.describe(
+    "The model-fallback spec to use when the primary model fails."
+  )
+});
+var resolveRoutingV2OutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the tier resolved; 'error' = routing.json is missing, malformed, or has a conflicting label override."
+  ),
+  tier: external_exports.enum(COMPLEXITY_TIERS).optional().describe("The tier that was resolved. Present when status='ok'."),
+  routing: tierRoutingSchemaV2.optional().describe(
+    "The resolved per-role routing for the tier (v2: uses `variant`, not `effort`). `investigator` is null when this tier skips the investigation pass. Present when status='ok'."
+  ),
+  continuationBudget: external_exports.number().int().min(0).optional().describe(
+    "The resolved continuation budget for this run \u2014 how many implementer re-spawns are allowed after an 'incomplete' envelope. Present when status='ok'."
+  ),
+  fallbacks: external_exports.array(resolvedFallbackOutputSchema).optional().describe(
+    "Resolved label fallback specs for the tier. Each entry names the role, the label that contributed it, and the fallback model spec. Present when status='ok'; empty array when no labels carry a fallback."
+  ),
+  warnings: external_exports.array(external_exports.string()).optional().describe(
+    "Structured warnings \u2014 v1 deprecation notices and unconfigured `route:*` label warnings. Present when status='ok'; empty array when clean."
+  ),
+  errorCode: external_exports.enum(["CONFIG_NOT_FOUND", "CONFIG_INVALID", "LABEL_CONFLICT"]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'CONFIG_NOT_FOUND' = no .orchestrate/routing.json; 'CONFIG_INVALID' = it is malformed JSON or does not match the expected shape; 'LABEL_CONFLICT' = two applied labels both patch the same role."
+  ),
+  errorMessage: external_exports.string().optional().describe(
+    "Cleaned, human-readable failure description. Present when status='error'."
+  )
+});
+function resolveRoutingV2FromConfig(input) {
+  const cwd = input.repoPath ?? process.cwd();
+  const configPath = path3.join(cwd, ".orchestrate", "routing.json");
+  let raw;
+  try {
+    raw = fs3.readFileSync(configPath, "utf8");
+  } catch {
+    return {
+      status: "error",
+      errorCode: "CONFIG_NOT_FOUND",
+      errorMessage: `No .orchestrate/routing.json found in ${cwd}. Copy the orchestrate plugin's templates/routing.json to .orchestrate/routing.json.`
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "CONFIG_INVALID",
+      errorMessage: `.orchestrate/routing.json is not valid JSON: ${firstLine2(
+        err instanceof Error ? err.message : String(err)
+      )}`
+    };
+  }
+  const loadResult = loadRoutingConfig(parsed);
+  if (loadResult.status === "error") {
+    return {
+      status: "error",
+      errorCode: "CONFIG_INVALID",
+      errorMessage: loadResult.errorMessage
+    };
+  }
+  const { config: config2, warnings: loaderWarnings } = loadResult;
+  const tierRouting = config2.tiers[input.tier];
+  const labelsConfig = config2.labels ?? {};
+  const relevantLabels = (input.labels ?? []).filter(
+    (name) => name.startsWith("route:") || name in labelsConfig
+  );
+  const labelResult = applyLabels(tierRouting, relevantLabels, labelsConfig);
+  if (labelResult.error) {
+    return {
+      status: "error",
+      errorCode: "LABEL_CONFLICT",
+      errorMessage: labelResult.error
+    };
+  }
+  return {
+    status: "ok",
+    tier: input.tier,
+    routing: labelResult.routing,
+    continuationBudget: config2.run.continuationBudget,
+    fallbacks: labelResult.fallbacks,
+    warnings: [...loaderWarnings, ...labelResult.warnings]
+  };
+}
+function applyLabels(tierRouting, labelNames, labelsConfig) {
+  const warnings = [];
+  const fallbacks = [];
+  const routing = {
+    investigator: tierRouting.investigator ? { ...tierRouting.investigator } : null,
+    implementer: { ...tierRouting.implementer },
+    reviewer: { ...tierRouting.reviewer },
+    "conflict-resolver": { ...tierRouting["conflict-resolver"] }
+  };
+  const patchedBy = /* @__PURE__ */ new Map();
+  for (const labelName of labelNames) {
+    const spec = labelsConfig[labelName];
+    if (!spec) {
+      warnings.push(
+        `Label '${labelName}' is present on the slice but absent from routing.json's \`labels\` block \u2014 it had no effect. Add it to the config or remove the label.`
+      );
+      continue;
+    }
+    for (const role of spec.roles) {
+      const prior = patchedBy.get(role);
+      if (prior !== void 0) {
+        return {
+          routing: tierRouting,
+          warnings,
+          fallbacks: [],
+          error: `Conflicting label overrides: both '${prior}' and '${labelName}' patch the role '${role}'. There is no precedence rule \u2014 resolve the conflict in routing.json (each role may be patched by at most one applied label).`
+        };
+      }
+      patchedBy.set(role, labelName);
+      routing[role] = { ...spec.set };
+      if (spec.fallback) {
+        fallbacks.push({ role, label: labelName, fallback: spec.fallback });
+      }
+    }
+  }
+  return { routing, warnings, fallbacks };
+}
 
 // src/tools/render.ts
 var path5 = __toESM(require("path"));
@@ -25832,12 +25997,13 @@ registerTool(
   handlePlanWaves
 );
 var handleResolveRouting = async (input) => {
-  const result = resolveRoutingFromConfig(input);
+  const result = resolveRoutingV2FromConfig(input);
   let text;
   if (result.status === "ok") {
     const r = result.routing;
-    const inv = r.investigator ? `investigator ${r.investigator.effort}` : "no investigator";
-    text = `Routing for tier '${result.tier}': ${inv}, implementer ${r.implementer.effort}/${r.implementer.model}, reviewer ${r.reviewer.effort}/${r.reviewer.model}, continuation budget ${result.continuationBudget}.`;
+    const inv = r.investigator ? `investigator ${r.investigator.variant}/${r.investigator.model}` : "no investigator";
+    const fallbackStr = result.fallbacks && result.fallbacks.length > 0 ? ` fallback: ${result.fallbacks.map((f) => `${f.role}\u2192${f.fallback.model}(x${f.fallback.maxRetries})`).join(", ")};` : "";
+    text = `Routing for tier '${result.tier}': ${inv}, implementer ${r.implementer.variant}/${r.implementer.model}, reviewer ${r.reviewer.variant}/${r.reviewer.model},${fallbackStr} continuation budget ${result.continuationBudget}.`;
   } else {
     text = `Routing resolution failed [${result.errorCode}]: ${result.errorMessage}`;
   }
@@ -25850,9 +26016,9 @@ registerTool(
   "resolve_routing",
   {
     title: "Resolve Complexity Routing",
-    description: "Resolves which model and effort variant to spawn for each role \u2014 investigator, implementer, reviewer, conflict-resolver \u2014 given an issue's assessed complexity tier. Reads the tier-to-role mapping from .orchestrate/routing.json. A null investigator means that tier skips the investigation pass. Also echoes the resolved run-wide `continuationBudget` \u2014 how many times the orchestrator may re-spawn the implementer in the same worktree after an 'incomplete' envelope (default 2). Returns a discriminated `status` of 'ok' or 'error' (routing.json missing or malformed).",
-    inputSchema: resolveRoutingInputSchema.shape,
-    outputSchema: resolveRoutingOutputSchema.shape
+    description: "Resolves which model and subagent variant to spawn for each role \u2014 investigator, implementer, reviewer, conflict-resolver \u2014 given an issue's assessed complexity tier. Reads the tier-to-role mapping from .orchestrate/routing.json (supports both v1 and v2 schemas; v1 files are transparently upgraded in memory). Accepts optional `labels` \u2014 the slice issue's GitHub labels \u2014 and applies any configured `route:*` label overrides deterministically. A null investigator means that tier skips the investigation pass. Returns per-role `variant` (not `effort`), the resolved run-wide `continuationBudget`, resolved label fallback specs, and structured label warnings. A same-role label conflict surfaces as a structured `LABEL_CONFLICT` error, never a silent pick. Returns a discriminated `status` of 'ok' or 'error'.",
+    inputSchema: resolveRoutingV2InputSchema.shape,
+    outputSchema: resolveRoutingV2OutputSchema.shape
   },
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
