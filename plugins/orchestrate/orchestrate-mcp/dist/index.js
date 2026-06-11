@@ -21952,6 +21952,13 @@ function planWaves(input) {
 var path3 = __toESM(require("path"));
 var fs3 = __toESM(require("fs"));
 var COMPLEXITY_TIERS = ["trivial", "standard", "complex"];
+var ROLE_VARIANTS = ["standard", "deep"];
+var ROUTING_ROLES = [
+  "investigator",
+  "implementer",
+  "reviewer",
+  "conflict-resolver"
+];
 var roleConfigSchema = external_exports.object({
   model: external_exports.string().min(1).describe("Model id to spawn the role's subagent with (e.g. 'sonnet', 'opus')."),
   effort: external_exports.enum(["standard", "deep"]).describe(
@@ -22049,6 +22056,52 @@ function resolveRoutingFromConfig(input) {
     continuationBudget: config2.data.continuationBudget
   };
 }
+var roleConfigSchemaV2 = external_exports.object({
+  model: external_exports.string().min(1).describe("Model id to spawn the role's subagent with (e.g. 'sonnet', 'opus')."),
+  variant: external_exports.enum(ROLE_VARIANTS).describe(
+    "Subagent variant to spawn \u2014 selects the '-standard' or '-deep' subagent definition file. Renamed from the legacy v1 `effort` key."
+  )
+});
+var tierRoutingSchemaV2 = external_exports.object({
+  investigator: roleConfigSchemaV2.nullable(),
+  implementer: roleConfigSchemaV2,
+  reviewer: roleConfigSchemaV2,
+  "conflict-resolver": roleConfigSchemaV2
+});
+var labelFallbackSchema = external_exports.object({
+  model: external_exports.string().min(1).describe("Model id to re-spawn with when the label's primary model fails."),
+  maxRetries: external_exports.number().int().min(0).describe(
+    "How many times to re-spawn with the fallback model before giving up."
+  )
+});
+var labelSpecSchema = external_exports.object({
+  roles: external_exports.array(external_exports.enum(ROUTING_ROLES)).min(1).describe("The roles this label override patches. At least one."),
+  set: roleConfigSchemaV2.describe(
+    "The {model, variant} patch applied to every role named in `roles`."
+  ),
+  fallback: labelFallbackSchema.optional().describe("Optional model-fallback spec resolved and returned on a match.")
+});
+var labelsConfigSchema = external_exports.record(external_exports.string().min(1), labelSpecSchema).describe(
+  "Generic label-override map. Keys are routing label names (e.g. 'route:fable'); values patch named roles with a {model, variant} set and an optional fallback."
+);
+var runConfigSchema = external_exports.object({
+  intraWaveConcurrency: external_exports.enum(["parallel", "sequential"]).optional().default("parallel").describe(
+    "Run-wide policy: how to process the independent slices within one wave. 'parallel' (default) or 'sequential'. Lifted from the v1 top-level key."
+  ),
+  continuationBudget: external_exports.number().int().min(0).optional().default(2).describe(
+    "How many times the orchestrator may re-spawn the implementer in the same worktree after an 'incomplete' envelope. 0 disables continuation. Defaults to 2. Lifted from the v1 top-level key."
+  )
+});
+var routingConfigSchemaV2 = external_exports.object({
+  version: external_exports.literal(2).describe("Schema version discriminator. Always 2 for the v2 shape."),
+  tiers: external_exports.object({
+    trivial: tierRoutingSchemaV2,
+    standard: tierRoutingSchemaV2,
+    complex: tierRoutingSchemaV2
+  }).describe("Per-complexity-tier routing. All three tiers required."),
+  labels: labelsConfigSchema.optional().default({}).describe("Label-override map; empty by default."),
+  run: runConfigSchema.optional().default({}).describe("Run-wide policy block; knob defaults apply when omitted.")
+});
 
 // src/tools/render.ts
 var path5 = __toESM(require("path"));
