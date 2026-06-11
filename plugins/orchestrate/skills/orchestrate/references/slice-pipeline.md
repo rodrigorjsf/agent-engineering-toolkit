@@ -22,17 +22,36 @@ narration in the spine describes.
    `install` command in the new worktree before returning, so the capability
    tools have the dependencies they need. On `status: "error"` — including an
    `install` that failed — the slice has **FAILED** (see *Failure handling*).
-2. **Resolve routing.** Call the `resolve_routing` MCP tool with the slice's
-   `tier` and the repository root as `repoPath`. It returns, per role, the
-   `model` and effort variant to spawn:
-   - `status: "ok"` — use the returned `routing`.
+2. **Resolve routing — read the labels once, freeze the result.** Call the
+   `resolve_routing` MCP tool with the slice's `tier`, the repository root as
+   `repoPath`, and the **issue's GitHub labels** (the labels already parsed in
+   `references/run-lifecycle.md` step 3) as `labels` — this is the **only** place
+   the labels drive routing. It returns, per role, the `model` and `variant` to
+   spawn, plus any label-resolved `fallbacks` and `warnings`:
+   - `status: "ok"` — use the returned `routing`. **Freeze it into the slice's
+     `resolvedRouting` checkpoint field** in `run-state.json` at slice creation:
+     the per-role `{model, variant}` blocks, and — because the Fable lane is
+     implementer-only — the implementer's entry from the returned `fallbacks`
+     array mapped into the single `resolvedRouting.fallback` `{model, maxRetries}`
+     (with `fallbackTaken: false`). Every later spawn and every resume routes
+     from this frozen checkpoint, never by re-reading labels (the resume-routing
+     principle in the spine's resume matrix).
+   - **`warnings[]`** (present on `ok`) — surface each in the run report. An
+     unconfigured `route:*` label present on the slice (in the config's `labels`
+     block) yields a loud **WARNING** here: the label had no effect, so the
+     operator can fix `routing.json` or drop the label.
+   - `errorCode: "LABEL_CONFLICT"` — **two applied labels patch the same role**
+     (there is no precedence rule). This is a loud **ERROR**: the slice has
+     **FAILED**; report the conflicting labels so the operator resolves it in
+     `routing.json`.
    - `errorCode: "CONFIG_NOT_FOUND"` — no routing is configured; fall back to
      the `-standard` variant of every role with no `model` override (each
-     subagent's frontmatter model applies), and skip the investigator.
+     subagent's frontmatter model applies), skip the investigator, and freeze
+     no `fallback` (an unrouted slice has no premium lane).
    - `errorCode: "CONFIG_INVALID"` — the routing config is broken; the slice
      has **FAILED**.
 3. **Run the investigator (higher tiers only).** If `routing.investigator` is
-   non-null, spawn the `orchestrate:investigator-<effort>` subagent — `<effort>`
+   non-null, spawn the `orchestrate:investigator-<variant>` subagent — `<variant>`
    and the Agent `model` override both come from `routing.investigator`. Its
    prompt must carry the issue number/title/body **and the slice's acceptance
    criteria explicitly named as the hard scope boundary** — the canonical per-
@@ -50,8 +69,8 @@ narration in the spine describes.
    An `invalid` or `missing` envelope is a failed investigation pass — the
    slice has **FAILED** (the investigator is read-only, so no worktree fallback
    applies). If `routing.investigator` is null, skip this step.
-4. **Run the implementer.** Spawn the `orchestrate:implementer-<effort>`
-   subagent — `<effort>` and the `model` override from `routing.implementer`. Its
+4. **Run the implementer.** Spawn the `orchestrate:implementer-<variant>`
+   subagent — `<variant>` and the `model` override from `routing.implementer`. Its
    prompt must carry the issue number/title/body, the worktree path (every
    change goes there), the investigator's brief if one was produced, an
    instruction to verify with the capability tools using the worktree path as
@@ -85,8 +104,8 @@ narration in the spine describes.
      `git -C <worktreePath> ls-files --others --exclude-standard`. A filename-set
      comparison is insufficient — the same file may be rewritten with real
      progress or returned byte-identical.
-   - While `continuationsUsed < budget`: re-spawn `orchestrate:implementer-<effort>`
-     in the **same** worktree (same routing/model/effort) with a continuation
+   - While `continuationsUsed < budget`: re-spawn `orchestrate:implementer-<variant>`
+     in the **same** worktree (same routing/model/variant) with a continuation
      prompt = the issue, the worktree path, the PRIOR envelope's `remainingWork`,
      the standard verify/no-git reminders, and an explicit "partial work is
      already in the worktree — continue it, do not restart." Validate the
@@ -112,6 +131,44 @@ narration in the spine describes.
    An `invalid` or `missing` envelope also means the slice has **FAILED** — a
    hard turn-limit cutoff that truncates the envelope mid-emission lands here as
    `invalid`, distinct from the graceful `incomplete` self-report above.
+
+   **Model fallback (premium spawns only — runs BEFORE the FAILED verdict).**
+   This interception is **separate from** the continue-in-place loop above: the
+   loop re-spawns the *same* model on `incomplete` and counts against
+   `continuationBudget`; this step **swaps** the model exactly once on a *model
+   failure* and does **not** touch `continuationBudget`. It applies only to a
+   **premium-spawned** implementer — one whose frozen `resolvedRouting.fallback`
+   is set because a `route:*` label (e.g. `route:fable`) patched the implementer
+   in step 2. Before declaring such a slice FAILED from a step-4 or loop failure,
+   check whether the failure is one the fallback covers and whether the rescue is
+   still available:
+   - **Trigger set** — the implementer **refused**, returned a retention/safety
+     **400**, or emitted an **invalid/missing envelope**. A *valid* `blocked`
+     envelope is **excluded**: it is a genuine obstacle (e.g. a missing
+     dependency) the fallback model would not fix — keep it on the immediate
+     FAILED path.
+   - **Guard** — proceed only when `resolvedRouting.fallback` is set **and**
+     `resolvedRouting.fallbackTaken` is still `false`. If there is no fallback
+     (an ordinary, non-premium spawn) or it is already spent
+     (`fallbackTaken: true`), skip this step and apply the ordinary FAILED
+     taxonomy.
+   - **Re-spawn** — spawn `orchestrate:implementer-<variant>` **once** in the
+     **same** worktree, overriding the Agent `model` to
+     `resolvedRouting.fallback.model` (e.g. `opus`), with the standard prompt
+     (issue, worktree path, the investigator brief if any, verify/no-git
+     reminders; carry the prior `remainingWork` if the failure came from the
+     continuation loop). Set `resolvedRouting.fallbackTaken: true` in the slice
+     checkpoint and write `run-state.json` **before** the re-spawn, so the
+     once-only guard survives a mid-spawn handoff — `fallbackTaken` is a
+     **persisted slice-level** flag, not a loop-local counter, and the fallback
+     fires at most once across the initial spawn and every continuation.
+   - **Classify the fallback envelope** with `validate_envelope` (role
+     `implementer`) exactly as the initial spawn: `completed` → step 4a;
+     `incomplete` → re-enter the continue-in-place loop (the fallback model now
+     drives it, still bounded by `continuationBudget`); `blocked`, or an
+     `invalid`/`missing` envelope → the slice has **FAILED** (the one rescue is
+     spent). Record the swap for the final-report narration ("fable declined →
+     served by opus"; see `references/wave-loop.md`).
 4a. **Verify the changeset against the worktree.** After a `completed`
    implementer envelope — and before trusting it — call the `verify_changeset`
    MCP tool with the slice's `worktreePath` and the implementer envelope's
@@ -140,8 +197,8 @@ narration in the spine describes.
    spawning the reviewer. (These two adjacent checkpoints differ only in
    resume granularity — the resume matrix in section 1 re-runs the capability
    gate for both.)
-5. **Run the reviewer.** Spawn the `orchestrate:reviewer-<effort>` subagent —
-   `<effort>` and the `model` override from `routing.reviewer` — in the same
+5. **Run the reviewer.** Spawn the `orchestrate:reviewer-<variant>` subagent —
+   `<variant>` and the `model` override from `routing.reviewer` — in the same
    worktree. Its prompt must carry the issue, the worktree path, the
    changed-file set agreed on by step 4a — the implementer envelope's
    `filesChanged` when `verify_changeset` matched, the union of declared and
@@ -309,7 +366,7 @@ narration in the spine describes.
       - `verdict: "error"` — a git or input failure (`errorCode`,
         `errorMessage`); the slice has **FAILED**, wired like every other
         MCP-tool error in this section.
-   2. Spawn the `orchestrate:conflict-resolver-<effort>` subagent — `<effort>`
+   2. Spawn the `orchestrate:conflict-resolver-<variant>` subagent — `<variant>`
       and the `model` override from `routing.conflict-resolver`. Its prompt
       must carry the issue, the worktree path, and the list of conflicted
       files (the `conflictedFiles` from step 1).
