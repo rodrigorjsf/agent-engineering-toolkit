@@ -216,3 +216,13 @@ summary of the run. If `parentIssue` is set, post a final summary comment on
 it. Report to the user: the umbrella branch, the final pull request URL, the
 paths of the three rendered artifacts, and — per slice — its final state and
 pull request.
+
+**Narrate the routing notes in the per-slice summary.** For each slice whose
+`resolvedRouting.fallbackTaken` is `true`, note the **model-fallback swap** in
+its summary line — e.g. "slice #N: fable declined → served by opus" — so the
+premium-lane fallover is visible in the report (the swap itself runs in
+`references/slice-pipeline.md` step 4). Surface any routing-label
+**WARNING** (an unconfigured `route:*` label) or **ERROR** (a same-role
+`LABEL_CONFLICT`) from `resolve_routing` in the same summary, and — where the
+orchestrator judges a slice would have benefited from a premium lane — it may
+**suggest** a `route:fable` label, but it **never applies one itself**.

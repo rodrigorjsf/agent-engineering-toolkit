@@ -40,17 +40,32 @@ back over the cap; do **not** generalize that exception to any other skill.)
   conflicts with the umbrella branch, it edits the conflicted files to a
   correct merged state. It is spawned once per conflicting slice.
 
-Every role except the orchestrator exists in two effort variants — `-standard`
+Every role except the orchestrator exists in two variants — `-standard`
 and `-deep`. The `resolve_routing` tool picks the variant and model per role
-from the issue's complexity tier (section 3, step 2). Each role is spawned by
-its **namespaced** subagent type — `orchestrate:investigator-<effort>`,
-`orchestrate:implementer-<effort>`, `orchestrate:reviewer-<effort>`, and
-`orchestrate:conflict-resolver-<effort>`, where `<effort>` is `standard` or
+from the issue's complexity tier **and its routing labels** (section 3, step 2).
+Each role is spawned by
+its **namespaced** subagent type — `orchestrate:investigator-<variant>`,
+`orchestrate:implementer-<variant>`, `orchestrate:reviewer-<variant>`, and
+`orchestrate:conflict-resolver-<variant>`, where `<variant>` is `standard` or
 `deep`. The `orchestrate:` prefix is required: the plugin registers its bundled
 subagents under that namespace, so a bare, un-namespaced name fails to resolve.
 All four subagents have **no Bash and no git access** — they are sandboxed to
 one worktree (the investigator is read-only). Only the orchestrator touches
 branches, remotes, and the tracker.
+
+**Routing labels — read once, frozen, suggested never applied.** A slice issue
+may carry a `route:*` label that patches its routing (e.g. `route:fable`, the
+label-gated implementer-only premium lane). `resolve_routing` reads those labels
+**exactly once**, at slice creation (section 3, step 2): the orchestrator passes
+the issue's labels to the tool and **freezes** the returned `{model, variant,
+optional fallback}` into the slice's `resolvedRouting` checkpoint field. A
+resumed run routes from that frozen checkpoint, **never** from live GitHub
+labels — relabelling an issue mid-run changes nothing. The orchestrator may
+**suggest** a `route:*` label for a slice in its report but **never applies one
+itself** — the same self-promotion guard that forbids it from re-tiering a slice
+upward by writing a label (it routes; it does not relabel). The label semantics,
+the configured-vs-unconfigured outcomes, and the Fable lane's security exclusion
+are in `references/prerequisites.md`, co-located with the `routing.json` schema.
 
 IDE or language-server diagnostics about files under a worktree path —
 unresolved imports, missing-module errors, or stale type errors from a checkout
@@ -179,6 +194,19 @@ always preserved and the changed-file set always reconstructed via
 | `pushed` | implementer, reviewer | `git ls-remote --heads origin orchestrate/slice-<N>` confirms the branch | step 7 (open PR) |
 | `pr-open` | implementer, reviewer | `gh pr view` confirms the PR; `git ls-remote` confirms the branch | step 8 (merge) |
 | `merged` | all subagents | — (merge already landed in umbrella) | step 9 only (label transition + `remove_worktree`) |
+
+**Resume routing is frozen, not re-derived (the fallback-aware dimension).**
+Orthogonal to the `subState` row above: when a resumed in-progress slice
+**re-spawns** any subagent (the rows that do not skip the implementer/reviewer),
+it routes **only** from the slice's frozen `resolvedRouting` checkpoint — its
+recorded `model`, `variant`, and `fallback` — never from live GitHub labels and
+never by re-calling `resolve_routing`. A slice whose `resolvedRouting.fallbackTaken`
+is `true` (a premium-spawned implementer that already failed over to the fallback
+model in the prior session, section 3) resumes on that **frozen fallback model**
+— the premium lane is **not** re-applied and the one-time fallback is **not**
+re-armed. This keeps routing deterministic across a handoff: the label was read
+once at slice creation, and the checkpoint — not the issue's current labels — is
+the source of truth for every re-spawn.
 
 On resume the implementer's *declared* `filesChanged` is gone, so the
 reconstructed `recover_changed_files` set feeds the reviewer prompt and the
@@ -329,6 +357,26 @@ staged changeset is empty, or a merge conflict the `conflict-resolver` cannot
 fix. The orchestrator decides FAILURE **only** from the validated envelope and
 tool results — never from a subagent's prose. An invalid or missing envelope is
 always a FAILED slice; it is never treated as success.
+
+**Model fallback — one premium-spawn interception before FAILED.** A
+**premium-spawned** implementer (one whose `resolvedRouting` carried a `fallback`
+because a `route:*` label patched it — e.g. `route:fable`) gets **one** rescue
+before the slice is declared FAILED. When such an implementer fails in a way the
+fallback covers — a model **refusal**, a retention/safety **400**, or an
+**invalid/missing envelope** — and the slice's `resolvedRouting.fallbackTaken` is
+not yet set, the orchestrator **re-spawns it exactly once on the fallback model**
+(`resolvedRouting.fallback.model`, e.g. `opus`) in the **same** worktree, sets
+`resolvedRouting.fallbackTaken: true`, and narrates the swap in the final report
+("fable declined → served by opus"). This swap is a **model exchange**, distinct
+from the same-model continue-in-place loop: it does **not** consume or increment
+`continuationBudget`, and `fallbackTaken` is a **persisted slice-level** once-only
+guard (set in the checkpoint, surviving a handoff) — so the fallback fires at most
+once across the initial spawn and every continuation. A fallback that is absent
+(no premium label), already spent (`fallbackTaken` already `true`), or that does
+not apply (a *valid* `blocked` envelope is a genuine obstacle the fallback model
+would not fix) leaves the ordinary FAILED taxonomy above unchanged. The mechanics
+— where the re-spawn runs and how the checkpoint is written — are in
+`references/slice-pipeline.md` (the model-fallback step adjacent to step 4).
 
 The implementer envelope's `incomplete` status is the implementer's graceful
 turn-budget self-report — partial, resumable work, carrying a `remainingWork`
