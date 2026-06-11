@@ -68,7 +68,15 @@ metadata, not source — the target project should gitignore
       "worktreePath": "/abs/path/.orchestrate-worktrees/prd153-20260521-015143/slice-157",
       "pullRequest": "https://github.com/owner/repo/pull/200",
       "failureReason": null,
-      "updatedAt": "2026-05-21T02:05:00Z"
+      "updatedAt": "2026-05-21T02:05:00Z",
+      "resolvedRouting": {
+        "investigator": null,
+        "implementer": { "model": "claude-sonnet-4-5", "variant": "standard" },
+        "reviewer": { "model": "claude-sonnet-4-5", "variant": "standard" },
+        "conflict-resolver": { "model": "claude-sonnet-4-5", "variant": "standard" },
+        "fallback": { "model": "claude-opus-4-5", "maxRetries": 1 },
+        "fallbackTaken": false
+      }
     }
   }
 }
@@ -128,6 +136,20 @@ metadata, not source — the target project should gitignore
 - `pullRequest` — the slice pull request URL, or `null` before it is opened.
 - `failureReason` — a short explanation when `state` is `failed`/`skipped`; else `null`.
 - `updatedAt` — when this slice last changed state.
+- `resolvedRouting` — **optional**; absent on checkpoints written before this
+  field was introduced (backward-compatible). When present, it captures the
+  routing that was frozen at slice creation so a resumed run routes the slice
+  from the checkpoint rather than from live GitHub labels. Shape:
+  - `investigator` — `{model, variant}` for the investigator role, or `null`
+    when this tier skips the investigation pass.
+  - `implementer` — `{model, variant}` for the implementer role.
+  - `reviewer` — `{model, variant}` for the reviewer role.
+  - `conflict-resolver` — `{model, variant}` for the conflict-resolver role.
+  - `fallback` — **optional** `{model, maxRetries}` spec; present when a
+    label override (e.g. `route:fable`) carried a fallback, absent otherwise.
+  - `fallbackTaken` — boolean; `true` when the fallback was already used on a
+    previous spawn attempt in this run, preventing the fallback from being
+    applied again on resume. Defaults to `false`.
 
 ## Slice states
 
