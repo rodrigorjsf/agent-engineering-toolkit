@@ -40,6 +40,37 @@ subagent has no shell to regenerate the lockfile. Without `routing.json` the
 `resolve_routing` tool errors
 and the run falls back to the `-standard` variant of every role with no model
 override.
+
+### Routing labels and the Fable premium lane
+
+`routing.json` (v2) carries an optional `labels` block — a map of `route:*`
+label names to a routing override. When a slice issue carries one of those
+labels, `resolve_routing` patches the named roles with the label's `{model,
+variant}` and resolves its optional model `fallback`. The orchestrator passes
+the issue's labels to `resolve_routing` **once, at slice creation**, and freezes
+the result into the slice's `resolvedRouting` checkpoint; every later spawn and
+every resume routes from that frozen checkpoint, never from live labels (the
+mechanics are in `references/slice-pipeline.md` step 2, the judgment in the
+spine). The orchestrator may **suggest** a `route:*` label in its report but
+**never applies one itself**.
+
+- **`route:fable`** — the canonical premium lane: a **label-gated,
+  implementer-only** override that spawns the implementer on a premium model
+  with an `opus` fallback. It is **not** a complexity tier — it is orthogonal to
+  `trivial`/`standard`/`complex` and is triggered solely by the label.
+- **Unconfigured `route:*` label** — a `route:*` label on the slice that the
+  `labels` block does not define produces a loud **WARNING** in the run report
+  (`resolve_routing`'s `warnings[]`): the label had no effect; fix `routing.json`
+  or drop the label.
+- **Same-role conflict** — two applied labels that patch the **same** role is a
+  loud **ERROR** (`resolve_routing` `LABEL_CONFLICT`); there is no precedence
+  rule and the slice FAILS until the operator resolves it in `routing.json`.
+- **Security exclusion** — the Fable lane is **excluded for security/cyber
+  slices**: Fable's safety classifiers refuse benign security work, so such a
+  slice would only burn the spawn and fall through to the `opus` fallback. Do
+  **not** apply (or suggest) `route:fable` on a security/cyber slice; route it
+  through the ordinary complexity tiers instead.
+
 An optional `.orchestrate/handoff.json` tunes the context-watchdog threshold
 and the successor launcher; without it, built-in defaults apply (see
 `references/context-handoff.md`). Installing the `ast-grep` CLI is optional —

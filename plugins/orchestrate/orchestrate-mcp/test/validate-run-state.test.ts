@@ -23,6 +23,15 @@ const SLICE = {
   updatedAt: "2026-05-21T01:30:00Z",
 };
 
+/** A valid resolvedRouting object for use in slice fixtures. */
+const RESOLVED_ROUTING = {
+  investigator: null,
+  implementer: { model: "claude-sonnet-4-5", variant: "standard" },
+  reviewer: { model: "claude-sonnet-4-5", variant: "standard" },
+  "conflict-resolver": { model: "claude-sonnet-4-5", variant: "standard" },
+  fallbackTaken: false,
+};
+
 /** A full run-state with `slices` as the canonical MAP keyed by issue-id string. */
 function validMapState(): Record<string, unknown> {
   return {
@@ -112,5 +121,70 @@ describe("validateRunState", () => {
     const result = await validateRunState({ runId: "../escape", repoPath });
     expect(result.status).toBe("invalid");
     expect(result.errorCode).toBe("RUN_ID_INVALID");
+  });
+
+  // ─── resolvedRouting field tests (criterion 1 / 2 / 3) ───────────────────────
+
+  it("slice WITH valid resolvedRouting returns status: valid", async () => {
+    const state = validMapState();
+    (state.slices as Record<string, unknown>)["157"] = {
+      ...SLICE,
+      resolvedRouting: RESOLVED_ROUTING,
+    };
+    const repoPath = project(state);
+    const result = await validateRunState({ runId: RUN_ID, repoPath });
+    expect(result).toEqual({ status: "valid" });
+  });
+
+  it("slice WITH resolvedRouting carrying a fallback spec returns status: valid", async () => {
+    const state = validMapState();
+    (state.slices as Record<string, unknown>)["157"] = {
+      ...SLICE,
+      resolvedRouting: {
+        ...RESOLVED_ROUTING,
+        fallback: { model: "claude-opus-4-5", maxRetries: 1 },
+        fallbackTaken: true,
+      },
+    };
+    const repoPath = project(state);
+    const result = await validateRunState({ runId: RUN_ID, repoPath });
+    expect(result).toEqual({ status: "valid" });
+  });
+
+  it("LEGACY slice WITHOUT resolvedRouting still returns status: valid (backward-compat)", async () => {
+    // SLICE has no resolvedRouting — simulates a pre-existing checkpoint.
+    const repoPath = project(validMapState());
+    const result = await validateRunState({ runId: RUN_ID, repoPath });
+    expect(result).toEqual({ status: "valid" });
+  });
+
+  it("malformed resolvedRouting (bad variant enum) returns RUN_STATE_INVALID with field-path error", async () => {
+    const state = validMapState();
+    (state.slices as Record<string, unknown>)["157"] = {
+      ...SLICE,
+      resolvedRouting: {
+        ...RESOLVED_ROUTING,
+        implementer: { model: "claude-sonnet-4-5", variant: "ultra" }, // "ultra" is not in the enum
+      },
+    };
+    const repoPath = project(state);
+    const result = await validateRunState({ runId: RUN_ID, repoPath });
+    expect(result.status).toBe("invalid");
+    expect(result.errorCode).toBe("RUN_STATE_INVALID");
+    expect(result.errorMessage).toContain("resolvedRouting");
+  });
+
+  it("malformed resolvedRouting (missing required role) returns RUN_STATE_INVALID", async () => {
+    const state = validMapState();
+    const { implementer: _omit, ...noImplementer } = RESOLVED_ROUTING;
+    (state.slices as Record<string, unknown>)["157"] = {
+      ...SLICE,
+      resolvedRouting: noImplementer,
+    };
+    const repoPath = project(state);
+    const result = await validateRunState({ runId: RUN_ID, repoPath });
+    expect(result.status).toBe("invalid");
+    expect(result.errorCode).toBe("RUN_STATE_INVALID");
+    expect(result.errorMessage).toContain("resolvedRouting");
   });
 });

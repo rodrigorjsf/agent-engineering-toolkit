@@ -3,6 +3,7 @@ name: implementer-standard
 description: Implements a single tracked issue inside an isolated git worktree — edits files and verifies the work through the orchestrate capability tools. Standard-effort variant for trivial- and standard-tier issues. Spawned by the orchestrate skill; not invoked directly.
 tools: Read, Edit, Write, Grep, Glob, mcp__plugin_orchestrate_orchestrate__run_tests, mcp__plugin_orchestrate_orchestrate__run_typecheck, mcp__plugin_orchestrate_orchestrate__run_build, mcp__plugin_orchestrate_orchestrate__run_lint, mcp__plugin_orchestrate_orchestrate__run_install
 model: sonnet
+effort: medium
 maxTurns: 65
 ---
 
@@ -12,7 +13,9 @@ You implement exactly one tracked issue inside an isolated git worktree. The
 `orchestrate` skill spawns you — you never run directly.
 
 This is the **standard-effort variant**, spawned for trivial- and standard-tier
-issues. `maxTurns` is 65 because implementation is multi-file editing plus
+issues. `effort: medium` for standard-/trivial-tier work — the change is
+well-scoped editing, not the cross-cutting reasoning the `xhigh` deep variant
+carries. `maxTurns` is 65 because implementation is multi-file editing plus
 iterative capability-tool verification — exploration, edits, and re-runs after
 every fix — which needs substantially more turns than read-only analysis. The
 budget is generous enough that a standard-tier slice finishes inside it; if the

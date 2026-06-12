@@ -2,10 +2,11 @@ import { describe, it, expect, afterEach } from "vitest";
 import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
-import { bootstrapConfig } from "../src/tools/bootstrap-config.js";
+import { fileURLToPath } from "url";
+import { bootstrapConfig, DEFAULT_ROUTING_CONFIG } from "../src/tools/bootstrap-config.js";
 import { commandsConfigSchema } from "../src/tools/run-command.js";
 import { handoffConfigSchema } from "../src/handoff-config.js";
-import { routingConfigSchema } from "../src/tools/routing.js";
+import { routingConfigSchemaV2, loadRoutingConfig } from "../src/tools/routing.js";
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
@@ -70,28 +71,25 @@ describe("bootstrapConfig — fresh run", () => {
     expect(() =>
       commandsConfigSchema.parse(readConfig(dir, "commands.json"))
     ).not.toThrow();
+    // The written routing.json is a native v2 file — validate against v2 schema.
     expect(() =>
-      routingConfigSchema.parse(readConfig(dir, "routing.json"))
+      routingConfigSchemaV2.parse(readConfig(dir, "routing.json"))
     ).not.toThrow();
     expect(() =>
       handoffConfigSchema.parse(readConfig(dir, "handoff.json"))
     ).not.toThrow();
 
     // The written routing.json carries the run-wide intraWaveConcurrency knob
-    // (#231-P2.3) — proves DEFAULT_ROUTING_CONFIG stays in parity with the key
-    // the schema and templates/routing.json now declare.
-    expect(
-      (readConfig(dir, "routing.json") as { intraWaveConcurrency?: string })
-        .intraWaveConcurrency
-    ).toBe("parallel");
+    // (#231-P2.3) — now under the v2 `run` block. Proves DEFAULT_ROUTING_CONFIG
+    // stays in parity with the key the schema and templates/routing.json declare.
+    const routing = readConfig(dir, "routing.json") as {
+      run?: { intraWaveConcurrency?: string; continuationBudget?: number };
+    };
+    expect(routing.run?.intraWaveConcurrency).toBe("parallel");
 
     // The written routing.json carries the run-wide continuationBudget knob
-    // (#234) — proves DEFAULT_ROUTING_CONFIG stays in parity with the key the
-    // schema and templates/routing.json now declare.
-    expect(
-      (readConfig(dir, "routing.json") as { continuationBudget?: number })
-        .continuationBudget
-    ).toBe(2);
+    // (#234) — now under the v2 `run` block.
+    expect(routing.run?.continuationBudget).toBe(2);
   });
 
   it("writes JSON with 2-space indent and a trailing newline", () => {
@@ -546,5 +544,237 @@ describe("bootstrapConfig — .gitignore idempotence", () => {
       .split("\n")
       .filter((l) => l.trim() === ".orchestrate/runs/");
     expect(matches.length).toBe(1);
+  });
+});
+
+// ─── Native v2 routing defaults ───────────────────────────────────────────────
+
+describe("bootstrapConfig — native v2 routing defaults (ADR-0015)", () => {
+  it("writes a routing.json with version: 2 (no deprecation warning on fresh run)", () => {
+    const dir = repo("package.json");
+    bootstrapConfig({ repoPath: dir });
+
+    const written = readConfig(dir, "routing.json") as { version?: number };
+    expect(written.version).toBe(2);
+  });
+
+  it("produces no deprecation warning when the written routing.json is loaded", () => {
+    const dir = repo("package.json");
+    bootstrapConfig({ repoPath: dir });
+
+    const raw = fs.readFileSync(
+      path.join(dir, ".orchestrate", "routing.json"),
+      "utf8"
+    );
+    const result = loadRoutingConfig(JSON.parse(raw));
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.warnings).toEqual([]);
+    }
+  });
+
+  it("standard-tier investigator is haiku/standard (new pass — was null in v1)", () => {
+    const dir = repo("package.json");
+    bootstrapConfig({ repoPath: dir });
+
+    const written = readConfig(dir, "routing.json") as {
+      tiers?: { standard?: { investigator?: { model: string; variant: string } } };
+    };
+    expect(written.tiers?.standard?.investigator).toEqual({
+      model: "haiku",
+      variant: "standard",
+    });
+  });
+
+  it("trivial-tier reviewer is sonnet/standard (deliberate cross-model merge gate)", () => {
+    const dir = repo("package.json");
+    bootstrapConfig({ repoPath: dir });
+
+    const written = readConfig(dir, "routing.json") as {
+      tiers?: { trivial?: { reviewer?: { model: string; variant: string } } };
+    };
+    expect(written.tiers?.trivial?.reviewer).toEqual({
+      model: "sonnet",
+      variant: "standard",
+    });
+  });
+
+  it("trivial-tier implementer is haiku/standard", () => {
+    const dir = repo("package.json");
+    bootstrapConfig({ repoPath: dir });
+
+    const written = readConfig(dir, "routing.json") as {
+      tiers?: { trivial?: { implementer?: { model: string; variant: string } } };
+    };
+    expect(written.tiers?.trivial?.implementer).toEqual({
+      model: "haiku",
+      variant: "standard",
+    });
+  });
+
+  it("complex-tier all roles are opus/deep (unchanged from v1)", () => {
+    const dir = repo("package.json");
+    bootstrapConfig({ repoPath: dir });
+
+    const written = readConfig(dir, "routing.json") as {
+      tiers?: {
+        complex?: {
+          investigator?: { model: string; variant: string };
+          implementer?: { model: string; variant: string };
+          reviewer?: { model: string; variant: string };
+          "conflict-resolver"?: { model: string; variant: string };
+        };
+      };
+    };
+    const opusDeep = { model: "opus", variant: "deep" };
+    expect(written.tiers?.complex?.investigator).toEqual(opusDeep);
+    expect(written.tiers?.complex?.implementer).toEqual(opusDeep);
+    expect(written.tiers?.complex?.reviewer).toEqual(opusDeep);
+    expect(written.tiers?.complex?.["conflict-resolver"]).toEqual(opusDeep);
+  });
+
+  it("carries route:fable label entry with opus fallback (model=fable, variant=deep)", () => {
+    const dir = repo("package.json");
+    bootstrapConfig({ repoPath: dir });
+
+    const written = readConfig(dir, "routing.json") as {
+      labels?: {
+        "route:fable"?: {
+          roles: string[];
+          set: { model: string; variant: string };
+          fallback: { model: string; maxRetries: number };
+        };
+      };
+    };
+    const fable = written.labels?.["route:fable"];
+    expect(fable).toBeDefined();
+    expect(fable?.roles).toEqual(["implementer"]);
+    expect(fable?.set).toEqual({ model: "fable", variant: "deep" });
+    expect(fable?.fallback).toEqual({ model: "opus", maxRetries: 1 });
+  });
+
+  it("an existing v1 routing.json is NOT overwritten (idempotency)", () => {
+    const dir = repo("package.json");
+    fs.mkdirSync(path.join(dir, ".orchestrate"));
+    const v1Content = JSON.stringify(
+      {
+        trivial: {
+          investigator: null,
+          implementer: { model: "sonnet", effort: "standard" },
+          reviewer: { model: "sonnet", effort: "standard" },
+          "conflict-resolver": { model: "sonnet", effort: "standard" },
+        },
+        standard: {
+          investigator: null,
+          implementer: { model: "sonnet", effort: "standard" },
+          reviewer: { model: "opus", effort: "standard" },
+          "conflict-resolver": { model: "opus", effort: "standard" },
+        },
+        complex: {
+          investigator: { model: "opus", effort: "deep" },
+          implementer: { model: "opus", effort: "deep" },
+          reviewer: { model: "opus", effort: "deep" },
+          "conflict-resolver": { model: "opus", effort: "deep" },
+        },
+        intraWaveConcurrency: "parallel",
+        continuationBudget: 2,
+      },
+      null,
+      2
+    ) + "\n";
+    fs.writeFileSync(
+      path.join(dir, ".orchestrate", "routing.json"),
+      v1Content
+    );
+
+    const r = bootstrapConfig({ repoPath: dir });
+
+    expect(r.files!.routingJson).toBe("already-present");
+    expect(
+      fs.readFileSync(path.join(dir, ".orchestrate", "routing.json"), "utf8")
+    ).toBe(v1Content);
+  });
+
+  it("an existing v2 routing.json is NOT overwritten (idempotency)", () => {
+    const dir = repo("package.json");
+    fs.mkdirSync(path.join(dir, ".orchestrate"));
+    const v2Content = JSON.stringify(
+      {
+        version: 2,
+        tiers: {
+          trivial: {
+            investigator: null,
+            implementer: { model: "haiku", variant: "standard" },
+            reviewer: { model: "sonnet", variant: "standard" },
+            "conflict-resolver": { model: "sonnet", variant: "standard" },
+          },
+          standard: {
+            investigator: { model: "haiku", variant: "standard" },
+            implementer: { model: "sonnet", variant: "standard" },
+            reviewer: { model: "opus", variant: "standard" },
+            "conflict-resolver": { model: "opus", variant: "standard" },
+          },
+          complex: {
+            investigator: { model: "opus", variant: "deep" },
+            implementer: { model: "opus", variant: "deep" },
+            reviewer: { model: "opus", variant: "deep" },
+            "conflict-resolver": { model: "opus", variant: "deep" },
+          },
+        },
+        labels: {
+          "route:fable": {
+            roles: ["implementer"],
+            set: { model: "fable", variant: "deep" },
+            fallback: { model: "opus", maxRetries: 1 },
+          },
+        },
+        run: { intraWaveConcurrency: "parallel", continuationBudget: 2 },
+      },
+      null,
+      2
+    ) + "\n";
+    fs.writeFileSync(
+      path.join(dir, ".orchestrate", "routing.json"),
+      v2Content
+    );
+
+    const r = bootstrapConfig({ repoPath: dir });
+
+    expect(r.files!.routingJson).toBe("already-present");
+    expect(
+      fs.readFileSync(path.join(dir, ".orchestrate", "routing.json"), "utf8")
+    ).toBe(v2Content);
+  });
+
+  it("template parity — templates/routing.json content matches DEFAULT_ROUTING_CONFIG", () => {
+    // Resolve the template path relative to this test file.
+    // test/ → orchestrate-mcp/ → orchestrate/ → templates/routing.json
+    const templatePath = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "..",
+      "templates",
+      "routing.json"
+    );
+    const templateParsed = JSON.parse(fs.readFileSync(templatePath, "utf8"));
+    // Deep-equal check — same matrix, same labels, same run block, same version.
+    expect(templateParsed).toEqual(DEFAULT_ROUTING_CONFIG);
+  });
+
+  it("bootstrapped routing.json content matches templates/routing.json (parity via written file)", () => {
+    // Resolve the template path relative to this test file.
+    const templatePath = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "..",
+      "templates",
+      "routing.json"
+    );
+    const dir = repo("package.json");
+    bootstrapConfig({ repoPath: dir });
+
+    const templateParsed = JSON.parse(fs.readFileSync(templatePath, "utf8"));
+    const writtenParsed = readConfig(dir, "routing.json");
+    expect(writtenParsed).toEqual(templateParsed);
   });
 });
