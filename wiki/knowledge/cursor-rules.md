@@ -1,8 +1,8 @@
 # Cursor Rules
 
-**Summary**: System-level instructions stored as `.md` or `.mdc` files in `.cursor/rules/` that guide Cursor's AI agent — supporting four activation modes (always, intelligent, glob-matched, manual) with YAML frontmatter-controlled scoping and a team/project/user precedence hierarchy.
+**Summary**: System-level instructions stored as `.md` or `.mdc` files in `.cursor/rules/` that guide Cursor's AI agent — supporting four activation modes (Always Apply, Apply Intelligently, Apply to Specific Files, Apply Manually) with YAML frontmatter-controlled scoping and a team/project/user precedence hierarchy.
 **Sources**: rules.md, agent-best-practices.md
-**Last updated**: 2026-05-22
+**Last updated**: 2026-06-21
 
 ---
 
@@ -24,12 +24,16 @@ Rules can be organized into folders inside `.cursor/rules/`.
 
 ## Four Activation Modes
 
-| Mode                    | Frontmatter                          | When Active                               |
-| ----------------------- | ------------------------------------ | ----------------------------------------- |
-| **Always Apply**        | `alwaysApply: true`                  | Every chat session (globs/description ignored) |
-| **Apply Intelligently** | `alwaysApply: false` + `description` | Agent deems relevant based on description |
-| **Specific Files**      | `alwaysApply: false` + `globs`       | A matching file is in context             |
-| **Manual**              | Neither `description` nor `globs`    | Only when @-mentioned in chat             |
+| Mode                           | Frontmatter                          | When Active                               |
+| ------------------------------ | ------------------------------------ | ----------------------------------------- |
+| **Always Apply**               | `alwaysApply: true`                  | Every chat session (globs/description ignored) |
+| **Apply Intelligently**        | `alwaysApply: false` + `description` | Agent deems relevant based on description |
+| **Apply to Specific Files**    | `alwaysApply: false` + `globs`       | A matching file is in context             |
+| **Apply Manually** (@-mention) | Neither `description` nor `globs`    | Only when @-mentioned in chat             |
+
+### Rules vs. Cursor Memories
+
+Rules with `alwaysApply: true` are the **authoritative always-on behavioral surface** — they are injected into every session reliably. Cursor Memories (GA since Cursor 1.2) are conversational captures loaded at session start, but they are user-approval gated and are **not** the authoritative surface for standing behavioral directives; prefer `alwaysApply` rules for instructions that must hold unconditionally. Note that no Cursor hook reliably injects per-turn guidance into the system prompt either (see [[cursor-hooks]]); `alwaysApply` rules remain the only guaranteed per-turn injection surface.
 
 ## Rule Anatomy
 
@@ -93,3 +97,4 @@ Rules can be imported from any GitHub repository you have access to, public or p
 - [[progressive-disclosure]]
 - [[claude-code-memory]]
 - [[cursor-skills]]
+- [[cursor-hooks]]

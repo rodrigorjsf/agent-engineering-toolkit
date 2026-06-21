@@ -1,8 +1,8 @@
 # Cursor Hooks
 
 **Summary**: Lifecycle automation points in Cursor that observe, block, or modify the agent loop by running shell scripts or LLM prompts — organized into Agent, Tab, and App-lifecycle categories, configurable across four sources, and gated by exit codes or JSON permission decisions.
-**Sources**: hooks-guide.md
-**Last updated**: 2026-05-22
+**Sources**: hooks-guide.md; Cursor forum thread 158452 (sessionStart additional_context); Cursor forum thread 156065 (afterFileEdit reliability)
+**Last updated**: 2026-06-21
 
 ---
 
@@ -65,6 +65,24 @@ Prompt hooks return a structured `{ ok: boolean, reason?: string }` response, us
 | `0`   | Hook succeeded — use the JSON output                    |
 | `2`   | Block the action (equivalent to `permission: "deny"`)   |
 | Other | Hook failed; action proceeds (fail-open by default)     |
+
+## Known Issues and Caveats
+
+### `sessionStart` — `additional_context` is documented but currently broken
+
+The official docs describe a `sessionStart` hook output field `additional_context` that should inject text into the agent's initial system context. **This field is silently dropped.** Cursor staff confirmed a timing race: the hook executes before the composer handle is created, so the injected text has nowhere to land. The `env` output field works correctly and its variables are available to subsequent hooks. There is no fix as of 2026-06-21. Even when this is eventually fixed it will only fire once at session start, not per-turn. Source: https://forum.cursor.com/t/sessionstart-hook-additional-context-is-never-injected-into-agents-initial-system-context/158452
+
+**Contradiction with documented behavior**: the official hooks-guide describes `additional_context` as a supported output; in practice it has no effect.
+
+### `afterFileEdit` — side-effect-only, and fires only for the first file in a batch edit
+
+`afterFileEdit` fires after the agent edits a file; its canonical use is a formatter or linter, so the hook *script* **can** modify the just-edited file on disk. What it cannot do: block or undo the edit (it runs after the fact), or feed anything back into the agent's context (unlike `postToolUse`, it has no `additional_context` channel). It also has a reliability bug: when the agent edits multiple files in one tool call, the hook fires only for the first file; subsequent files are silently skipped. Because it cannot return guidance to the model — and a blind formatter script cannot author meaningful documentation — it cannot drive model-authored doc enforcement; for reliable after-the-fact signals across multi-file edits, prefer `postToolUse`. Source: https://forum.cursor.com/t/afterfileedit-hook-not-firing-reliably-missing-events-on-batch-edits-and-mid-session/156065
+
+### `beforeSubmitPrompt` — fires per-turn but cannot inject context
+
+`beforeSubmitPrompt` runs before each user prompt submission and can block it (by returning `{ "continue": false }`), or prepend a `user_message`. Cursor ignores any other JSON output — it cannot inject guidance into the system prompt. Two open feature requests ask to add `additional_context` support (forum threads 150707, Feb 2026; 157231, Apr 2026), both unimplemented as of 2026-06-21.
+
+**NET takeaway**: no Cursor hook reliably injects per-turn guidance into the system prompt. [[cursor-rules]] with `alwaysApply: true` are the only always-on, every-turn injection surface.
 
 ## Configuration
 

@@ -2,7 +2,7 @@
 
 **Summary**: Portable, version-controlled capability packages following the Agent Skills open standard that extend Cursor's agent with domain-specific knowledge and workflows — discovered automatically at startup, optionally scoped to specific files via `paths`, and invoked manually or by the agent based on description matching.
 **Sources**: agent-skills-guide.md, agent-best-practices.md
-**Last updated**: 2026-05-22
+**Last updated**: 2026-06-21
 
 ---
 
@@ -62,7 +62,7 @@ paths:
 paths: "**/*.py, scripts/**/*.py"
 ```
 
-The legacy `globs` field is still accepted as a fallback for older skills, but new skills should use `paths` (source: agent-skills-guide.md). Leave `paths` unset for a skill that should be available regardless of which files are open.
+The `globs` field is a **deprecated alias** for `paths`: it is still accepted as a fallback (not rejected) so existing skills continue to work, but new skills should use `paths` (source: agent-skills-guide.md). Leave `paths` unset for a skill that should be available regardless of which files are open.
 
 ## Nested Skill Directories
 
