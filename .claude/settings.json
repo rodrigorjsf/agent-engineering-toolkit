@@ -27,7 +27,7 @@
     ]
   },
   "enabledPlugins": {
-    "compound-engineering@compound-engineering-plugin": true,
-    "agents-initializer@agent-engineering-toolkit": true
+    "compound-engineering@compound-engineering-plugin": false,
+    "agents-initializer@agent-engineering-toolkit": false
   }
 }

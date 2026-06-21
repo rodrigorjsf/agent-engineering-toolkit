@@ -14,6 +14,10 @@ _Avoid_: setup plugin, scaffolder
 A plugin that creates and improves individual agent artifacts (skills, hooks, rules, subagents) inside a project that is already initialized.
 _Avoid_: artifact builder, generator plugin
 
+**Deployable-behavior plugin**:
+A plugin that *ships* working behavior consumed directly on install — a bundled rule plus skills — rather than *generating* artifacts into a target project. `cursor-code-documentation` is the first: installing it makes the **Document-as-you-code rule** active and the `code-explain`/`doc-generate` **Manual-only skills** available. A distinct plugin role from the initializer/customizer generators (see ADR-0016).
+_Avoid_: behavior plugin, runtime plugin (deployable-behavior names the install-and-it-works contract)
+
 ### Platforms and namespaces
 
 **Claude Code distribution**:
@@ -49,6 +53,20 @@ _Avoid_: rules-only (rules-first leaves room for legacy migration; rules-only wo
 
 **Subagent**:
 A YAML-fronted agent definition spawned for delegated, isolated work. Claude Code uses `tools:`/`maxTurns:`; Cursor uses `readonly:`/`model: inherit`.
+
+### Cursor code-documentation vocabulary
+
+**Document-as-you-code rule**:
+The single always-apply `.cursor/rules/*.mdc` (≤30 lines, language-agnostic) that instructs the agent to add language-idiomatic inline documentation (Javadoc/JSDoc/docstrings/header comments/…) whenever it writes, modifies, or creates code. It names the language→format mapping and relies on model knowledge rather than embedding format specifications. It is the *only* reliable always-on per-turn injection surface in Cursor — no hook can do this (see ADR-0016).
+_Avoid_: doc hook, auto-doc hook (it is a rule, not a hook — the distinction is the ADR's whole point)
+
+**Deferred enforcement** (Cursor doc plugin):
+The decision to ship no enforcement hook in v1 of `cursor-code-documentation`. The only candidate channel, `sessionStart.additional_context`, is broken upstream (Cursor forum 158452) and redundant with the **Document-as-you-code rule**; a `stop`-hook self-review pass is the recorded working fallback; `afterFileEdit` is rejected (its script can format but cannot block the edit or feed the model, plus a batch-edit reliability bug). The path is recorded and gated on the upstream fix — not abandoned.
+_Avoid_: no enforcement, enforcement dropped (it is deferred-and-gated, not removed)
+
+**Manual-only skill** (Cursor):
+A Cursor skill with `disable-model-invocation: true`, invoked solely via `/name`. The plugin's `code-explain` and `doc-generate` are manual-only — the faithful mirror of the source plugin's *commands* — so heavyweight documentation operations never auto-fire mid-edit and never compete with the **Document-as-you-code rule**.
+_Avoid_: command skill, on-demand skill (manual-only names the `disable-model-invocation` contract precisely)
 
 ### Knowledge base vocabulary
 
@@ -229,11 +247,32 @@ _Avoid_: scope check, brief filter (the guard is a positive constraint on what t
 The irreducible body of the orchestrate `SKILL.md` that remains after **MCP-first decomposition** — the roles & safety boundary, the two-axis complexity-tier assessment, wave-concurrency policy, failure-cause narration, and checkpoint/resume semantics. It is the residue that cannot be extracted to an `orchestrate-mcp` tool or a subagent because it is non-mechanizable orchestration judgment. After the #275 procedural-prose relocation the spine lands near ~425 lines — refined down from the ~750 the decomposition first projected — which is now *within* the project's 500-line `SKILL.md` body cap; the documented over-cap exception for this spine remains on record (ADR-0013) so it is never flagged as bloat should its judgment grow back over the cap, and is orchestrate-specific (not generalized to other skills). Deterministic procedure is extracted to MCP tools (no execution-permission prompt); judgment-bearing procedure is relocated to on-demand `references/` (loaded only when its phase runs, outside the smart zone); only judgment stays in the always-loaded spine. See ADR-0013.
 _Avoid_: orchestrator core, skill body (the spine is specifically what remains after extraction, not the whole file or its runtime)
 
+**Routing variant**:
+The `-standard` / `-deep` flavor of a subagent definition that per-role routing selects (`orchestrate:<role>-<variant>`). Renamed from `routing.json`'s legacy `effort` key precisely because it is **not** the **Subagent effort level** — it picks which definition file is spawned.
+_Avoid_: effort (in routing context — the collision this rename removes), depth (tier names complexity; variant names the definition flavor)
+
+**Subagent effort level**:
+The real Claude Code `effort` frontmatter value (`low`/`medium`/`high`/`xhigh`/`max`) fixed in each subagent definition. It cannot be set per spawn invocation, so it lives in the definition file — never in `routing.json`.
+_Avoid_: thinking budget, routing effort
+
+**Routing label**:
+A human-applied GitHub label (`route:*`) on a slice issue that overrides the **Resolved slice routing** for named roles — e.g. `route:fable` promotes the implementer to the premium model. The orchestrator may *suggest* a routing label in reports but never applies one; a label with no matching routing-config entry warns loudly, and two configured labels patching the same role is an error — never a silent merge.
+_Avoid_: model label, tier label (tiers are orchestrator judgment; routing labels are human gates)
+
+**Resolved slice routing**:
+The per-slice routing outcome (model, variant, fallback) frozen into the `run-state.json` checkpoint when the slice is created. Routing labels are read exactly once, at slice creation — a resumed run routes from the checkpoint, never from live GitHub labels, preserving the resume invariant that a run never re-derives its own scope.
+_Avoid_: live routing, label re-read
+
+**Model fallback**:
+The one-time re-spawn of a role on its configured fallback model after the premium model fails (safety-classifier refusal or model unavailability), recorded on the slice's **Resolved slice routing** and not counted against the continuation budget — continuation re-spawns the *same* model for incomplete work; fallback *swaps* the model.
+_Avoid_: retry, continuation (different budget, different semantics)
+
 ## Relationships
 
 - A **Distribution** owns at most one **Initializer** and at most one **Customizer**.
 - An **Initializer** generates platform-wide files; a **Customizer** generates individual **Artifacts** of the four supported types.
 - The **Claude Code distribution** and the **Cursor distribution** are siblings — same conceptual roles, different platform formats and conventions.
+- A **Deployable-behavior plugin** ships its **Artifacts** (a rule plus skills) for direct consumption on install, where the **Initializer** and **Customizer** instead *generate* artifacts into a target project. The three roles coexist within one **Distribution**.
 - A **Source document** in `docs/` is summarized into one **Wiki page** in `wiki/knowledge/`; one Source document may also seed multiple concept Wiki pages with `[[wiki-link]]` cross-references.
 - The **Wiki** is the canonical knowledge surface for agents; **Source documents** are searched only when the wiki lacks coverage.
 - The **Standalone distribution** sources from the cross-platform standard alone (platform-agnostic docs, filtered to skills and AGENTS.md authoring); plugin distributions source from their platform's docs plus the standard. See ADR-0006.
@@ -277,3 +316,4 @@ _Avoid_: orchestrator core, skill body (the spine is specifically what remains a
 - "merged into main/master" was used for the **Run cleanup** gate — resolved: the gate is the run's final pull request merged into the **Integration base** (`development`), not a release branch. The plugin name and its directory are spelled `orchestrate` / `.orchestrate` (not `orquestrate`).
 - "bootstrap" was used to mean *both* the `bootstrap_config` step (writes `.orchestrate/` config) and the whole one-time pre-flight setup (steps 1–6, ending at the resumable checkpoint) — issue #286 used the second sense. Resolved during grilling: "bootstrap" / **Config bootstrapper** names only the config step; the whole setup pass is the **Pre-flight pass** (`/orchestrate preflight <PRD#>`), a distinct mode word chosen to avoid overloading `bootstrap_config` and to stay clear of the `prime-issues` namespace.
 - "use the native dynamic-workflows / goals / worktrees features in orchestrate" was the user's hypothesis for shrinking the orchestrator's context footprint and using the native runtime — resolved during grilling (ADR-0013): native features are evaluated and **not adopted**. Each is inferior to or architecturally mismatched with orchestrate's durable, slice-scoped, checkpoint-backed core (worktrees are session-scoped / per-subagent-ephemeral vs. the run's slice-scoped-shared worktree; goals evaluate only the conversation surface and cannot ride `spawn_successor`'s single positional prompt; dynamic workflows reset on session exit and are redundant with the envelope-only delegation orchestrate already does; agent teams are experimental, env-gated, and do not resume in-process). Context reduction comes from **MCP-first decomposition** into the **Orchestrator judgment spine**, not from native adoption. The "alternative, not replacement" requirement is satisfied by adopting zero (nothing to capability-detect or alternate).
+- "a Cursor hook that injects documentation instructions into the system prompt" was the user's initial mechanism for document-as-you-code — resolved during grilling (ADR-0016) against live-verified evidence: **no Cursor hook injects per-turn system-prompt guidance**. `sessionStart.additional_context` is broken (forum 158452) and one-shot even when fixed; `beforeSubmitPrompt` can only block; `afterFileEdit` only runs after the fact and cannot feed the model. The always-apply **Document-as-you-code rule** is the mechanism; enforcement via hook is **deferred-and-gated**, not adopted in v1.
