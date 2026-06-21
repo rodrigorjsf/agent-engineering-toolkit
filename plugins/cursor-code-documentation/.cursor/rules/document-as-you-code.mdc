@@ -1,0 +1,25 @@
+---
+description: "Add language-idiomatic inline documentation whenever you write, modify, or create code in any language including scripts."
+alwaysApply: true
+globs: []
+---
+
+Whenever you write, modify, or create code — including scripts — add inline
+documentation in the idiomatic format for that language:
+
+- **Java** — Javadoc (`/** ... */`) on every public class, method, and field.
+- **JavaScript / TypeScript** — JSDoc (`/** ... */`) on every exported function,
+  class, and type.
+- **Python** — docstrings (`"""..."""`) on every module, class, and function.
+- **Shell scripts (bash, sh, zsh, fish, etc.)** — header comments explaining
+  the script's purpose at the top, then inline comments for non-obvious logic.
+- **Any other language** — use the idiomatic documentation format for that
+  language. Rely on your knowledge of the language's conventions; do not invent
+  a format.
+
+Scope: document what the code does and why, not how the syntax works.
+Cover: purpose, parameters, return values, exceptions/errors, and side effects
+where applicable. Omit documentation only when a symbol is private, trivial,
+and self-evident from its name alone.
+
+Apply this rule on every code write or edit, not only when asked.
