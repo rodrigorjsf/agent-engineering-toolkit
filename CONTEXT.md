@@ -229,6 +229,26 @@ _Avoid_: scope check, brief filter (the guard is a positive constraint on what t
 The irreducible body of the orchestrate `SKILL.md` that remains after **MCP-first decomposition** — the roles & safety boundary, the two-axis complexity-tier assessment, wave-concurrency policy, failure-cause narration, and checkpoint/resume semantics. It is the residue that cannot be extracted to an `orchestrate-mcp` tool or a subagent because it is non-mechanizable orchestration judgment. After the #275 procedural-prose relocation the spine lands near ~425 lines — refined down from the ~750 the decomposition first projected — which is now *within* the project's 500-line `SKILL.md` body cap; the documented over-cap exception for this spine remains on record (ADR-0013) so it is never flagged as bloat should its judgment grow back over the cap, and is orchestrate-specific (not generalized to other skills). Deterministic procedure is extracted to MCP tools (no execution-permission prompt); judgment-bearing procedure is relocated to on-demand `references/` (loaded only when its phase runs, outside the smart zone); only judgment stays in the always-loaded spine. See ADR-0013.
 _Avoid_: orchestrator core, skill body (the spine is specifically what remains after extraction, not the whole file or its runtime)
 
+**Routing variant**:
+The `-standard` / `-deep` flavor of a subagent definition that per-role routing selects (`orchestrate:<role>-<variant>`). Renamed from `routing.json`'s legacy `effort` key precisely because it is **not** the **Subagent effort level** — it picks which definition file is spawned.
+_Avoid_: effort (in routing context — the collision this rename removes), depth (tier names complexity; variant names the definition flavor)
+
+**Subagent effort level**:
+The real Claude Code `effort` frontmatter value (`low`/`medium`/`high`/`xhigh`/`max`) fixed in each subagent definition. It cannot be set per spawn invocation, so it lives in the definition file — never in `routing.json`.
+_Avoid_: thinking budget, routing effort
+
+**Routing label**:
+A human-applied GitHub label (`route:*`) on a slice issue that overrides the **Resolved slice routing** for named roles — e.g. `route:fable` promotes the implementer to the premium model. The orchestrator may *suggest* a routing label in reports but never applies one; a label with no matching routing-config entry warns loudly, and two configured labels patching the same role is an error — never a silent merge.
+_Avoid_: model label, tier label (tiers are orchestrator judgment; routing labels are human gates)
+
+**Resolved slice routing**:
+The per-slice routing outcome (model, variant, fallback) frozen into the `run-state.json` checkpoint when the slice is created. Routing labels are read exactly once, at slice creation — a resumed run routes from the checkpoint, never from live GitHub labels, preserving the resume invariant that a run never re-derives its own scope.
+_Avoid_: live routing, label re-read
+
+**Model fallback**:
+The one-time re-spawn of a role on its configured fallback model after the premium model fails (safety-classifier refusal or model unavailability), recorded on the slice's **Resolved slice routing** and not counted against the continuation budget — continuation re-spawns the *same* model for incomplete work; fallback *swaps* the model.
+_Avoid_: retry, continuation (different budget, different semantics)
+
 ## Relationships
 
 - A **Distribution** owns at most one **Initializer** and at most one **Customizer**.
