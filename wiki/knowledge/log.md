@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-06-21 — Surgical update: cursor-rules.md activation-mode labels, Memories note, cross-link
+
+**Updated page (1):** `cursor-rules.md` — (1) aligned four activation-mode labels to official Cursor names: "Apply to Specific Files" (was "Specific Files") and "Apply Manually" (was "Manual") in the table and Summary; (2) added "### Rules vs. Cursor Memories" subsection clarifying `alwaysApply` rules as the authoritative always-on surface and Memories (GA since Cursor 1.2) as non-authoritative conversational captures, with [[cursor-hooks]] cross-link; (3) confirmed frontmatter keys stay as `description`, `alwaysApply`, `globs` (no change needed); (4) updated Last updated to 2026-06-21; (5) added [[cursor-hooks]] to Related pages.
+
+## 2026-06-21 — Surgical update: cursor-hooks.md known issues and caveats
+
+**Updated page (1):** `cursor-hooks.md` — added "## Known Issues and Caveats" section documenting three staff-confirmed bugs/limitations: (1) `sessionStart` `additional_context` silently dropped (timing race, forum 158452); (2) `afterFileEdit` fires only for first file in batch edits (forum 156065); (3) `beforeSubmitPrompt` cannot inject context, only block. Net takeaway cross-linked to [[cursor-rules]]. Updated Sources and Last updated fields.
+
 ## 2026-06-11 — Ingest: 8 Claude Code vendor docs (4 new pages + 4 content updates)
 
 **New pages (4):** `claude-code-commands.md` — complete slash command reference (built-in, bundled skills/workflows, MCP prompt commands, removed commands); `claude-code-env-vars.md` — full environment variable reference (all variable groups: auth, model config, feature toggles, observability, subagents, hooks, plugins, MCP, and more); `claude-code-mcp.md` — MCP integration reference (transport types, installation scopes, OAuth/headersHelper, plugin MCP servers, push channels, managed MCP, Claude Code as MCP server); `claude-code-tools.md` — built-in tool catalog with permission rule formats and per-tool detail sections for 40+ tools.

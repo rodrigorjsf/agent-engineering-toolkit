@@ -5,8 +5,8 @@
     "email": "rodrigo_rjsf@hotmail.com"
   },
   "metadata": {
-    "description": "Multi-plugin marketplace for evidence-based Cursor artifact engineering. Ships the rules-first Cursor distribution as an Initializer/Customizer pair: cursor-initializer bootstraps minimal, scoped .cursor/rules/*.mdc hierarchies; cursor-customizer creates and improves individual Cursor artifacts (rules, hooks, skills, subagents) inside an already-initialized project.",
-    "version": "1.1.0",
+    "description": "Multi-plugin marketplace for evidence-based Cursor artifact engineering. Ships the rules-first Cursor distribution as an Initializer/Customizer pair: cursor-initializer bootstraps minimal, scoped .cursor/rules/*.mdc hierarchies; cursor-customizer creates and improves individual Cursor artifacts (rules, hooks, skills, subagents) inside an already-initialized project. Adds cursor-code-documentation, a deployable-behavior plugin that ships an always-apply document-as-you-code rule plus on-demand code-explain and doc-generate skills.",
+    "version": "1.2.0",
     "pluginRoot": "plugins"
   },
   "plugins": [
@@ -19,6 +19,11 @@
       "name": "cursor-customizer",
       "source": "cursor-customizer",
       "description": "Rules-first, product-strict customizer for the Cursor distribution: creates and improves individual Cursor artifacts (rules, hooks, skills, subagents) inside an already-initialized project. Sibling of cursor-initializer."
+    },
+    {
+      "name": "cursor-code-documentation",
+      "source": "cursor-code-documentation",
+      "description": "Deployable-behavior Cursor plugin that ships an always-apply document-as-you-code rule plus on-demand code-explain and doc-generate skills. Adds language-idiomatic inline documentation whenever the agent writes, modifies, or creates code in any language including scripts."
     }
   ]
 }
