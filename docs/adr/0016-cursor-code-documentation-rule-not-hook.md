@@ -35,6 +35,24 @@ instinct, on live-verified evidence gathered 2026-06-21.
   `/writing-great-skills`. They mirror the source plugin's *commands*. The
   rule owns automatic/inline documentation; the skills own deliberate,
   heavyweight operations. The source plugin's subagents are not ported.
+- **These two skills are an explicit exception to the ADR-0007 semantic-tag
+  convention.** `/writing-great-skills` is a *methodology* (predictability,
+  pruning to a single source of truth, leading words, checkable completion
+  criteria, a human-facing description for a user-invoked skill) — not the
+  semantic-tag *format* (`<TRIGGER>`/`<BEHAVIOUR>`/`<HARD_RULES>`/`<PROCESS>`/
+  `<PHASE>`) that ADR-0007 and `wiki/knowledge/skill-body-convention.md` make
+  the repo-wide default for skill bodies. For these two manual-only,
+  deployable-behavior skills we author per the methodology in **plain Markdown
+  with no semantic-tag scaffold**: the tags here are ceremony that the
+  methodology's pruning discipline removes (the `<TRIGGER>` duplicates the
+  description, `<HARD_RULES>` overlaps `<BEHAVIOUR>`, `<VALIDATION>` overlaps the
+  step completion criteria). The path-scoped enforcement rule
+  `.claude/rules/cursor-plugin-skills.md` already covers only the
+  `cursor-initializer`/`cursor-customizer` generator skills, so no rule binds
+  these; this bullet records the divergence from the *universal* convention
+  documented in `skill-body-convention.md` so the repo stays coherent. The
+  exception is scoped to this plugin's manual-only skills only — it does **not**
+  generalize to any other skill.
 - **A deployable-behavior Cursor plugin.** `cursor-code-documentation` is the
   first plugin in this marketplace that *ships* behavior (a bundled rule +
   skills consumed directly on install) rather than *generating* artifacts into
@@ -91,3 +109,11 @@ instinct, on live-verified evidence gathered 2026-06-21.
   `globs` nuance, and Memories GA).
 - PRD #335 carries the implementation; its single test seam is the plugin's
   quality-gate skill.
+- The two manual-only skills are an explicit, scoped exception to the ADR-0007
+  semantic-tag convention (see the Decision section): they are authored per the
+  `/writing-great-skills` methodology in plain Markdown with no semantic-tag
+  scaffold. `wiki/knowledge/skill-body-convention.md` records this exception,
+  and the plugin's quality-gate validates the skills against the
+  writing-great-skills authoring bar (frontmatter, human-facing description, an
+  ordered process with checkable completion criteria) rather than against the
+  semantic-tag vocabulary.
