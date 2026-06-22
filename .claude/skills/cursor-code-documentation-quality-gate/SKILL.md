@@ -22,10 +22,14 @@ rule, `skills/code-explain/SKILL.md`, `skills/doc-generate/SKILL.md`, and
 `.cursor-plugin/plugin.json`. Plus the repo-root `.cursor-plugin/marketplace.json`
 and root `README.md` for parity.
 
-**Convention sources:** `.claude/rules/cursor-plugin-skills.md`,
-`.claude/rules/plugin-versioning.md`, `.claude/rules/readme-files.md`,
-`docs/adr/0016-cursor-code-documentation-rule-not-hook.md`,
-`wiki/knowledge/skill-body-convention.md`.
+**Convention sources:** `.claude/rules/plugin-versioning.md`,
+`.claude/rules/readme-files.md`,
+`docs/adr/0016-cursor-code-documentation-rule-not-hook.md`. The two manual-only
+skills are authored per the `/writing-great-skills` methodology and are an
+explicit, recorded exception to the ADR-0007 semantic-tag convention (see
+ADR-0016 and the "Recorded exceptions" note in
+`wiki/knowledge/skill-body-convention.md`) — this gate validates them against the
+writing-great-skills authoring bar, **not** the semantic-tag vocabulary.
 
 **Do NOT apply generator-skill checks.** The `references/` directory,
 `assets/templates/` directory, `validation-criteria.md` reference, delegate-to-analyzer
@@ -51,9 +55,14 @@ stays within the ≤30-line budget naming the language→format mapping.
 
 **Each skill** — `plugins/cursor-code-documentation/skills/{code-explain,doc-generate}/SKILL.md`:
 apply checks S1–S7. Confirm `name` equals the folder name, `disable-model-invocation: true`
-is present, the frontmatter is valid, and the mandatory semantic tags are present
-with `id=` on every `<PHASE>` (only `<PHASE>` requires `id=`; `<PREFLIGHT>`,
-`<OUTPUT>`, and `<VALIDATION>` correctly carry none).
+is present, and the frontmatter is valid. These skills are authored per
+`/writing-great-skills` (ADR-0016 exception to ADR-0007), so validate the body
+against the **writing-great-skills authoring bar — NOT semantic tags**: a
+human-facing `description` (a one-line summary with no trigger lists, since the
+skill is user-invoked), an ordered process whose steps each carry a checkable
+completion criterion, and the explain↔generate role boundary stated once (single
+source of truth). Do **not** require or flag the absence of `<TRIGGER>`/
+`<BEHAVIOUR>`/`<HARD_RULES>`/`<PROCESS>`/`<PHASE>` tags.
 
 **The manifest** — `plugins/cursor-code-documentation/.cursor-plugin/plugin.json`:
 apply checks M1–M4. Confirm `name` equals `cursor-code-documentation`, the file is
@@ -77,11 +86,15 @@ Read the criteria reference sections "Marketplace-Parity Checks" and
   the sibling entries, not a hardcoded key count.
 
 **Version cascade**:
-- `.cursor-plugin/marketplace.json` `metadata.version` is bumped to `1.2.0` —
-  MINOR, mirroring a new `plugins[]` entry (check VC1).
-- `plugins/cursor-code-documentation/.cursor-plugin/plugin.json` `version` STAYS
-  at `1.0.0` — this slice touches no file under `plugins/cursor-code-documentation/**`,
-  so the plugin manifest does NOT bump (check VC2).
+- `.cursor-plugin/marketplace.json` `metadata.version` reflects the
+  `plugins[]` addition — bumped MINOR from the pre-registration baseline (check
+  VC1). Assert the rule, not a hardcoded number.
+- `plugins/cursor-code-documentation/.cursor-plugin/plugin.json` `version` is
+  present, valid SemVer, and consistent with the changes made under
+  `plugins/cursor-code-documentation/**` per the versioning ladder (check VC2).
+  Do NOT assert a fixed value: any change under that tree bumps it, so the
+  manifest legitimately advances past `1.0.0` (e.g. README/skill edits in the
+  same integration branch).
 - Do NOT check `.claude-plugin/marketplace.json` — cascade rule (2) is
   Claude-Code-only; this Cursor plugin is not in the Claude registry.
 
@@ -121,7 +134,7 @@ GREEN-expected for the implemented plugin.
 
 For each scenario, confirm the relevant artifact contains the guidance/frontmatter
 that makes the assertion hold, and record PASS/FAIL with evidence (the rule body
-for G1, each skill's `<PROCESS>`/`<OUTPUT>` for G2/G3, the `disable-model-invocation`
+for G1, each skill's Process section for G2/G3, the `disable-model-invocation`
 frontmatter for G4).
 
 ---
@@ -177,10 +190,14 @@ Before declaring the gate complete, confirm:
       `validation-criteria.md`, delegate-to-analyzer, intra-plugin shared-copy parity)
       was applied to the manual-only skills — those conventions govern the
       cursor-initializer / cursor-customizer generators, not this deployable-behavior plugin.
-- [ ] The `id=` check was scoped to `<PHASE>` only — `<PREFLIGHT>`, `<OUTPUT>`, and
-      `<VALIDATION>` correctly carry no `id=` and were not flagged.
+- [ ] The skills were judged against the writing-great-skills authoring bar
+      (human-facing description, ordered process with checkable completion criteria,
+      role boundary), NOT the semantic-tag vocabulary — no skill was flagged for
+      lacking `<TRIGGER>`/`<BEHAVIOUR>`/`<HARD_RULES>`/`<PROCESS>`/`<PHASE>` tags
+      (ADR-0016 exception to ADR-0007).
 - [ ] No Claude-specific field (`paths:`) was required of, or found in, any Cursor artifact.
-- [ ] The version-cascade check asserted `metadata.version` → 1.2.0 AND
-      `plugin.json` staying at 1.0.0 — it did NOT demand a plugin.json bump.
+- [ ] The version-cascade check asserted the RULE, not fixed numbers — `metadata.version`
+      reflects the `plugins[]` addition and `plugin.json` advances per the ladder for
+      changes under `plugins/cursor-code-documentation/**`; it did NOT pin `plugin.json` to 1.0.0.
 - [ ] The marketplace-parity check asserted sibling-shape parity with NO per-entry
       version field — not a hardcoded key count.

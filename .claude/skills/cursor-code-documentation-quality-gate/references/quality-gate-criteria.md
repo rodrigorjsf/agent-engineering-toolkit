@@ -4,9 +4,12 @@ Complete check tables, severity classification, and findings report template for
 the cursor-code-documentation quality gate meta-skill. All tables below encode the
 GREEN-expected state for the shipped plugin.
 
-Source: `.claude/rules/cursor-plugin-skills.md`, `.claude/rules/plugin-versioning.md`,
-`.claude/rules/readme-files.md`, `docs/adr/0016-cursor-code-documentation-rule-not-hook.md`,
-`wiki/knowledge/skill-body-convention.md`
+Source: `.claude/rules/plugin-versioning.md`, `.claude/rules/readme-files.md`,
+`docs/adr/0016-cursor-code-documentation-rule-not-hook.md`. The two manual-only
+skills are authored per the `/writing-great-skills` methodology — an explicit,
+recorded exception to the ADR-0007 semantic-tag convention (see ADR-0016 and the
+"Recorded exceptions" note in `wiki/knowledge/skill-body-convention.md`); the
+per-skill checks below validate that authoring bar, not the tag vocabulary.
 
 ## Contents
 
@@ -45,16 +48,21 @@ Targets: `plugins/cursor-code-documentation/skills/code-explain/SKILL.md`,
 | S1 | YAML frontmatter present with `name` and `description` | Required | CRITICAL |
 | S2 | `name` equals the containing folder name (`code-explain` / `doc-generate`) | Exact | CRITICAL |
 | S3 | `disable-model-invocation: true` present (manual-only invocation) | Required | CRITICAL |
-| S4 | `description` ≤ 1024 chars, non-empty, no XML tags | Exact | MAJOR |
-| S5 | Mandatory semantic tags present: `<TRIGGER>`, `<BEHAVIOUR>`, `<HARD_RULES>`, `<PROCESS>` containing ≥1 `<PHASE>` | Required | CRITICAL |
-| S6 | Every `<PHASE>` carries an `id=` attribute (ONLY `<PHASE>` requires `id=`; `<PREFLIGHT>`/`<OUTPUT>`/`<VALIDATION>` correctly carry none) | Required | CRITICAL |
-| S7 | All opened tags balanced; all attribute values quoted | Well-formed | CRITICAL |
+| S4 | `description` is a human-facing one-line summary — ≤ 1024 chars, non-empty, no XML tags, and NO trigger lists / "invoked via …" phrasing (user-invoked skills strip triggers from the description; `disable-model-invocation` already enforces manual-only) | Exact | MAJOR |
+| S5 | Body is authored per `/writing-great-skills`: an identity line naming the explain↔generate role boundary once (single source of truth), and an ordered process (numbered steps or `## Process`) | Required | CRITICAL |
+| S6 | Each process step carries a checkable completion criterion (e.g. a *Done when …* clause) | Required | MAJOR |
+| S7 | No semantic-tag scaffold required — `<TRIGGER>`/`<BEHAVIOUR>`/`<HARD_RULES>`/`<PROCESS>`/`<PHASE>` are an ADR-0016 exception here; do NOT flag their absence. No Claude-Code constructs (`paths:`/`tools:`/`maxTurns:`, `.claude/`/`CLAUDE.md` refs) | Well-formed | CRITICAL |
 
 > **Do NOT apply generator checks** to these skills: no `references/` dir, no
 > `assets/templates/` dir, no `validation-criteria.md` reference, no
 > delegate-to-analyzer phase, no intra-plugin shared-copy parity. Those govern the
 > cursor-initializer / cursor-customizer generators. These are manual-only,
 > deployable-behavior skills with none of those surfaces by design.
+>
+> **Do NOT require semantic tags.** Per ADR-0016 (an explicit exception to the
+> ADR-0007 / `skill-body-convention.md` universal convention) these skills are
+> authored per `/writing-great-skills` in plain Markdown. Judge the authoring
+> quality (S4–S7), never the presence of the tag vocabulary.
 
 ---
 
@@ -66,7 +74,7 @@ Target: `plugins/cursor-code-documentation/.cursor-plugin/plugin.json`
 |---|-------|-----------|---------------------|
 | M1 | Valid JSON (parses without error) | Required | CRITICAL |
 | M2 | `name` equals `cursor-code-documentation` | Exact | CRITICAL |
-| M3 | `version` present and valid SemVer (`1.0.0`) | Required | CRITICAL |
+| M3 | `version` present and valid SemVer (advances per the versioning ladder for changes under `plugins/cursor-code-documentation/**`; do NOT pin a fixed value) | Required | CRITICAL |
 | M4 | `description` present and non-empty | Required | MAJOR |
 
 ---
@@ -94,8 +102,8 @@ Source: `.claude/rules/plugin-versioning.md`
 
 | # | Check | Threshold | Severity if Violated |
 |---|-------|-----------|---------------------|
-| VC1 | `.cursor-plugin/marketplace.json` `metadata.version` bumped to `1.2.0` (MINOR — new `plugins[]` entry) | Exact | CRITICAL |
-| VC2 | `plugins/cursor-code-documentation/.cursor-plugin/plugin.json` `version` STAYS `1.0.0` (this slice touches no file under `plugins/cursor-code-documentation/**`) | Exact | MAJOR |
+| VC1 | `.cursor-plugin/marketplace.json` `metadata.version` reflects the `plugins[]` addition — bumped MINOR from the pre-registration baseline (assert the rule, not a fixed number) | Rule | CRITICAL |
+| VC2 | `plugins/cursor-code-documentation/.cursor-plugin/plugin.json` `version` is present, valid SemVer, and advances per the ladder for changes under `plugins/cursor-code-documentation/**` (it legitimately moves past `1.0.0` for README/skill edits on the same integration branch; do NOT pin a fixed value) | Rule | MAJOR |
 
 > Do NOT check `.claude-plugin/marketplace.json` — cascade rule (2) is
 > Claude-Code-only; this Cursor plugin is not in the Claude registry. The two
@@ -110,8 +118,8 @@ All four scenarios are GREEN-expected for the shipped plugin.
 | # | Scenario | RED baseline (absent behavior) | GREEN assertion (evidence in artifact) |
 |---|----------|--------------------------------|----------------------------------------|
 | G1 | Edit/create a code symbol | No automatic documentation added | The always-apply rule (`alwaysApply: true`) maps each language to its idiomatic doc format and instructs documenting on every code write/edit |
-| G2 | `/code-explain` invoked | No structured explanation | `code-explain` `<PROCESS>` produces the three-section format (Overview, Key Concepts, Step-by-Step Breakdown) |
-| G3 | `/doc-generate` invoked | No documentation artifact | `doc-generate` `<PROCESS>` produces the requested form (API docs, README section, or inline doc-strings) |
+| G2 | `/code-explain` invoked | No structured explanation | `code-explain`'s process produces the three-section format (Overview, Key Concepts, Step-by-Step Breakdown) |
+| G3 | `/doc-generate` invoked | No documentation artifact | `doc-generate`'s process produces the requested form (API docs, README section, or inline doc-strings) |
 | G4 | Mid-edit, no explicit `/command` | A manual skill auto-fires spuriously | Both skills carry `disable-model-invocation: true`, so neither auto-invokes |
 
 ---
