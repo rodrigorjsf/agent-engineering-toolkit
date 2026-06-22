@@ -25,7 +25,7 @@ YAML frontmatter is untouched — each platform's official spec continues to gov
 
 ### Recorded exceptions
 
-- **`cursor-code-documentation` manual-only skills** (`plugins/cursor-code-documentation/skills/code-explain/SKILL.md`, `…/doc-generate/SKILL.md`) — authored per the `/writing-great-skills` methodology in **plain Markdown with no semantic-tag scaffold**, per [[adr-0016-cursor-code-documentation]]. The decision is recorded there: the methodology's pruning discipline treats the tags as ceremony for these short, user-invoked command mirrors. The exception is scoped to these two skills only and does not generalize. Their quality gate validates them against the writing-great-skills authoring bar (frontmatter, human-facing description, an ordered process with checkable completion criteria), not against this vocabulary.
+- **`cursor-code-documentation` manual-only skills** (`plugins/cursor-code-documentation/skills/code-explain/SKILL.md`, `…/doc-generate/SKILL.md`) — authored per the `/writing-great-skills` methodology in **plain Markdown with no semantic-tag scaffold**, per ADR-0016 (`docs/adr/0016-cursor-code-documentation-rule-not-hook.md`). The decision is recorded there: the methodology's pruning discipline treats the tags as ceremony for these short, user-invoked command mirrors. The exception is scoped to these two skills only and does not generalize. Their quality gate validates them against the writing-great-skills authoring bar (frontmatter, human-facing description, an ordered process with checkable completion criteria), not against this vocabulary.
 
 ## Canonical tag vocabulary
 
