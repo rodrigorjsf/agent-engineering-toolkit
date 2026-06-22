@@ -25,6 +25,7 @@ the generated files are in place. Treat the first execution as a one-time invest
 | `orchestrate` | Claude Code | Native plugin system | [plugins/orchestrate/README.md](plugins/orchestrate/README.md) |
 | `cursor-initializer` | Cursor IDE | Native plugin system | [plugins/cursor-initializer/README.md](plugins/cursor-initializer/README.md) |
 | `cursor-customizer` | Cursor IDE | Native plugin system | [plugins/cursor-customizer/README.md](plugins/cursor-customizer/README.md) |
+| `cursor-code-documentation` | Cursor IDE | Native plugin system | [plugins/cursor-code-documentation/README.md](plugins/cursor-code-documentation/README.md) |
 | Standalone | Any AI tool | `npx skills add` / manual | [skills/README.md](skills/README.md) |
 
 ## Research Foundation
@@ -94,6 +95,16 @@ ln -s ~/src/agent-engineering-toolkit ~/.cursor/plugins/local/agent-engineering-
 ```
 
 → See [plugins/cursor-customizer/README.md](plugins/cursor-customizer/README.md) for full setup instructions.
+
+### Cursor IDE — cursor-code-documentation
+
+```bash
+git clone https://github.com/rodrigorjsf/agent-engineering-toolkit.git ~/src/agent-engineering-toolkit
+mkdir -p ~/.cursor/plugins/local
+ln -s ~/src/agent-engineering-toolkit ~/.cursor/plugins/local/agent-engineering-toolkit
+```
+
+→ See [plugins/cursor-code-documentation/README.md](plugins/cursor-code-documentation/README.md) for full setup instructions.
 
 ### npx skills add — Standalone
 
