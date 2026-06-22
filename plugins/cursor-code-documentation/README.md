@@ -79,8 +79,8 @@ The manual skills are invoked explicitly:
 /cursor-code-documentation:doc-generate    # generate documentation for a file or module
 ```
 
-> **Status:** the two manual skills are delivered by upcoming slices. The rule
-> ships with this foundation release and is immediately active.
+The `document-as-you-code` rule is always active after installation; the two
+manual skills ship alongside it and are invoked explicitly.
 
 ## Repository Structure
 
@@ -88,12 +88,15 @@ The manual skills are invoked explicitly:
 plugins/cursor-code-documentation/
 ├── .cursor-plugin/
 │   └── plugin.json           # Plugin manifest (name, version, description)
-└── .cursor/
-    └── rules/
-        └── document-as-you-code.mdc   # Always-apply documentation rule
+├── .cursor/
+│   └── rules/
+│       └── document-as-you-code.mdc   # Always-apply documentation rule
+└── skills/
+    ├── code-explain/
+    │   └── SKILL.md          # Manual-only: explain an existing code section
+    └── doc-generate/
+        └── SKILL.md          # Manual-only: generate documentation for a file or module
 ```
-
-Skills land in subsequent slices under `skills/`.
 
 ## License
 
