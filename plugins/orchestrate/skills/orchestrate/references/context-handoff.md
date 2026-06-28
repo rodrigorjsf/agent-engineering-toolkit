@@ -130,3 +130,12 @@ The successor does not need a Claude-Code conversation resume (`--continue` /
 `--resume`): it is a brand-new session. It resumes the *orchestration run*, a
 separate layer, by re-invoking `/orchestrate`, which detects the
 `run-state.json` checkpoint and continues.
+
+The orchestrator derives the partition-correct invocation from the active run's
+`runId` prefix — `/orchestrate <N>` for a `prd<N>-` run, bare `/orchestrate`
+for a `backlog-` run — and passes it as `spawn_successor`'s `resumePrompt`,
+which overrides `handoff.json`'s static `successor.resumePrompt`. The
+orchestrator always derives and passes `resumePrompt`, so the table row above
+remains the documented fallback default, used only when no `resumePrompt` is
+passed (a manual or legacy launch); a single static prompt cannot encode the
+partition per-run.

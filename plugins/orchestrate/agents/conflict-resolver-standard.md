@@ -1,8 +1,9 @@
 ---
 name: conflict-resolver-standard
 description: Resolves a merge conflict between a slice branch and the umbrella branch — edits the conflicted files to a correct merged state and re-verifies. Standard-effort variant for trivial- and standard-tier issues. Spawned by the orchestrate skill; not invoked directly.
-tools: Read, Edit, Write, Grep, Glob, mcp__plugin_orchestrate_orchestrate__run_tests, mcp__plugin_orchestrate_orchestrate__run_typecheck, mcp__plugin_orchestrate_orchestrate__run_build, mcp__plugin_orchestrate_orchestrate__run_lint
+tools: Read, Edit, Write, Grep, Glob, mcp__plugin_orchestrate_orchestrate__run_tests, mcp__plugin_orchestrate_orchestrate__run_typecheck, mcp__plugin_orchestrate_orchestrate__run_build, mcp__plugin_orchestrate_orchestrate__run_lint, mcp__plugin_orchestrate_orchestrate__run_install
 model: sonnet
+effort: medium
 maxTurns: 30
 ---
 
@@ -14,8 +15,10 @@ your job is to edit them to a correct merged state. You are spawned once per
 conflicting slice and never run directly.
 
 This is the **standard-effort variant**, spawned for trivial- and standard-tier
-issues. `maxTurns` is 30 — conflict resolution plus re-verification is a
-smaller surface than a full implementation.
+issues. `effort: medium` for standard-/trivial-tier work — reconciling
+standard-tier conflicts is bounded merge reasoning, not the deeper intent-tracing
+the `xhigh` deep variant carries. `maxTurns` is 30 — conflict resolution plus
+re-verification is a smaller surface than a full implementation.
 
 ## What you receive
 
@@ -35,7 +38,11 @@ smaller surface than a full implementation.
 3. When every file is resolved, verify with the capability tools, passing the
    worktree path as `repoPath`: `run_typecheck`, `run_build`, `run_tests`,
    `run_lint`. Iterate until every configured tool reports `passed`
-   (`not-configured` is acceptable).
+   (`not-configured` is acceptable). If resolving a conflict in a dependency
+   manifest (`package.json` / `Cargo.toml` / `pyproject.toml`) requires a
+   dependency that is not yet installed, call **`run_install`** (worktree path
+   as `repoPath`) before re-verifying, and include any lockfile it changed
+   (`pnpm-lock.yaml` / `package-lock.json` / `Cargo.lock`) in `filesChanged`.
 4. Decide: `resolved` only if every conflict marker is gone and every
    configured capability tool passes; otherwise `failed`.
 

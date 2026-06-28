@@ -23,8 +23,21 @@ const MAX_OUTPUT_CHARS = 64_000;
 
 // ─── Capability verbs ─────────────────────────────────────────────────────────
 
-/** The four fixed capability verbs, each a key in `.orchestrate/commands.json`. */
-export const CAPABILITY_VERBS = ["tests", "typecheck", "build", "lint"] as const;
+/**
+ * The capability verbs, each a key in `.orchestrate/commands.json`. The first
+ * four (`tests`, `typecheck`, `build`, `lint`) are the fast, per-slice verbs the
+ * Capability detector auto-populates. `integration` is an optional, heavy,
+ * per-wave suite (Testcontainers/failsafe) that is never auto-detected — it is
+ * hand-authored only when a project ships such a suite, and runs once per wave
+ * against the umbrella tip rather than on every slice.
+ */
+export const CAPABILITY_VERBS = [
+  "tests",
+  "typecheck",
+  "build",
+  "lint",
+  "integration",
+] as const;
 export type CapabilityVerb = (typeof CAPABILITY_VERBS)[number];
 
 // ─── Schemas — z.object is the single source of truth; TS types via z.infer ───
@@ -38,17 +51,35 @@ export type CapabilityVerb = (typeof CAPABILITY_VERBS)[number];
  * stripped, so a `$schema` pointer or future additive keys do not break an
  * existing config.
  *
+ * `integration` is an optional, heavy capability verb — a per-wave suite
+ * (Testcontainers/failsafe) distinct from the four fast, per-slice capability
+ * verbs above and distinct from the `install` setup verb. It is never
+ * auto-detected: a project hand-authors it only when it ships such a suite, and
+ * the orchestrator runs it once per wave against the umbrella tip rather than on
+ * every slice. Because unknown keys are stripped, a project that omits it stays
+ * forward-compatible.
+ *
  * `install` is a setup verb, not a capability verb — it runs once after a
  * worktree is created (a fresh worktree has no installed dependencies) so the
  * four capability commands above have what they need. It is optional: a
  * project whose capability commands need no install simply omits it.
+ *
+ * `knownFailures` is a non-capability annotation key — like `install`, it is
+ * NOT one of the four capability verbs and is never executed. It is an optional
+ * list of substring/regex patterns matched against the captured output of a
+ * failing capability command to annotate which baseline-failure patterns
+ * appeared (`matched`) and which configured patterns did not (`unmatched`). It
+ * is a best-effort L1 hint for the orchestrator, never a "zero new failures"
+ * guarantee.
  */
 export const commandsConfigSchema = z.object({
   tests: z.array(z.string().min(1)).optional(),
   typecheck: z.array(z.string().min(1)).optional(),
   build: z.array(z.string().min(1)).optional(),
   lint: z.array(z.string().min(1)).optional(),
+  integration: z.array(z.string().min(1)).optional(),
   install: z.array(z.string().min(1)).optional(),
+  knownFailures: z.array(z.string().min(1)).optional(),
 });
 
 export const runCommandInputSchema = z.object({
@@ -56,10 +87,15 @@ export const runCommandInputSchema = z.object({
     .string()
     .optional()
     .describe(
-      "Path to the project root that holds the .orchestrate/commands.json " +
-        "configuration file. Defaults to the MCP server process's current " +
-        "working directory — callers should pass this explicitly rather than " +
-        "rely on the default, which is not guaranteed to be the project root."
+      "The execution directory — the slice worktree (or project root) the " +
+        "command runs in (cwd). The .orchestrate/commands.json config is NOT " +
+        "read from here: it is resolved from the MAIN repository root derived " +
+        "from this path (via `git rev-parse --git-common-dir`), so a fresh " +
+        "worktree — which checks out only tracked files and so lacks " +
+        ".orchestrate/ — still finds config. Defaults to the MCP server " +
+        "process's current working directory — callers should pass this " +
+        "explicitly rather than rely on the default, which is not guaranteed " +
+        "to be the project root."
     ),
 });
 
@@ -73,7 +109,7 @@ export const runCommandOutputSchema = z.object({
         "could not be run (invalid config, timeout, or spawn failure)."
     ),
   capability: z
-    .enum(["tests", "typecheck", "build", "lint"])
+    .enum(["tests", "typecheck", "build", "lint", "integration"])
     .describe("The capability verb this result is for. Always present."),
   command: z
     .array(z.string())
@@ -113,6 +149,22 @@ export const runCommandOutputSchema = z.object({
     .describe(
       "True when `stdout` or `stderr` was truncated to fit the size cap. " +
         "Present whenever `stdout`/`stderr` are present."
+    ),
+  knownFailureMatches: z
+    .object({
+      matched: z.array(z.string()),
+      unmatched: z.array(z.string()),
+    })
+    .optional()
+    .describe(
+      "Baseline-failure annotation, present only when the command exited " +
+        "non-zero AND `knownFailures` is configured in commands.json. " +
+        "`matched` = the configured patterns that appeared in the captured " +
+        "output; `unmatched` = the configured patterns that did NOT appear. " +
+        "This is a best-effort L1 hint, NOT a guarantee of 'zero new " +
+        "failures': run_tests returns capped exit-code output, not a " +
+        "structured test-result list, so an unmatched failure indicator in " +
+        "the output still warrants a spot-check by the orchestrator."
     ),
   durationMs: z
     .number()
@@ -183,6 +235,46 @@ function capOutput(s: string): { text: string; truncated: boolean } {
     text: `[... output truncated — showing the last ${MAX_OUTPUT_CHARS} characters ...]\n${tail}`,
     truncated: true,
   };
+}
+
+/**
+ * Annotates which configured `knownFailures` patterns appear in a failing
+ * command's captured output. Best-effort L1 baseline-vs-regression hint — NOT a
+ * "zero new failures" guarantee.
+ *
+ * Matching runs against the UNTRUNCATED combined output (`rawStdout + "\n" +
+ * rawStderr`), not the capped text returned in the result: a failure indicator
+ * can live in the dropped head of oversized output. Each pattern is compiled as
+ * a RegExp; an invalid pattern (e.g. a stray paren) is matched literally via
+ * `includes` rather than escalating to an error — this honors the module's
+ * "never throw — every failure mode is a structured result" philosophy.
+ *
+ * Returns `undefined` when no patterns are configured, so the output field is
+ * omitted entirely.
+ */
+function annotateKnownFailures(
+  patterns: string[] | undefined,
+  rawStdout: string,
+  rawStderr: string
+): { matched: string[]; unmatched: string[] } | undefined {
+  if (!patterns || patterns.length === 0) {
+    return undefined;
+  }
+  const rawCombined = `${rawStdout}\n${rawStderr}`;
+  const matched: string[] = [];
+  const unmatched: string[] = [];
+  for (const pattern of patterns) {
+    let present: boolean;
+    try {
+      present = new RegExp(pattern).test(rawCombined);
+    } catch {
+      // Invalid regex (e.g. a stray paren) — fall back to a literal substring
+      // match instead of throwing or surfacing CONFIG_INVALID.
+      present = rawCombined.includes(pattern);
+    }
+    (present ? matched : unmatched).push(pattern);
+  }
+  return { matched, unmatched };
 }
 
 /** Outcome of a single `execFile` invocation, classified for the caller. */
@@ -276,6 +368,27 @@ async function execCommand(
 }
 
 /**
+ * Resolves the main repository root for config lookup. In a linked worktree
+ * `git rev-parse --git-common-dir` points at the shared `.git` dir under the
+ * MAIN working tree; its parent IS that main tree (uniform for worktree and
+ * non-worktree invocations). The command still executes in `execCwd` (the
+ * worktree) — only config resolution moves to the main root. Falls back to
+ * `execCwd` on any git failure so non-git/test callers behave as before.
+ */
+async function resolveConfigRoot(execCwd: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["rev-parse", "--git-common-dir"],
+      { cwd: execCwd, encoding: "utf8" }
+    );
+    return path.dirname(path.resolve(execCwd, stdout.trim()));
+  } catch {
+    return execCwd;
+  }
+}
+
+/**
  * Outcome of loading and validating `.orchestrate/commands.json`. `runInstall`
  * and `runConfiguredCommand` share this loader so the file is read, parsed, and
  * shape-checked in exactly one place.
@@ -287,9 +400,11 @@ type LoadCommandsConfigResult =
 
 /**
  * Reads `<cwd>/.orchestrate/commands.json` and validates it against
- * {@link commandsConfigSchema}. A missing file is not an error — it means the
- * project has not configured orchestrate commands yet. Malformed JSON or a
- * wrong shape is a real misconfiguration. Never throws.
+ * {@link commandsConfigSchema}. The caller derives `cwd` — the config root —
+ * via {@link resolveConfigRoot} from the execution directory, so in a worktree
+ * this points at the main repository root, not the worktree. A missing file is
+ * not an error — it means the project has not configured orchestrate commands
+ * yet. Malformed JSON or a wrong shape is a real misconfiguration. Never throws.
  */
 function loadCommandsConfig(cwd: string): LoadCommandsConfigResult {
   const configPath = path.join(cwd, ".orchestrate", "commands.json");
@@ -337,20 +452,24 @@ function loadCommandsConfig(cwd: string): LoadCommandsConfigResult {
 /**
  * Runs the project's configured command for a single capability `verb`.
  *
- * Reads `<repoPath>/.orchestrate/commands.json`, looks up the argv array for
- * `verb`, and executes it with no shell. The caller supplies only `repoPath` —
- * never a command string. Every failure mode is a structured result; this
- * function does not throw.
+ * Reads `.orchestrate/commands.json` from the main repository root derived from
+ * `<repoPath>` (via {@link resolveConfigRoot}), looks up the argv array for
+ * `verb`, and executes it with no shell with `cwd = <repoPath>` (the slice
+ * worktree) — so a fresh worktree still finds config while the command runs
+ * against the worktree's code. The caller supplies only `repoPath` — never a
+ * command string. Every failure mode is a structured result; this function
+ * does not throw.
  */
 export async function runConfiguredCommand(
   verb: CapabilityVerb,
   input: RunCommandInput,
   opts: RunCommandOptions = {}
 ): Promise<RunCommandOutput> {
-  const cwd = input.repoPath ?? process.cwd();
+  const execCwd = input.repoPath ?? process.cwd();
+  const configRoot = await resolveConfigRoot(execCwd);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  const loaded = loadCommandsConfig(cwd);
+  const loaded = loadCommandsConfig(configRoot);
   if (loaded.kind === "not-configured") {
     return { status: "not-configured", capability: verb, reason: loaded.reason };
   }
@@ -373,7 +492,7 @@ export async function runConfiguredCommand(
     };
   }
 
-  const exec = await execCommand(argv, cwd, timeoutMs);
+  const exec = await execCommand(argv, execCwd, timeoutMs);
 
   if (exec.kind === "timeout") {
     // Surface the output captured before SIGKILL — a hung run is otherwise
@@ -403,6 +522,17 @@ export async function runConfiguredCommand(
 
   const out = capOutput(exec.stdout);
   const errOut = capOutput(exec.stderr);
+  // Annotate known baseline failures on the FAILED branch only, matching
+  // against the UNTRUNCATED output (a failure indicator can sit in the dropped
+  // head of oversized output). On 'passed' the field stays absent.
+  const knownFailureMatches =
+    exec.exitCode === 0
+      ? undefined
+      : annotateKnownFailures(
+          loaded.config.knownFailures,
+          exec.stdout,
+          exec.stderr
+        );
   return {
     status: exec.exitCode === 0 ? "passed" : "failed",
     capability: verb,
@@ -411,6 +541,7 @@ export async function runConfiguredCommand(
     stdout: out.text,
     stderr: errOut.text,
     truncated: out.truncated || errOut.truncated,
+    ...(knownFailureMatches ? { knownFailureMatches } : {}),
     durationMs: exec.durationMs,
   };
 }
@@ -431,15 +562,115 @@ export const runBuild = (input: RunCommandInput, opts?: RunCommandOptions) =>
 export const runLint = (input: RunCommandInput, opts?: RunCommandOptions) =>
   runConfiguredCommand("lint", input, opts);
 
+export const runIntegration = (
+  input: RunCommandInput,
+  opts?: RunCommandOptions
+) => runConfiguredCommand("integration", input, opts);
+
 // ─── Install (setup verb) ─────────────────────────────────────────────────────
 
 /**
- * Result of running the configured `install` command.
+ * Output schema for the `run_install` MCP tool (and the internal `runInstall`
+ * return). The single source of truth — `InstallResult` is its `z.infer`.
  *
- * Not an MCP tool output — `runInstall` is internal, called by `create_worktree`
- * after a worktree is created. Mirrors the shape of {@link RunCommandOutput}
- * minus `capability`: `install` is a setup verb, not one of the four capability
- * verbs.
+ * Mirrors the shape of {@link runCommandOutputSchema} minus `capability`:
+ * `install` is the mutating dependency-resolve setup verb (`pnpm install` /
+ * `npm install`), not one of the four capability verbs. `run_install` is
+ * orchestrator- and subagent-callable on any checkout; a subagent calls it
+ * after editing a manifest to fetch a newly-added dependency before re-running
+ * the capability tools.
+ */
+export const runInstallOutputSchema = z.object({
+  status: z
+    .enum(["installed", "not-configured", "failed", "error"])
+    .describe(
+      "Outcome discriminant. 'installed' = the install command exited 0; " +
+        "'failed' = it exited non-zero; 'not-configured' = no `install` " +
+        "command is set (a clean, expected state — a project that needs no " +
+        "install simply omits the key); 'error' = the command could not be " +
+        "run (invalid config, timeout, or spawn failure)."
+    ),
+  command: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "The exact argv array that was executed, read verbatim from " +
+        ".orchestrate/commands.json. Present when status is 'installed' or " +
+        "'failed'. The caller never supplies this — it is fixed by config."
+    ),
+  exitCode: z
+    .number()
+    .optional()
+    .describe(
+      "Process exit code. 0 for 'installed', non-zero for 'failed'. Present " +
+        "when status is 'installed' or 'failed'."
+    ),
+  stdout: z
+    .string()
+    .optional()
+    .describe(
+      "Captured standard output, tail-truncated to 64,000 characters. " +
+        "Present when status is 'installed' or 'failed', and on a 'TIMEOUT' " +
+        "error (the output captured before the command was killed). See " +
+        "`truncated`."
+    ),
+  stderr: z
+    .string()
+    .optional()
+    .describe(
+      "Captured standard error, tail-truncated to 64,000 characters. " +
+        "Present when status is 'installed' or 'failed', and on a 'TIMEOUT' " +
+        "error. See `truncated`."
+    ),
+  truncated: z
+    .boolean()
+    .optional()
+    .describe(
+      "True when `stdout` or `stderr` was truncated to fit the size cap. " +
+        "Present whenever `stdout`/`stderr` are present."
+    ),
+  durationMs: z
+    .number()
+    .optional()
+    .describe(
+      "Wall-clock duration of the command in milliseconds. Present whenever " +
+        "the install command was actually executed — status 'installed' or " +
+        "'failed', or a 'TIMEOUT' / 'EXEC_ERROR' error. Absent for " +
+        "config-level failures."
+    ),
+  reason: z
+    .string()
+    .optional()
+    .describe(
+      "Human-readable explanation of why no install ran. Present when status " +
+        "is 'not-configured'."
+    ),
+  errorCode: z
+    .enum(["CONFIG_INVALID", "EXEC_ERROR", "TIMEOUT"])
+    .optional()
+    .describe(
+      "Machine-readable failure category. Present when status is 'error'. " +
+        "'CONFIG_INVALID' = commands.json is malformed JSON or the wrong " +
+        "shape; 'EXEC_ERROR' = the install binary could not be spawned (e.g. " +
+        "a missing `pnpm` — there is no silent npm fallback); 'TIMEOUT' = the " +
+        "command exceeded the time limit and was killed."
+    ),
+  errorMessage: z
+    .string()
+    .optional()
+    .describe(
+      "Cleaned, human-readable failure description. Present when status is " +
+        "'error'."
+    ),
+});
+
+/**
+ * Result of running the configured `install` command — the `z.infer` of
+ * {@link runInstallOutputSchema} (the schema is the single source of truth).
+ *
+ * Surfaced as the `run_install` MCP tool output and also returned by the
+ * internal `runInstall` (called by `create_worktree` after a worktree is
+ * created).
  *
  * - `installed` — the install command exited 0.
  * - `not-configured` — no `install` command is set (a clean, expected state —
@@ -448,36 +679,29 @@ export const runLint = (input: RunCommandInput, opts?: RunCommandOptions) =>
  * - `error` — the command could not be run (invalid config, timeout, spawn
  *   failure).
  */
-export interface InstallResult {
-  status: "installed" | "not-configured" | "failed" | "error";
-  command?: string[];
-  exitCode?: number;
-  stdout?: string;
-  stderr?: string;
-  truncated?: boolean;
-  durationMs?: number;
-  reason?: string;
-  errorCode?: "CONFIG_INVALID" | "EXEC_ERROR" | "TIMEOUT";
-  errorMessage?: string;
-}
+export type InstallResult = z.infer<typeof runInstallOutputSchema>;
 
 /**
  * Runs the project's configured `install` command — the dependency-install step
  * a freshly created worktree needs before any capability command can run.
  *
- * Reads `<repoPath>/.orchestrate/commands.json` and executes the `install` argv
- * with no shell. A missing file or absent `install` key is `not-configured`,
- * never an error. Every failure mode is a structured result; this function does
- * not throw.
+ * Reads `.orchestrate/commands.json` from the main repository root derived from
+ * `<repoPath>` (via {@link resolveConfigRoot}) and executes the `install` argv
+ * with no shell with `cwd = <repoPath>` — install MUST exec in the worktree
+ * because it materializes the `node_modules` the worktree needs to compile,
+ * while config is read from the main root. A missing file or absent `install`
+ * key is `not-configured`, never an error. Every failure mode is a structured
+ * result; this function does not throw.
  */
 export async function runInstall(
   input: RunCommandInput,
   opts: RunCommandOptions = {}
 ): Promise<InstallResult> {
-  const cwd = input.repoPath ?? process.cwd();
+  const execCwd = input.repoPath ?? process.cwd();
+  const configRoot = await resolveConfigRoot(execCwd);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  const loaded = loadCommandsConfig(cwd);
+  const loaded = loadCommandsConfig(configRoot);
   if (loaded.kind === "not-configured") {
     return { status: "not-configured", reason: loaded.reason };
   }
@@ -498,7 +722,7 @@ export async function runInstall(
     };
   }
 
-  const exec = await execCommand(argv, cwd, timeoutMs);
+  const exec = await execCommand(argv, execCwd, timeoutMs);
 
   if (exec.kind === "timeout") {
     const out = capOutput(exec.stdout);

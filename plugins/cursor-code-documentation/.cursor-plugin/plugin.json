@@ -1,0 +1,10 @@
+{
+  "name": "cursor-code-documentation",
+  "version": "1.0.2",
+  "description": "Deployable-behavior Cursor plugin that ships an always-apply document-as-you-code rule plus on-demand code-explain and doc-generate skills. Adds language-idiomatic inline documentation whenever the agent writes, modifies, or creates code in any language including scripts.",
+  "author": {
+    "name": "rodrigorjsf"
+  },
+  "repository": "https://github.com/rodrigorjsf/agent-engineering-toolkit",
+  "license": "MIT"
+}

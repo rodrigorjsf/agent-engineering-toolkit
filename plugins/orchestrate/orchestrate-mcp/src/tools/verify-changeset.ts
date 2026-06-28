@@ -108,7 +108,7 @@ export type VerifyChangesetOutput = z.infer<typeof verifyChangesetOutputSchema>;
  * after every implementer returns, so a `completed` envelope is not trusted
  * before the disk has been compared against it.
  *
- * The worktree is inspected with `git status --porcelain -z` (the same
+ * The worktree is inspected with `git status --porcelain -z --untracked-files=all` (the same
  * machinery `recover_changed_files` uses) and the declared set is compared to it
  * as a SET: order and duplicates are irrelevant. This is a cheap set comparison,
  * not a semantic scope check — it does NOT parse the issue body, does not judge
@@ -153,10 +153,11 @@ export async function verifyChangeset(
 
   // `-z` emits NUL-terminated records with no C-style quoting; rename/copy
   // entries split cleanly into both real paths via parsePorcelainZ.
+  // --untracked-files=all enumerates files inside a new untracked dir (default -unormal collapses them to one 'dir/' entry); gitignored paths stay excluded.
   let porcelain: string;
   try {
     const { stdout } = await gitExecFile(
-      ["status", "--porcelain", "-z"],
+      ["status", "--porcelain", "-z", "--untracked-files=all"],
       worktreePath
     );
     porcelain = stdout;

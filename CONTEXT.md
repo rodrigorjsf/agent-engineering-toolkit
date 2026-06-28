@@ -14,6 +14,10 @@ _Avoid_: setup plugin, scaffolder
 A plugin that creates and improves individual agent artifacts (skills, hooks, rules, subagents) inside a project that is already initialized.
 _Avoid_: artifact builder, generator plugin
 
+**Deployable-behavior plugin**:
+A plugin that *ships* working behavior consumed directly on install — a bundled rule plus skills — rather than *generating* artifacts into a target project. `cursor-code-documentation` is the first: installing it makes the **Document-as-you-code rule** active and the `code-explain`/`doc-generate` **Manual-only skills** available. A distinct plugin role from the initializer/customizer generators (see ADR-0016).
+_Avoid_: behavior plugin, runtime plugin (deployable-behavior names the install-and-it-works contract)
+
 ### Platforms and namespaces
 
 **Claude Code distribution**:
@@ -49,6 +53,20 @@ _Avoid_: rules-only (rules-first leaves room for legacy migration; rules-only wo
 
 **Subagent**:
 A YAML-fronted agent definition spawned for delegated, isolated work. Claude Code uses `tools:`/`maxTurns:`; Cursor uses `readonly:`/`model: inherit`.
+
+### Cursor code-documentation vocabulary
+
+**Document-as-you-code rule**:
+The single always-apply `.cursor/rules/*.mdc` (≤30 lines, language-agnostic) that instructs the agent to add language-idiomatic inline documentation (Javadoc/JSDoc/docstrings/header comments/…) whenever it writes, modifies, or creates code. It names the language→format mapping and relies on model knowledge rather than embedding format specifications. It is the *only* reliable always-on per-turn injection surface in Cursor — no hook can do this (see ADR-0016).
+_Avoid_: doc hook, auto-doc hook (it is a rule, not a hook — the distinction is the ADR's whole point)
+
+**Deferred enforcement** (Cursor doc plugin):
+The decision to ship no enforcement hook in v1 of `cursor-code-documentation`. The only candidate channel, `sessionStart.additional_context`, is broken upstream (Cursor forum 158452) and redundant with the **Document-as-you-code rule**; a `stop`-hook self-review pass is the recorded working fallback; `afterFileEdit` is rejected (its script can format but cannot block the edit or feed the model, plus a batch-edit reliability bug). The path is recorded and gated on the upstream fix — not abandoned.
+_Avoid_: no enforcement, enforcement dropped (it is deferred-and-gated, not removed)
+
+**Manual-only skill** (Cursor):
+A Cursor skill with `disable-model-invocation: true`, invoked solely via `/name`. The plugin's `code-explain` and `doc-generate` are manual-only — the faithful mirror of the source plugin's *commands* — so heavyweight documentation operations never auto-fire mid-edit and never compete with the **Document-as-you-code rule**.
+_Avoid_: command skill, on-demand skill (manual-only names the `disable-model-invocation` contract precisely)
 
 ### Knowledge base vocabulary
 
@@ -150,8 +168,12 @@ The branch every umbrella branch is cut from and every run's final pull request 
 _Avoid_: main, master, trunk (the integration base is `development`, distinct from any release branch)
 
 **Run cleanup**:
-Removal of a concluded run's run directory, worktrees, and umbrella/slice branches — gated on that run's final integration pull request having been merged into the **Integration base**.
+Removal of a concluded run's run directory, worktrees, and umbrella/slice branches — gated on that run's final integration pull request having been merged into the **Integration base**. Automatic start-of-run sweeps and `/orchestrate clean` (including `--force`) are **status-gated** — they never touch an `in-progress` run. `/orchestrate clean --failed <runId>` is the sanctioned **human-gated single-run override** that bypasses the status gate for one named crashed/`in-progress`-looking run (via the `reclaim_run` MCP tool), scoped by construction to that run and protected only by a mandatory interactive confirmation.
 _Avoid_: purge, garbage collection, prune
+
+**Pre-flight pass** (`/orchestrate preflight <PRD#>`):
+The third orchestrate mode — alongside the normal run and **Run cleanup** — that performs a run's one-time setup (config bootstrap, backlog fetch, **Run partition**, wave planning, umbrella branch, and the first validated `run-state.json` checkpoint) and then **stops before the wave loop**, leaving an `in-progress` run whose slices are all `pending` and `completedWaves: 0` — so the operator can review the partition and wave plan at the checkpoint before committing the expensive wave loop. A later `/orchestrate <PRD#>` in a fresh session resumes from that checkpoint via the unchanged exactly-one-match resume path — no new resume semantics. Its value is this **staged-inspection gate**, not token relocation (post-#293 the bootstrap residue it shifts is ~2% of a ~1M execution window). The pass is **detect-and-stop**: when a run already exists for PRD `<N>` it reports that run's state and stops rather than re-deriving scope, entering the wave loop, or creating a duplicate (so a concluded-but-uncleaned run blocks a re-bootstrap until `/orchestrate clean`). Distinct from the **Config bootstrapper** (`bootstrap_config`), which is only the first setup step of the pass; the pre-flight pass is the whole steps-1–6 setup that ends at the resumable checkpoint. The pass is an orchestrator mode, never a privileged subagent — see ADR-0014.
+_Avoid_: bootstrap, bootstrap mode (bootstrap names the `bootstrap_config` config step, not the whole pre-flight pass)
 
 **Backlog partitioner**:
 The pure module (`src/tools/backlog-partitioner.ts`) that splits the fetched `ready-for-agent` backlog into the run's `slices` set and the resolved `parentIssue`. It is the single canonical answer to "which issues are slices, and which is the parent PRD". Two detection signals are applied in order: (1) parent-field reference — any issue named as another backlog issue's `Parent`; (2) the `PRD:` title heuristic — any backlog issue whose title starts with `PRD:` (case-insensitive), catching a parent PRD that child issues have not yet linked via their `Parent` field. The detected parent PRD is excluded from `slices` and surfaced as `parentIssue`; it is only a progress-comment target, never an implementation slice.
@@ -170,11 +192,11 @@ The exported function in `backlog-partitioner.ts` that narrows the full backlog 
 _Avoid_: backlog filter, PRD filter (too generic)
 
 **Capability detector** (`detect-project` module):
-A pure module in `orchestrate-mcp/src/tools/detect-project.ts` that inspects a repository root's top-level manifest files and returns the **Capability command map** for the detected project type. Input: a repository root path. Output: a command map or empty object. No side effects. Detection precedence: npm (`package.json`) > Cargo (`Cargo.toml`) > Python (`pyproject.toml`) > Make (`Makefile`) > none. A repository with no recognized manifest yields an empty map — never a fallback npm map.
+A pure module in `orchestrate-mcp/src/tools/detect-project.ts` that inspects a repository root's top-level manifest files and returns the **Capability command map** for the detected project type. Input: a repository root path. Output: a command map or empty object. No side effects. Detection precedence: npm (`package.json`) > Cargo (`Cargo.toml`) > Python (`pyproject.toml`) > Maven (`pom.xml`) > Gradle (`build.gradle` / `build.gradle.kts`) > Make (`Makefile`) > none. A repository with no recognized manifest yields an empty map — never a fallback npm map.
 _Avoid_: project sniffer, auto-configurator, manifest scanner
 
 **Capability command map**:
-A plain object with the four fixed capability verb keys (`tests`, `typecheck`, `build`, `lint`), each mapping to an argv array consumed directly by the orchestrate run tools. Produced by the **Capability detector**. The `install` verb is never included — that is a setup verb, not a capability verb. For unrecognized project types the map is empty (`{}`).
+A plain object with the four auto-detected capability verb keys (`tests`, `typecheck`, `build`, `lint`), each mapping to an argv array consumed directly by the orchestrate run tools. Produced by the **Capability detector**. The `install` verb is never included — that is a setup verb, not a capability verb. `commands.json` also accepts an optional, never-auto-detected `integration` capability verb: a heavy per-wave suite (e.g. Testcontainers/failsafe) the run tools execute once per wave against the umbrella tip, distinct from the four fast per-slice verbs. It is hand-authored only when a project ships such a suite and is **not** produced by the detector (`buildCommandsConfig` omits it). `commands.json` also accepts an optional non-capability `knownFailures` key: a list of substring/regex patterns the run tools match against the captured output of a *failing* capability command to annotate matched-vs-unmatched baseline failures (a best-effort hint); like `install` it is never executed and is not produced by the detector. For unrecognized project types the map is empty (`{}`).
 _Avoid_: command config, verb table, command dictionary
 
 **Config bootstrapper** (`bootstrap_config` MCP tool):
@@ -185,8 +207,20 @@ _Avoid_: config generator, init tool, setup wizard
 The machine-checkable structured result every orchestrate subagent emits as the last of its turn — a fenced ` ```orchestrate-envelope ` JSON block conforming to a per-role schema (a `discriminatedUnion` on `role`). Worker roles (implementer, reviewer, conflict-resolver) carry `status`, `filesChanged`, `verification`, and `notes`; the read-only investigator carries a research brief and no `status`/`filesChanged`. It is the orchestrator's only source of a subagent's status and changed-file set — the orchestrator never parses subagent prose.
 _Avoid_: result blob, subagent summary, return payload
 
+**Capability gate**:
+The orchestrator's own pre-merge run of `run_build` + `run_tests` on a slice worktree — section 3 step 5a — after a `passed` reviewer and before any commit, push, or GitHub state exists. Independent of the reviewer's `verification` self-report in the **Result envelope**: it is the deterministic final link in the `implementer → reviewer → orchestrator` trust chain. Runs exactly the two correctness verbs (`typecheck`/`lint` stay the reviewer's quality remit); `not-configured` is tolerated as a pass, while `failed`/`error` fails the slice.
+_Avoid_: merge check, verification gate
+
+**Empty-config false-green**:
+The silent failure mode at the **Capability gate**: a project whose manifest the **Capability detector** does not recognize gets an empty `commands.json` (`{}`), every verb resolves to `not-configured`, the gate tolerates that as a pass, and a slice merges green although its `build`/`tests` never ran. The clean degradation is intentional — a missing capability is never wired to a guaranteed-to-fail command — so the defect is not the degradation but its *silence*: nothing tells the operator the gate became a no-op. The conceptual remedy is to make an empty config **loud** at bootstrap rather than to keep widening the detector.
+_Avoid_: false-pass, silent-skip (false-green names the merge-state lie specifically — the slice reports green)
+
+**Skeleton-first slice**:
+A slice whose own work creates the project's build manifest — e.g. the first slice of a docs-first/TDD repo writes the initial `pom.xml`/`build.gradle`. Because the manifest is absent when the **Config bootstrapper** runs, a present-tense detector probe finds nothing at bootstrap; the manifest exists only in the worktrees of later slices. This is why bootstrap-time detection alone cannot gate such a repo, and why a loud **Empty-config false-green** signal — not merely a broader detector — is the general safeguard.
+_Avoid_: bootstrap slice, scaffold slice (skeleton-first names the temporal property: the manifest is created by the work, not pre-existing)
+
 **Implementer `incomplete` status**:
-The third value of the implementer **Result envelope**'s `status` enum — alongside `completed` and `blocked`, and unique to the implementer role. It is the implementer's *graceful* turn-budget self-report: when the implementer foresees it cannot finish every acceptance criterion within its remaining turns, it stops cleanly and emits `status: "incomplete"` with the partial work recorded, rather than being cut off mid-sentence. Distinct from `blocked` (an unrecoverable obstacle — more turns would not help) and from a hard turn-limit cutoff (which truncates the envelope into an unclosed fence the **Envelope validator** reports `invalid`). The orchestrator treats an `incomplete` slice as a FAILED slice with a `failureReason` naming the turn-limit cutoff — partial, resumable work — never a new `run-state.json` slice `state` value.
+The third value of the implementer **Result envelope**'s `status` enum — alongside `completed` and `blocked`, and unique to the implementer role. It is the implementer's *graceful* turn-budget self-report: when the implementer foresees it cannot finish every acceptance criterion within its remaining turns, it stops cleanly and emits `status: "incomplete"` with the partial work recorded, rather than being cut off mid-sentence. Distinct from `blocked` (an unrecoverable obstacle — more turns would not help) and from a hard turn-limit cutoff (which truncates the envelope into an unclosed fence the **Envelope validator** reports `invalid`). A single `incomplete` does **not** FAIL the slice immediately: the envelope carries a `remainingWork` handoff, and the orchestrator re-spawns the implementer in the same preserved worktree — the bounded continue-in-place loop — until it returns `completed` or the run-wide continuation budget is exhausted. The slice FAILs from `incomplete` only when the budget runs out (resumable → `needs-info`) or a continuation makes no worktree progress (the no-progress guard → `needs-triage`). It is never a new `run-state.json` slice `state` value — the continuation counter and fingerprint are within-session loop state, never persisted.
 _Avoid_: partial status, timed-out status (it is a proactive self-report, not a passively-observed timeout)
 
 **Changeset scope check**:
@@ -209,11 +243,36 @@ _Avoid_: no-advisor rule, advisor ban (the policy is positive — advisor respon
 The standing constraint — expressed as a `## Scope-boundary guard` section in both `investigator-standard.md` and `investigator-deep.md` — that limits the investigator's brief to work traceable to the slice's acceptance criteria. Every item in `relevantFiles`, `approach`, and `notes` must trace to at least one acceptance criterion; work belonging to a sibling or downstream slice must be dropped. Enforced at the orchestrator boundary by a brief-scope diff: after `validate_envelope` returns `valid`, the orchestrator compares the brief against the acceptance criteria it supplied as the hard scope boundary, and treats an over-scoped brief as a failed investigation pass (the slice **FAILS** before the implementer runs).
 _Avoid_: scope check, brief filter (the guard is a positive constraint on what the brief may contain, enforced at two points — inside the investigator definition and at the orchestrator boundary)
 
+**Orchestrator judgment spine**:
+The irreducible body of the orchestrate `SKILL.md` that remains after **MCP-first decomposition** — the roles & safety boundary, the two-axis complexity-tier assessment, wave-concurrency policy, failure-cause narration, and checkpoint/resume semantics. It is the residue that cannot be extracted to an `orchestrate-mcp` tool or a subagent because it is non-mechanizable orchestration judgment. After the #275 procedural-prose relocation the spine lands near ~425 lines — refined down from the ~750 the decomposition first projected — which is now *within* the project's 500-line `SKILL.md` body cap; the documented over-cap exception for this spine remains on record (ADR-0013) so it is never flagged as bloat should its judgment grow back over the cap, and is orchestrate-specific (not generalized to other skills). Deterministic procedure is extracted to MCP tools (no execution-permission prompt); judgment-bearing procedure is relocated to on-demand `references/` (loaded only when its phase runs, outside the smart zone); only judgment stays in the always-loaded spine. See ADR-0013.
+_Avoid_: orchestrator core, skill body (the spine is specifically what remains after extraction, not the whole file or its runtime)
+
+**Routing variant**:
+The `-standard` / `-deep` flavor of a subagent definition that per-role routing selects (`orchestrate:<role>-<variant>`). Renamed from `routing.json`'s legacy `effort` key precisely because it is **not** the **Subagent effort level** — it picks which definition file is spawned.
+_Avoid_: effort (in routing context — the collision this rename removes), depth (tier names complexity; variant names the definition flavor)
+
+**Subagent effort level**:
+The real Claude Code `effort` frontmatter value (`low`/`medium`/`high`/`xhigh`/`max`) fixed in each subagent definition. It cannot be set per spawn invocation, so it lives in the definition file — never in `routing.json`.
+_Avoid_: thinking budget, routing effort
+
+**Routing label**:
+A human-applied GitHub label (`route:*`) on a slice issue that overrides the **Resolved slice routing** for named roles — e.g. `route:fable` promotes the implementer to the premium model. The orchestrator may *suggest* a routing label in reports but never applies one; a label with no matching routing-config entry warns loudly, and two configured labels patching the same role is an error — never a silent merge.
+_Avoid_: model label, tier label (tiers are orchestrator judgment; routing labels are human gates)
+
+**Resolved slice routing**:
+The per-slice routing outcome (model, variant, fallback) frozen into the `run-state.json` checkpoint when the slice is created. Routing labels are read exactly once, at slice creation — a resumed run routes from the checkpoint, never from live GitHub labels, preserving the resume invariant that a run never re-derives its own scope.
+_Avoid_: live routing, label re-read
+
+**Model fallback**:
+The one-time re-spawn of a role on its configured fallback model after the premium model fails (safety-classifier refusal or model unavailability), recorded on the slice's **Resolved slice routing** and not counted against the continuation budget — continuation re-spawns the *same* model for incomplete work; fallback *swaps* the model.
+_Avoid_: retry, continuation (different budget, different semantics)
+
 ## Relationships
 
 - A **Distribution** owns at most one **Initializer** and at most one **Customizer**.
 - An **Initializer** generates platform-wide files; a **Customizer** generates individual **Artifacts** of the four supported types.
 - The **Claude Code distribution** and the **Cursor distribution** are siblings — same conceptual roles, different platform formats and conventions.
+- A **Deployable-behavior plugin** ships its **Artifacts** (a rule plus skills) for direct consumption on install, where the **Initializer** and **Customizer** instead *generate* artifacts into a target project. The three roles coexist within one **Distribution**.
 - A **Source document** in `docs/` is summarized into one **Wiki page** in `wiki/knowledge/`; one Source document may also seed multiple concept Wiki pages with `[[wiki-link]]` cross-references.
 - The **Wiki** is the canonical knowledge surface for agents; **Source documents** are searched only when the wiki lacks coverage.
 - The **Standalone distribution** sources from the cross-platform standard alone (platform-agnostic docs, filtered to skills and AGENTS.md authoring); plugin distributions source from their platform's docs plus the standard. See ADR-0006.
@@ -225,11 +284,13 @@ _Avoid_: scope check, brief filter (the guard is a positive constraint on what t
 - An **Orchestration run** owns exactly one **Run partition** and writes its ephemeral state to exactly one **Run directory**.
 - Sibling **Orchestration runs** in the same repository must own disjoint **Run partitions** — one parent PRD's children each.
 - A **Driver session** executes exactly one **Orchestration run**; the context-watchdog binds a run by matching the **Driver session** identity recorded in run-state.
-- **Run cleanup** acts on an **Orchestration run** only after its final pull request has merged into the **Integration base**.
+- **Run cleanup** acts on an **Orchestration run** only after its final pull request has merged into the **Integration base** — except the human-gated `/orchestrate clean --failed <runId>` override, which reclaims one crashed run by bypassing that status gate under interactive confirmation.
+- A **Pre-flight pass** writes the first validated checkpoint of an **Orchestration run** and stops before the wave loop; a later `/orchestrate <PRD#>` resumes that run via the unchanged exactly-one-match path. The pass is **detect-and-stop** — it reports and refuses when a run for that PRD already exists, so it never re-derives an existing **Run partition** nor enters the wave loop itself.
 - Every orchestrate subagent returns exactly one **Result envelope**; the **Envelope validator** classifies it, and the orchestrator acts only on that classification — never on subagent prose.
 - The **Worktree fallback** runs only when the **Envelope validator** reports a worker subagent's **Result envelope** `invalid` or `missing` — it never substitutes for a `valid` envelope.
 - The **Changeset scope check** runs after every implementer returns a `valid` `completed` envelope — it cross-checks the declared `filesChanged` against the worktree before the orchestrator trusts the result; the **Worktree fallback** instead runs only when the envelope itself was `invalid` or `missing`.
-- The **Implementer `incomplete` status** is the graceful counterpart to a hard turn-limit cutoff: the cutoff truncates the envelope into an `invalid` classification, while `incomplete` is a clean, schema-conforming self-report — both FAIL the slice, distinguished by the `failureReason`.
+- The **Implementer `incomplete` status** is the graceful counterpart to a hard turn-limit cutoff: the cutoff truncates the envelope into an `invalid` classification that FAILs the slice at once, while `incomplete` is a clean, schema-conforming self-report that drives the bounded continue-in-place loop — re-spawning the implementer in the same worktree with its `remainingWork` until `completed` or the continuation budget is exhausted. It FAILs the slice only on budget exhaustion (`needs-info`) or the no-progress guard (`needs-triage`).
+- The **Orchestrator judgment spine** is what survives **MCP-first decomposition** of the orchestrate `SKILL.md`: deterministic procedure leaves to `orchestrate-mcp` tools, judgment-bearing procedure to on-demand `references/`, and only non-mechanizable judgment remains in the always-loaded body. Native Claude Code orchestration features (dynamic workflows, goals, agent teams, worktrees) were evaluated as an alternative execution path and **not adopted** — each is inferior to or architecturally mismatched with the spine's bespoke, durable, slice-scoped core (see ADR-0013).
 
 ## Example dialogue
 
@@ -253,3 +314,6 @@ _Avoid_: scope check, brief filter (the guard is a positive constraint on what t
 - Legacy `<RULES>` tag (currently used in `plugins/agent-customizer/skills/create-skill/SKILL.md` and elsewhere) is treated as an alias of canonical `<HARD_RULES>`. Tier-3 organic retrofit migrates each occurrence on next touch; no scheduled mass rename.
 - "two orchestrations" was used to mean two concurrent **Orchestration runs** in the *same* repository — resolved: each run must own a disjoint **Run partition** (one parent PRD's children); same-repo runs over an unpartitioned backlog collide on the identical issue set.
 - "merged into main/master" was used for the **Run cleanup** gate — resolved: the gate is the run's final pull request merged into the **Integration base** (`development`), not a release branch. The plugin name and its directory are spelled `orchestrate` / `.orchestrate` (not `orquestrate`).
+- "bootstrap" was used to mean *both* the `bootstrap_config` step (writes `.orchestrate/` config) and the whole one-time pre-flight setup (steps 1–6, ending at the resumable checkpoint) — issue #286 used the second sense. Resolved during grilling: "bootstrap" / **Config bootstrapper** names only the config step; the whole setup pass is the **Pre-flight pass** (`/orchestrate preflight <PRD#>`), a distinct mode word chosen to avoid overloading `bootstrap_config` and to stay clear of the `prime-issues` namespace.
+- "use the native dynamic-workflows / goals / worktrees features in orchestrate" was the user's hypothesis for shrinking the orchestrator's context footprint and using the native runtime — resolved during grilling (ADR-0013): native features are evaluated and **not adopted**. Each is inferior to or architecturally mismatched with orchestrate's durable, slice-scoped, checkpoint-backed core (worktrees are session-scoped / per-subagent-ephemeral vs. the run's slice-scoped-shared worktree; goals evaluate only the conversation surface and cannot ride `spawn_successor`'s single positional prompt; dynamic workflows reset on session exit and are redundant with the envelope-only delegation orchestrate already does; agent teams are experimental, env-gated, and do not resume in-process). Context reduction comes from **MCP-first decomposition** into the **Orchestrator judgment spine**, not from native adoption. The "alternative, not replacement" requirement is satisfied by adopting zero (nothing to capability-detect or alternate).
+- "a Cursor hook that injects documentation instructions into the system prompt" was the user's initial mechanism for document-as-you-code — resolved during grilling (ADR-0016) against live-verified evidence: **no Cursor hook injects per-turn system-prompt guidance**. `sessionStart.additional_context` is broken (forum 158452) and one-shot even when fixed; `beforeSubmitPrompt` can only block; `afterFileEdit` only runs after the fact and cannot feed the model. The always-apply **Document-as-you-code rule** is the mechanism; enforcement via hook is **deferred-and-gated**, not adopted in v1.

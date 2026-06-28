@@ -4,7 +4,7 @@ Autonomously drive a backlog of `ready-for-agent` GitHub issues from open to rev
 
 ## Cost and Model Guidance
 
-A single orchestrate run drives an entire backlog — for every issue it spawns an implementer and a reviewer subagent (and an investigator for complex-tier issues), each in its own context. Cost scales with the size of the backlog and how many issues route to the higher-effort `deep` variants.
+A single orchestrate run drives an entire backlog — for every issue it spawns an implementer and a reviewer subagent (and an investigator for standard- and complex-tier issues), each in its own context. Cost scales with the size of the backlog and how many issues route to the `deep` routing variant.
 
 **Recommended model:** Claude Opus for the orchestrator — wave planning, complexity assessment, and conflict handling are judgment-heavy. Per-role models are set per complexity tier in `routing.json` (see the configuration reference).
 
@@ -16,10 +16,10 @@ The run checkpoints after every step, so an interrupted run resumes instead of r
 
 Given a repository with open issues labelled `ready-for-agent`, one `/orchestrate` invocation:
 
-1. **Reads the backlog** — every open `ready-for-agent` issue, with its **Blocked by** dependencies and an assessed complexity tier (`trivial`, `standard`, `complex`). The tier weighs two axes — conceptual difficulty and *fan-out* (the number of independent targets the slice touches) — so a wide-but-simple slice is tiered up purely for the larger turn budget and an investigation pass.
+1. **Reads the backlog** — every open `ready-for-agent` issue, with its **Blocked by** dependencies and an assessed complexity tier (`trivial`, `standard`, `complex`). The tier weighs two axes — conceptual difficulty and *fan-out* (the number of independent targets the slice touches) — so a wide-but-simple slice is tiered up purely for the larger turn budget and an investigation pass. Investigator is skipped for trivial-tier slices only.
 2. **Plans dependency waves** — a topological sort so every issue's blockers resolve in an earlier wave; a dependency cycle is reported and stops the run cleanly.
 3. **Cuts an umbrella branch** from `development` — every slice's pull request merges into it, never directly into `development`.
-4. **Processes each slice** in its own isolated worktree — routed investigator (complex tier only), implementer, then reviewer; then commit, push, open a slice pull request, and squash-merge it into the umbrella branch.
+4. **Processes each slice** in its own isolated worktree — routed investigator (standard and complex tiers; skipped for trivial), implementer, then reviewer; then commit, push, open a slice pull request, and squash-merge it into the umbrella branch.
 5. **Resolves merge conflicts** once per conflicting slice via a dedicated conflict-resolver subagent.
 6. **Checkpoints** the run's `run-state.json` (under the per-run directory `.orchestrate/runs/<runId>/`) after every step — an interrupted run re-invoked with `/orchestrate` skips every completed slice and continues.
 7. **Hands off** to a fresh Claude Code session when the orchestrator's context window fills, so a long run survives without degrading.
@@ -31,11 +31,11 @@ Given a repository with open issues labelled `ready-for-agent`, one `/orchestrat
 
 The orchestrate skill is the **orchestrator**. It is the single actor that touches git, GitHub, and the shell — branches, worktrees, commits, pushes, pull requests, merges, label transitions, and the `run-state.json` checkpoint. It also assesses each issue's complexity tier and routes each role accordingly.
 
-Every other role is a **subagent**, spawned with the standard Agent tool by its namespaced type — `orchestrate:<role>-<effort>`, where `<effort>` is `standard` or `deep` (for example `orchestrate:implementer-deep`). The `orchestrate:` prefix is required; a bare name does not resolve.
+Every other role is a **subagent**, spawned with the standard Agent tool by its namespaced type — `orchestrate:<role>-<variant>`, where `<variant>` is `standard` or `deep` (for example `orchestrate:implementer-deep`). The `orchestrate:` prefix is required; a bare name does not resolve.
 
-| Role | Effort variants | Access |
+| Role | Routing variant | Access |
 |------|-----------------|--------|
-| `investigator` | standard, deep | **Read-only.** Explores the codebase for complex-tier issues and returns a research brief. No Bash, no git, no write tools. |
+| `investigator` | standard, deep | **Read-only.** Explores the codebase for standard- and complex-tier issues and returns a research brief. No Bash, no git, no write tools. |
 | `implementer` | standard, deep | Edits code inside one worktree; verifies via the capability tools. No Bash, no git. |
 | `reviewer` | standard, deep | Reviews the slice in the worktree, fixes issues inline, re-runs the capability tools, gates the merge. No Bash, no git. |
 | `conflict-resolver` | standard, deep | Edits conflicted files to a correct merged state. No Bash, no git. |
@@ -52,12 +52,17 @@ The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing 
 |------|---------|
 | `bootstrap_config` | Set up a repository's `.orchestrate/` config on a first-ever run — project-aware `commands.json`, model-derived `handoff.json`, default `routing.json`, the run directory, and the `.gitignore` entry |
 | `create_worktree` / `remove_worktree` | Git worktree lifecycle — isolated per-slice checkouts |
+| `push_and_verify` | Push a slice branch and verify it actually landed on the remote (SHA-match `git ls-remote` check + bounded backoff) — fails loud when an exit-0 push never lands; git-only, never shells `gh` |
+| `finalize_slice` | Land one reviewed slice's git + run-state mechanics in two phases: `commit-push` (stage exactly the named files, guard an empty changeset, commit with `Closes #<N>`, compose `push_and_verify`, checkpoint `subState: pushed`) and `post-merge` (checkpoint `subState: merged`, remove the worktree, reclaim the local branch). Forge ops and the `pr-open` checkpoint stay in the spine; git-only, never shells `gh` |
 | `run_tests` / `run_typecheck` / `run_build` / `run_lint` | Run the project's configured capability commands |
+| `run_wave` | A family of bracketed deterministic wave-loop operations behind one tool, selected by the `operation` discriminant — so only the higher-level policy that decides how a wave processes its slices stays the orchestrator's concern. `refresh-base` (fast-forward the local umbrella ref to its remote tip via a `git merge-base` ancestor proof, or report `diverged` and leave the ref untouched), `select-processable` (gate one slice on its in-partition and out-of-partition blocker states — consumed from state passed in, never read with `gh`), `reverify-slice` (no-op for the first merged slice; else fetch + merge the umbrella into the worktree and run the tests + build verbs, returning `passed`/`failed{which}`/`conflict` — a conflict is flagged in place, never resolved), and `integration-gate` (run the per-wave integration suite → `proceed`/`halt`/`tolerate`). Git-only, run-scoped, never throws |
+| `resolve_merge_conflict` | The two deterministic git operations around the conflict-resolver spawn, behind one tool selected by the `operation` discriminant — the resolver spawn, envelope validation, clean-path re-verify, and attempt-once policy stay in the spine. `prepare` (re-entrant recovery first — abort a stale in-progress merge before the fresh fetch + merge of the umbrella into the worktree, returning `clean` (auto-committed, nothing to resolve) or `conflicted{conflictedFiles}`, a rename-conflict emitting both paths) and `finalize` (stage the resolved set, scan the staged diff for residual conflict markers, complete the merge commit → `completed`, or `markers_remain` with the merge aborted leaving the worktree clean). Git-only, run-scoped, never shells `gh`, never throws |
 | `plan_waves` | Topologically sort issues into dependency waves; detects cycles |
-| `resolve_routing` | Resolve the model and effort variant for each role from a complexity tier |
+| `resolve_routing` | Resolve the model and routing variant for each role from a complexity tier |
 | `validate_envelope` | Validate a subagent's result envelope against its role schema — distinguishes a valid, a truncated/invalid, and a missing envelope. The implementer status carries `completed`, `incomplete` (a graceful turn-budget self-report), and `blocked` |
 | `recover_changed_files` | Recover a worktree's changed-file set by inspecting it directly — the orchestrator's fallback when an envelope is missing or invalid |
 | `verify_changeset` | Compare a worktree's actual changeset against the file set an implementer declared — the post-implementer scope check before a `completed` envelope is trusted |
+| `resolve_cleanup_verdicts` | The PURE verdict logic of the start-of-run cleanup sweep, in two phases: `enumerate` (apply the `completed && finalPullRequest != null` eligibility gate to the parsed run-states, return the deduplicated final-PR identifiers the spine fetches with `gh pr view`) and `classify` (turn the fetched `{state, mergedAt}` facts into the four-way `merged`/`open`/`closed-unmerged`/`unknown` verdict `clean_runs` consumes, capturing each merged run's passed-slice close-set in the same pass). No fs/git/`gh` — the fetch loop, `gh issue close`, and `clean_runs`' removal stay in the spine |
 | `clean_runs` | Remove a concluded run's worktrees, branches, and run directory once its final pull request has merged — git + filesystem only |
 | `render_dashboard` / `render_graph` / `render_report` | Render standalone HTML artifacts from the run state |
 | `spawn_successor` | Launch a fresh Claude Code session that resumes the run |
@@ -76,6 +81,8 @@ The `detect-project` module (`orchestrate-mcp/src/tools/detect-project.ts`) auto
 | `package.json` | npm | `npm test`, `npm run typecheck`, `npm run build`, `npm run lint` |
 | `Cargo.toml` | Cargo | `cargo test`, `cargo check`, `cargo build`, `cargo clippy` |
 | `pyproject.toml` | Python | `pytest`, `mypy .`, `python -m build`, `ruff check .` |
+| `pom.xml` | Maven | `mvn -B test`, `mvn -B -DskipTests compile`, `mvn -B -DskipTests package` |
+| `build.gradle` / `build.gradle.kts` | Gradle | `./gradlew test`, `./gradlew classes`, `./gradlew assemble` |
 | `Makefile` | Make | `make test`, `make typecheck`, `make build`, `make lint` |
 | _(none found)_ | none | empty map — no capability tool is wired to a failing command |
 
@@ -102,7 +109,7 @@ A manifest-less repository yields `{}` — never an npm fallback — so no capab
 
 The `bootstrap_config` MCP tool makes a first-ever run set up its own `.orchestrate/` configuration with no manual steps. On a fresh run — when the repository has no `.orchestrate/` directory — the orchestrator calls it before planning the backlog. It:
 
-- Composes the **capability detector** above and writes a project-appropriate `.orchestrate/commands.json`. The shipped `templates/commands.json` is an empty `{}` safe default — the bootstrapper is the canonical source of a project-aware config. For an npm project it also sets `install: ["npm", "ci"]`; for cargo, Python, Make, or an unrecognized project it omits `install` (a wrong install command is worse than none).
+- Composes the **capability detector** above and writes a project-appropriate `.orchestrate/commands.json`. The shipped `templates/commands.json` is an empty `{}` safe default — the bootstrapper is the canonical source of a project-aware config. For an npm project it also sets `install: ["npm", "install"]`; for cargo, Python, Maven, Gradle, Make, or an unrecognized project it omits `install` (a wrong install command is worse than none).
 - Writes `.orchestrate/handoff.json` with a context-window size **derived from the running model**, not a static 200k constant. The model id (or an explicit token count) is passed as a tool input — the MCP process cannot see the calling LLM's model. A small explicit table maps the model to its window; an unknown or absent model falls back to `200000`.
 - Writes `.orchestrate/routing.json` from the shipped defaults.
 - Creates `.orchestrate/runs/` and idempotently appends `.orchestrate/runs/` to the repository's `.gitignore` — exactly once, even across repeated bootstraps.
@@ -183,6 +190,26 @@ On startup the orchestrator scans every in-progress run and matches it by the `p
 
 When a partitioned run's child issue is blocked by an issue **outside** the partition, the orchestrator verifies that external blocker's real state on the tracker before the dependent slice runs — if the blocker is still open, the dependent slice is skipped with a reason naming it.
 
+### Running a pre-flight pass before committing to a run
+
+Before committing the full multi-wave execution, you can inspect the partition and wave plan first. The `preflight` mode runs the one-time setup — config bootstrap, backlog fetch, partition derivation, dependency-wave planning, and umbrella branch creation — then **stops before the wave loop**, leaving a resumable checkpoint:
+
+```bash
+/orchestrate preflight 195
+```
+
+The run is left `in-progress` with all slices `pending` and `completedWaves: 0`. The orchestrator writes a `.orchestrate/runs/<runId>/preflight-handoff.md` with the resume invocation and preconditions. Review the partition and wave plan there; when you are ready to execute, resume in a fresh session:
+
+```bash
+/orchestrate 195
+```
+
+The resume path is the normal exactly-one-match path — it picks up the checkpoint from step 6 and enters wave 0, with no new semantics.
+
+**Staged-inspection gate — the value.** The pre-flight pass is a reviewable partition + wave plan checkpoint: you see which issues the run will process and in what wave order, and you decide whether to proceed before the expensive wave execution begins. Every slice is still `pending` at the stop point — no worktrees or slice branches have been created, only the umbrella branch exists.
+
+**Detect-and-stop idempotency.** A second `/orchestrate preflight 195` while a run for PRD #195 already exists — whether `in-progress` or `completed`-but-not-yet-cleaned — is blocked. The orchestrator reports that run's `runId` and status, and stops. This prevents a duplicate run being minted from the same backlog. The block lifts once `/orchestrate clean` removes the concluded run.
+
 ### Cleaning up concluded runs
 
 Each run leaves a footprint behind — its run directory under `.orchestrate/runs/`, its worktrees, and its umbrella and slice branches. Every `/orchestrate` invocation begins with a **start-of-run sweep** that removes the footprint of any run whose final integration pull request has already merged into `development`, so leftovers do not accumulate.
@@ -239,38 +266,62 @@ Maps each capability verb to the **argv array** that runs it. The argv form is e
   "typecheck": ["npm", "run", "typecheck"],
   "build": ["npm", "run", "build"],
   "lint": ["npm", "run", "lint"],
-  "install": ["npm", "ci"]
+  "install": ["npm", "install"]
 }
 ```
 
-The optional `install` verb runs once in each fresh worktree before the capability commands. `bootstrap_config` sets it to `["npm", "ci"]` for an npm project and omits it for every other project type — a wrong install command is worse than none.
+The optional `install` verb runs once in each fresh worktree before the capability commands. `bootstrap_config` sets it to `["npm", "install"]` for an npm project and omits it for every other project type — a wrong install command is worse than none.
 
 ### `.orchestrate/routing.json`
 
-Maps each complexity tier to the model and effort variant for each role. `investigator` may be `null` — that tier skips the investigation pass. `effort` is `standard` or `deep`. Without this file, the run falls back to the `-standard` variant of every role and skips the investigator.
+Maps each complexity tier to the model and routing variant for each role, and configures label overrides and run policy. Schema version 2 is the current format. `investigator` may be `null` — that tier skips the investigation pass. `variant` is `standard` or `deep`. Without this file, the run falls back to the `-standard` routing variant of every role.
+
+**v1 deprecation:** a file without a top-level `version` field (the old format) still loads via an explicit v1→v2 mapper and emits a deprecation warning. Run-policy keys in the v1 flat object (`intraWaveConcurrency`, `continuationBudget`) are preserved during migration. Upgrade by adding `"version": 2` and nesting tiers under `"tiers"`, run policy under `"run"`.
 
 ```json
 {
-  "trivial": {
-    "investigator": null,
-    "implementer": { "model": "sonnet", "effort": "standard" },
-    "reviewer": { "model": "sonnet", "effort": "standard" },
-    "conflict-resolver": { "model": "sonnet", "effort": "standard" }
+  "version": 2,
+  "tiers": {
+    "trivial": {
+      "investigator": null,
+      "implementer": { "model": "haiku", "variant": "standard" },
+      "reviewer": { "model": "sonnet", "variant": "standard" },
+      "conflict-resolver": { "model": "sonnet", "variant": "standard" }
+    },
+    "standard": {
+      "investigator": { "model": "haiku", "variant": "standard" },
+      "implementer": { "model": "sonnet", "variant": "standard" },
+      "reviewer": { "model": "opus", "variant": "standard" },
+      "conflict-resolver": { "model": "opus", "variant": "standard" }
+    },
+    "complex": {
+      "investigator": { "model": "opus", "variant": "deep" },
+      "implementer": { "model": "opus", "variant": "deep" },
+      "reviewer": { "model": "opus", "variant": "deep" },
+      "conflict-resolver": { "model": "opus", "variant": "deep" }
+    }
   },
-  "standard": {
-    "investigator": null,
-    "implementer": { "model": "sonnet", "effort": "standard" },
-    "reviewer": { "model": "opus", "effort": "standard" },
-    "conflict-resolver": { "model": "opus", "effort": "standard" }
+  "labels": {
+    "route:fable": {
+      "roles": ["implementer"],
+      "set": { "model": "fable", "variant": "deep" },
+      "fallback": { "model": "opus", "maxRetries": 1 }
+    }
   },
-  "complex": {
-    "investigator": { "model": "opus", "effort": "deep" },
-    "implementer": { "model": "opus", "effort": "deep" },
-    "reviewer": { "model": "opus", "effort": "deep" },
-    "conflict-resolver": { "model": "opus", "effort": "deep" }
+  "run": {
+    "intraWaveConcurrency": "parallel",
+    "continuationBudget": 2
   }
 }
 ```
+
+**Tier matrix defaults.** The trivial tier applies a deliberate cross-model gate: haiku implements, sonnet reviews — a cost-effective quality check. The standard tier adds an investigator (haiku/standard) that was absent in v1. The complex tier routes all roles to opus/deep unchanged.
+
+**`route:fable` label lane.** When a GitHub issue carries the `route:fable` label, the implementer role is patched to `fable/deep`, overriding the tier's default model. A one-shot opus fallback (`maxRetries: 1`) re-spawns the implementer on the fallback model if the premium spawn fails. The reviewer and conflict-resolver retain their tier defaults. **Security exclusion:** Fable's safety classifiers refuse benign security and cyber-research work — do NOT apply `route:fable` to issues involving vulnerability research, penetration testing, or security tooling. Those issues should remain on the standard tier-routed model.
+
+**Routing labels: suggest, never apply.** The orchestrator reads routing labels from the issue tracker but never writes them — label assignment is a human decision. The orchestrator surfaces a suggestion when a heuristic indicates a label would improve quality, and stops there.
+
+**Model fallback.** When a premium-model spawn fails (network error or capacity rejection), the orchestrator makes one re-spawn attempt on the tier's fallback model, outside the `continuationBudget`. If the fallback spawn also fails, the slice is marked failed and the run continues with the remaining slices.
 
 ### `.orchestrate/handoff.json`
 
@@ -352,8 +403,11 @@ plugins/orchestrate/
 │                                #   session-start (SessionStart) hooks
 ├── skills/
 │   └── orchestrate/
-│       ├── SKILL.md             # The orchestrator skill
-│       └── references/          # run-state and context-handoff references
+│       ├── SKILL.md             # The orchestrator judgment spine
+│       └── references/          # phase-loaded references:
+│                                #   prerequisites, clean-mode, run-lifecycle,
+│                                #   wave-loop, slice-pipeline, failure-handling,
+│                                #   run-state, context-handoff
 ├── agents/                      # 8 subagents — {investigator,implementer,
 │                                #   reviewer,conflict-resolver}-{standard,deep}
 ├── templates/                   # commands.json, routing.json, handoff.json

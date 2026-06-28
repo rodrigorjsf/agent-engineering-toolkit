@@ -2,11 +2,37 @@ import * as path from "path";
 import * as fs from "fs";
 import { z } from "zod";
 import { resolveRunDir, type RunPaths } from "../run-dir.js";
+import { roleConfigSchemaV2, labelFallbackSchema } from "./routing.js";
 
 // ─── Schemas — z.object is the single source of truth; TS types via z.infer ───
 
 const sliceStateEnum = z.enum(["pending", "in-progress", "passed", "failed", "skipped"]);
 const tierEnum = z.enum(["trivial", "standard", "complex"]);
+
+// Fine-grained position WITHIN §3 processing of an in-progress slice — the
+// resume anchor. Optional so it is backward-compatible with a legacy checkpoint
+// written before the subState scheme (and absent before §3 step 4 completes).
+const subStateEnum = z.enum([
+  "implemented",
+  "verified",
+  "reviewed",
+  "pushed",
+  "pr-open",
+  "merged",
+]);
+
+// Resolved routing frozen at slice creation — captures per-role model+variant,
+// an optional label fallback spec, and whether the fallback was already used.
+// The entire field is OPTIONAL on the slice so pre-existing checkpoints (written
+// before this field was added) continue to validate (backward-compat, criterion 3).
+const resolvedRoutingSchema = z.object({
+  investigator: roleConfigSchemaV2.nullable(),
+  implementer: roleConfigSchemaV2,
+  reviewer: roleConfigSchemaV2,
+  "conflict-resolver": roleConfigSchemaV2,
+  fallback: labelFallbackSchema.optional(),
+  fallbackTaken: z.boolean().default(false),
+});
 
 const sliceSchema = z.object({
   issue: z.number().int(),
@@ -15,11 +41,13 @@ const sliceSchema = z.object({
   tier: tierEnum,
   blockedBy: z.array(z.string()),
   state: sliceStateEnum,
+  subState: subStateEnum.optional(),
   sliceBranch: z.string(),
   worktreePath: z.string().nullable(),
   pullRequest: z.string().nullable(),
   failureReason: z.string().nullable(),
   updatedAt: z.string(),
+  resolvedRouting: resolvedRoutingSchema.optional(),
 });
 
 export const runStateSchema = z.object({

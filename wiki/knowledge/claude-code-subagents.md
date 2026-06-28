@@ -1,8 +1,8 @@
 # Claude Code Subagents
 
 **Summary**: Task-specific assistants defined as Markdown files with YAML frontmatter that run in isolated context windows within Claude Code sessions — supporting tool restriction, model selection, permission modes, persistent memory, and worktree isolation.
-**Sources**: creating-custom-subagents.md, claude-orchestrate-of-claude-code-sessions.md, analysis-creating-custom-subagents.md, research-subagent-best-practices.md
-**Last updated**: 2026-05-21
+**Sources**: creating-custom-subagents.md, claude-orchestrate-of-claude-code-sessions.md, analysis-creating-custom-subagents.md, research-subagent-best-practices.md, agent-teams.md, dynamic-workflows.md, parallel-sessions-worktrees.md
+**Last updated**: 2026-06-11
 
 ---
 
@@ -63,15 +63,19 @@ Managed subagents are deployed by organization administrators via the managed se
 
 Claude Code includes built-in subagents it uses automatically when appropriate; each inherits the parent conversation's permissions with additional tool restrictions (source: creating-custom-subagents.md).
 
-| Name              | Model   | Tools            | Purpose                                            |
-| ----------------- | ------- | ---------------- | -------------------------------------------------- |
-| Explore           | Haiku   | Read-only        | Fast, cheap codebase search and analysis           |
-| Plan              | inherit | Read-only        | Codebase research during plan mode                 |
-| general-purpose   | inherit | All              | Complex, multi-step tasks: exploration + action    |
-| statusline-setup  | Sonnet  | —                | Configures the status line when you run `/statusline` |
-| claude-code-guide | Haiku   | —                | Answers questions about Claude Code features       |
+| Name              | Model   | Tools            | Purpose                                                   |
+| ----------------- | ------- | ---------------- | --------------------------------------------------------- |
+| Explore           | Haiku   | Read-only        | Fast codebase search; invocation level: quick/medium/very thorough |
+| Plan              | inherit | Read-only        | Codebase research during plan mode                        |
+| general-purpose   | inherit | All              | Complex, multi-step tasks: exploration + action           |
+| statusline-setup  | Sonnet  | —                | Configures the status line when you run `/statusline`     |
+| claude-code-guide | Haiku   | —                | Answers questions about Claude Code features              |
 
-The live "Other" tab of the built-in subagents documentation now lists only `statusline-setup` and `claude-code-guide`; the previously documented `Bash` built-in is no longer listed (source: creating-custom-subagents.md). Explore and Plan skip CLAUDE.md files and the parent session's git status to keep research fast; every other built-in and custom subagent loads both (source: creating-custom-subagents.md).
+Explore and Plan skip CLAUDE.md files and the parent session's git status to keep research fast; every other built-in and custom subagent loads both (source: creating-custom-subagents.md). Built-in subagents are always registered in interactive sessions. To block a specific built-in type, add it to `permissions.deny`. In non-interactive mode and the Agent SDK, set `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS=1` to remove all built-in types and supply only your own.
+
+## /agents Command UI
+
+The `/agents` command opens a tabbed interface. The **Running** tab shows live subagents and lets you open or stop them. The **Library** tab lets you view all available subagents (built-in, user, project, plugin), create new ones with guided setup or Claude generation, edit existing configuration and tool access, and delete custom subagents (source: creating-custom-subagents.md).
 
 ## Effort Levels
 
@@ -116,73 +120,13 @@ All hook events are supported. Key behaviors:
 
 ## Agent Teams (Experimental)
 
-Multiple Claude Code instances coordinating as a team. Enable with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`. Requires Claude Code v2.1.32+.
-
-### Architecture
-
-| Component     | Role                                                                            |
-| ------------- | ------------------------------------------------------------------------------- |
-| **Team lead** | Creates team, breaks work into tasks, coordinates progress, synthesizes results |
-| **Teammates** | Independent Claude Code instances, each with own context window                 |
-| **Task list** | Shared state — teammates claim tasks, mark complete                             |
-| **Mailbox**   | Direct messaging between lead and teammates, or between teammates               |
-
-### Task Workflow
-
-Tasks flow through states: **pending** → **in progress** → **completed**. Task dependencies are supported — a task won't become available until its dependencies are complete. File locking prevents race conditions when teammates access shared resources.
-
-### Communication
-
-- **Lead ↔ Teammate**: Direct messages via task list updates and mailbox
-- **Teammate ↔ Teammate**: Broadcast messages for coordination
-- Display modes: **in-process** (cycle with `Shift+Down`) or **split-panes** (tmux/iTerm2)
-
-### Team-Specific Hooks
-
-Two hook events exist specifically for agent teams:
-
-- `TeammateIdle` — fires when a teammate is about to go idle; block to keep it working
-- `TaskCompleted` — fires when a task is marked complete; block to prevent completion
-
-### Sizing Guidelines
-
-| Guideline          | Recommendation                                                                  |
-| ------------------ | ------------------------------------------------------------------------------- |
-| Team size          | **3–5 teammates** for most workflows                                            |
-| Tasks per teammate | **5–6 tasks** each keeps everyone productive                                    |
-| Scaling rule       | Add teammates only when work genuinely benefits from parallelism                |
-| Task granularity   | Self-contained units producing clear deliverables (function, test file, review) |
-
-Three focused teammates often outperform five scattered ones. Token costs scale linearly with teammate count, and coordination overhead increases with team size.
-
-### Team Use Cases
-
-- Parallel research from different angles
-- Cross-layer coordination (frontend, backend, tests simultaneously)
-- Model comparison on same task
-- Large PR reviews split by concern area
-
-### Team Anti-Patterns
-
-- Sequential, tightly-coupled tasks (use single session)
-- Same-file edits across teammates (causes overwrites)
-- Simple tasks that don't justify coordination overhead (higher token cost)
-- Running unattended too long (increases risk of wasted effort)
-
-### Current Limitations
-
-- No session resumption with in-process teammates (`/resume` and `/rewind` don't restore them)
-- Task status can lag — teammates sometimes fail to mark tasks complete
-- One team per session; no nested teams
-- Lead is fixed for the session lifetime
-- All teammates start with the lead's permission mode
-- Split panes require tmux or iTerm2 (not supported in VS Code terminal, Windows Terminal, or Ghostty)
+A fixed team lead spawns independent Claude Code teammate instances — each with its own context window — that share a file-locked task list and message each other point-to-point through a mailbox, governed by three team-specific hooks (source: agent-teams.md). This is distinct from single-session subagents (which report only to their caller and never talk to each other). See the canonical page [[claude-code-agent-teams]] for architecture, communication, team hooks, sizing, and limitations.
 
 ## Fork Mode (Experimental)
 
 A **fork** is a subagent that inherits the entire conversation so far instead of starting fresh (source: creating-custom-subagents.md). It drops the input isolation a normal subagent provides: the fork sees the same system prompt, tools, model, and message history as the main session, so a side task can be handed off without re-explaining context. The fork's own tool calls still stay out of the main conversation — only its final result returns (source: creating-custom-subagents.md).
 
-Fork mode is experimental and requires Claude Code v2.1.117 or later. Enable it by setting the `CLAUDE_CODE_FORK_SUBAGENT` environment variable to `1`; the variable is honored in interactive mode and via the SDK or `claude -p` (source: creating-custom-subagents.md).
+Fork mode is experimental. It is **enabled by default** as of Claude Code v2.1.161 — you no longer need to set `CLAUDE_CODE_FORK_SUBAGENT=1` to activate it. On earlier versions (v2.1.117–v2.1.160), set `CLAUDE_CODE_FORK_SUBAGENT=1` to enable it (source: creating-custom-subagents.md).
 
 Enabling fork mode changes three things (source: creating-custom-subagents.md):
 
@@ -191,6 +135,45 @@ Enabling fork mode changes three things (source: creating-custom-subagents.md):
 - The `/fork` command spawns a fork instead of aliasing `/branch`.
 
 You can start a fork yourself with `/fork` followed by a directive (e.g. `/fork draft unit tests for the parser changes so far`); Claude Code names the fork from the first words of the directive (source: creating-custom-subagents.md). Because a fork's system prompt and tool definitions are identical to the parent, its first request reuses the parent's prompt cache, making forking cheaper than spawning a fresh subagent for tasks that need the same context (source: creating-custom-subagents.md). A fork cannot spawn further forks (source: creating-custom-subagents.md).
+
+## Claude-Code-Specific Subagent Behavior
+
+- **Workflow-spawned subagents**: subagents spawned by a [[claude-code-workflows]] dynamic workflow always run in `acceptEdits` mode and inherit the session tool allowlist regardless of the session's permission mode — file edits are auto-approved, though un-allowlisted shell/web/MCP calls can still prompt mid-run (source: dynamic-workflows.md).
+- **Subagent worktrees**: subagent (and background-session) worktrees are auto-removed once older than the `cleanupPeriodDays` setting if they are clean (no uncommitted changes, untracked files, or unpushed commits), whereas `--worktree`-created worktrees are never swept; subagent worktrees inherit the same base branch as `--worktree` (source: parallel-sessions-worktrees.md). See [[claude-code-worktrees]].
+
+## CLI-Defined Subagents (`--agents` flag)
+
+Pass subagents as JSON when launching Claude Code for session-scoped definitions that are not saved to disk (source: creating-custom-subagents.md):
+
+```bash
+claude --agents '{
+  "code-reviewer": {
+    "description": "Expert code reviewer. Use proactively after code changes.",
+    "prompt": "You are a senior code reviewer.",
+    "tools": ["Read", "Grep", "Glob", "Bash"],
+    "model": "sonnet"
+  }
+}'
+```
+
+The `--agents` flag accepts the same frontmatter fields as file-based subagents, with `prompt` substituting for the markdown body. Useful for automation scripts and quick testing. `--strict-mcp-config` does not filter inline servers defined here, since they are explicit caller input.
+
+## Model Resolution Order
+
+When Claude invokes a subagent, the model is resolved in this order (source: creating-custom-subagents.md):
+
+1. `CLAUDE_CODE_SUBAGENT_MODEL` environment variable, if set
+2. Per-invocation `model` parameter
+3. Subagent definition's `model` frontmatter
+4. Main conversation's model
+
+## Agent(agent_type) Spawn Restrictions
+
+When an agent runs as the main thread with `claude --agent`, use `Agent(worker, researcher)` syntax in the `tools` field to restrict which subagent types it can spawn — an allowlist. `Agent` without parentheses allows any subagent. Omitting `Agent` from `tools` prevents spawning any subagents. This restriction only applies to agents running as the main thread; subagents themselves cannot spawn other subagents regardless (source: creating-custom-subagents.md).
+
+## MCP Server Restrictions (v2.1.153+)
+
+As of v2.1.153, the MCP restrictions that apply to the main session also cover servers declared in subagent `mcpServers` frontmatter: `--strict-mcp-config`, `--bare`, enterprise managed MCP configuration, and `allowedMcpServers`/`deniedMcpServers` policies. When a restriction blocks a server, Claude Code skips it and shows a warning. Managed-settings restrictions apply to every subagent regardless of definition method (source: creating-custom-subagents.md).
 
 ## Key Constraint
 
@@ -206,3 +189,10 @@ You can start a fork yourself with `/fork` followed by a directive (e.g. `/fork 
 - [[claude-code-hooks]]
 - [[agent-workflows]]
 - [[cursor-subagents]]
+- [[claude-code-agent-teams]]
+- [[claude-code-workflows]]
+- [[claude-code-worktrees]]
+- [[monorepo-large-codebase-setup]]
+- [[claude-code-commands]] — `/agents`, `/tasks`, `/fork`, `/batch`, and `/background` commands control subagent management
+- [[claude-code-env-vars]] — `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`, `CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS`, `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY`, `TASK_MAX_OUTPUT_LENGTH`, and `CLAUDE_CODE_FORK_SUBAGENT` are documented there
+- [[claude-code-tools]] — the Agent tool inheritance rules (tools/disallowedTools precedence) and foreground vs background permission behavior

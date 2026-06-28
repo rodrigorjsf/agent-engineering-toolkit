@@ -2,6 +2,36 @@
 
 ---
 
+## 2026-06-21 — Surgical update: cursor-rules.md activation-mode labels, Memories note, cross-link
+
+**Updated page (1):** `cursor-rules.md` — (1) aligned four activation-mode labels to official Cursor names: "Apply to Specific Files" (was "Specific Files") and "Apply Manually" (was "Manual") in the table and Summary; (2) added "### Rules vs. Cursor Memories" subsection clarifying `alwaysApply` rules as the authoritative always-on surface and Memories (GA since Cursor 1.2) as non-authoritative conversational captures, with [[cursor-hooks]] cross-link; (3) confirmed frontmatter keys stay as `description`, `alwaysApply`, `globs` (no change needed); (4) updated Last updated to 2026-06-21; (5) added [[cursor-hooks]] to Related pages.
+
+## 2026-06-21 — Surgical update: cursor-hooks.md known issues and caveats
+
+**Updated page (1):** `cursor-hooks.md` — added "## Known Issues and Caveats" section documenting three staff-confirmed bugs/limitations: (1) `sessionStart` `additional_context` silently dropped (timing race, forum 158452); (2) `afterFileEdit` fires only for first file in batch edits (forum 156065); (3) `beforeSubmitPrompt` cannot inject context, only block. Net takeaway cross-linked to [[cursor-rules]]. Updated Sources and Last updated fields.
+
+## 2026-06-11 — Ingest: 8 Claude Code vendor docs (4 new pages + 4 content updates)
+
+**New pages (4):** `claude-code-commands.md` — complete slash command reference (built-in, bundled skills/workflows, MCP prompt commands, removed commands); `claude-code-env-vars.md` — full environment variable reference (all variable groups: auth, model config, feature toggles, observability, subagents, hooks, plugins, MCP, and more); `claude-code-mcp.md` — MCP integration reference (transport types, installation scopes, OAuth/headersHelper, plugin MCP servers, push channels, managed MCP, Claude Code as MCP server); `claude-code-tools.md` — built-in tool catalog with permission rule formats and per-tool detail sections for 40+ tools.
+
+**Updated pages (4):** `claude-code-hooks.md` — added MessageDisplay event (display-only, 10s timeout), asyncRewake field, defer permissionDecision, terminalSequence JSON output field, reloadSkills SessionStart field, hook type support matrix, updated updatedPermissions entries schema (addRules/replaceRules/removeRules/setMode/addDirectories/removeDirectories); `claude-code-plugins.md` — added displayName, defaultEnabled fields, full optional manifest structure, userConfig details, installation scopes table, skills-directory plugins, plugin caching/symlink rules, full CLI commands reference (init/install/uninstall/prune/enable/disable/update), themes section, LSP optional fields table, official LSP plugins; `claude-code-subagents.md` — expanded built-in subagents table, /agents command UI (Running/Library tabs), CLI --agents flag with JSON example, model resolution 4-step order, Agent(agent_type) spawn restrictions, MCP restriction v2.1.153, fork mode updated to v2.1.161 (enabled by default); `agent-protocols.md`, `claude-code-skills.md`, `claude-code-workflows.md` — cross-references to new pages added.
+
+**Index updated:** 45 → 49. Sources: claude-code-commands.md, env-var-ref.md, claude-code-with-mcp.md, tools-ref.md, claude-hook-reference-doc.md, plugin-ref.md, creating-custom-subagents.md (8 source docs total).
+
+---
+
+## 2026-06-04 — Ingest: 5 new Claude Code vendor docs + lint fixes
+
+Summarize: Pages created (4): claude-code-agent-teams, claude-code-workflows, monorepo-large-codebase-setup, claude-code-worktrees. Source: goals.md ingested as extends only (no new page — it is a session-scoped Stop-hook wrapper). Pages extended: claude-code-subagents (Agent Teams section demoted to a stub pointing at the canonical page; corrected the stale "broadcast" claim → point-to-point, and "two team hooks" → three), agent-workflows, claude-code-hooks, claude-code-memory (fixed subdirectory-load claim for the start-from-subdir case; added claudeMdExcludes), subagents, context-engineering, claude-code-skills, skill-authoring, claude-code-plugins, agent-configuration-files. Lint fixes applied: resolved the pi-context-zone orphan (backlinks from context-engineering + harness-engineering); corrected the rpi-workflow ↔ harness-engineering dumb-zone threshold mis-attribution (40% from markus-harrer vs 60% from harness-engineering, now attributed separately); added ## Related pages to the four Compliance & Validation routing pages. Index updated 41 → 45. Sources: agent-teams.md, dynamic-workflows.md, goals.md, monorepos-and-large-repos.md, parallel-sessions-worktrees.md.
+
+**Lint pass (same run).** Mechanical checks over 41 pages (deterministic, ground truth): P0 dangling links 0, dead index entries 0, pages missing from index 0; P1 orphan 1 (pi-context-zone — fixed), format 4 (routing pages lacked `## Related pages` — fixed); P2 asymmetric backlinks ~120 (expected noise, one-way prose mentions are allowed — not acted on). Reasoning checks (8 topical clusters): 1 contradiction found and fixed (rpi-workflow ↔ harness-engineering dumb-zone threshold mis-attribution); 7 of 8 clusters clean. Post-write re-lint over all 45 pages: 0 P0, 0 orphans, 0 format violations; all 16 intended bidirectional pairs resolve both ways.
+
+**Lint findings deferred (not acted on — future work):**
+- *Citation-sparse pages (13):* agent-skills-standard, compliance-routing, context-rot, cursor-mcp, cursor-subagents, evaluating-agents-paper, multilingual-performance, persuasion-in-ai, skill-body-convention, validation-routing-claude/cursor/standalone, whitespace-and-formatting — no inline `(source:)` markers (page-level heuristic, low confidence; synthesized concept pages legitimately cite via `**Sources**:` frontmatter only). Verify or accept as-is per page.
+- *Concept-gap candidates for future ingest (no source doc yet — would be synthesis pages):* tool-calling/tool-use (recurs across 11 pages, only the schema-constrained slice is owned by structured-outputs), agent-evaluation/benchmarking (14 pages cite evals; no page owns the methodology — evaluating-agents-paper is one specific study), context-compaction (9 pages; only touched by context-engineering), permission/sandbox model (9+ pages; gating model described per-tool, never as one concept). Promotion candidates (well-homed today, split only if cluster grows): A2A (section of agent-protocols), constrained-decoding (section of structured-outputs).
+
+---
+
 ## 2026-05-21 — Update: subagent pages reflect current Claude Code facts
 
 **Pages updated (2):** `claude-code-subagents.md`, `subagents.md`

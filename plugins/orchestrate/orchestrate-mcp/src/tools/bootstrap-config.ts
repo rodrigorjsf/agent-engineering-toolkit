@@ -46,8 +46,10 @@ const MODEL_CONTEXT_WINDOW: Readonly<Record<string, number>> = {
   opus: DEFAULT_CONTEXT_WINDOW_TOKENS,
   sonnet: DEFAULT_CONTEXT_WINDOW_TOKENS,
   haiku: DEFAULT_CONTEXT_WINDOW_TOKENS,
+  "claude-opus-4-8[1m]": ONE_MILLION_TOKENS,
   "claude-opus-4-7[1m]": ONE_MILLION_TOKENS,
   "claude-opus-4-1[1m]": ONE_MILLION_TOKENS,
+  "claude-sonnet-4-6[1m]": ONE_MILLION_TOKENS,
   "claude-sonnet-4-5[1m]": ONE_MILLION_TOKENS,
   "claude-sonnet-4[1m]": ONE_MILLION_TOKENS,
 };
@@ -55,28 +57,53 @@ const MODEL_CONTEXT_WINDOW: Readonly<Record<string, number>> = {
 // ─── Shipped defaults ─────────────────────────────────────────────────────────
 
 /**
- * The default `routing.json` content the bootstrapper writes. Routing has no
- * project-type axis, so this is a fixed literal — kept byte-for-byte equivalent
- * (modulo formatting) to `templates/routing.json`.
+ * The default `routing.json` content the bootstrapper writes. Native v2 shape —
+ * `version: 2` present so a fresh-repo bootstrap produces NO deprecation
+ * warning. Kept byte-for-byte equivalent (modulo formatting) to
+ * `templates/routing.json`.
+ *
+ * Tier matrix (ADR-0015):
+ * - trivial: investigator=null; implementer=haiku/standard; reviewer=sonnet/standard;
+ *   conflict-resolver=sonnet/standard (deliberate cross-model merge gate).
+ * - standard: investigator=haiku/standard (NEW — was null); implementer=sonnet/standard;
+ *   reviewer=opus/standard; conflict-resolver=opus/standard.
+ * - complex: all roles = opus/deep (unchanged).
+ * - labels: route:fable → implementer patched to fable/deep with opus fallback.
+ * - run: intraWaveConcurrency=parallel; continuationBudget=2 (same values as v1,
+ *   now under the run block).
  */
-const DEFAULT_ROUTING_CONFIG = {
-  trivial: {
-    investigator: null,
-    implementer: { model: "sonnet", effort: "standard" },
-    reviewer: { model: "sonnet", effort: "standard" },
-    "conflict-resolver": { model: "sonnet", effort: "standard" },
+export const DEFAULT_ROUTING_CONFIG = {
+  version: 2,
+  tiers: {
+    trivial: {
+      investigator: null,
+      implementer: { model: "haiku", variant: "standard" },
+      reviewer: { model: "sonnet", variant: "standard" },
+      "conflict-resolver": { model: "sonnet", variant: "standard" },
+    },
+    standard: {
+      investigator: { model: "haiku", variant: "standard" },
+      implementer: { model: "sonnet", variant: "standard" },
+      reviewer: { model: "opus", variant: "standard" },
+      "conflict-resolver": { model: "opus", variant: "standard" },
+    },
+    complex: {
+      investigator: { model: "opus", variant: "deep" },
+      implementer: { model: "opus", variant: "deep" },
+      reviewer: { model: "opus", variant: "deep" },
+      "conflict-resolver": { model: "opus", variant: "deep" },
+    },
   },
-  standard: {
-    investigator: null,
-    implementer: { model: "sonnet", effort: "standard" },
-    reviewer: { model: "opus", effort: "standard" },
-    "conflict-resolver": { model: "opus", effort: "standard" },
+  labels: {
+    "route:fable": {
+      roles: ["implementer"],
+      set: { model: "fable", variant: "deep" },
+      fallback: { model: "opus", maxRetries: 1 },
+    },
   },
-  complex: {
-    investigator: { model: "opus", effort: "deep" },
-    implementer: { model: "opus", effort: "deep" },
-    reviewer: { model: "opus", effort: "deep" },
-    "conflict-resolver": { model: "opus", effort: "deep" },
+  run: {
+    intraWaveConcurrency: "parallel",
+    continuationBudget: 2,
   },
 } as const;
 
@@ -125,7 +152,7 @@ export const bootstrapConfigOutputSchema = z.object({
         "failed and the configuration is incomplete."
     ),
   projectType: z
-    .enum(["npm", "cargo", "python", "make", "none"])
+    .enum(["npm", "cargo", "python", "maven", "gradle", "make", "none"])
     .optional()
     .describe(
       "The detected project type. 'none' means no recognized manifest — " +
@@ -139,13 +166,14 @@ export const bootstrapConfigOutputSchema = z.object({
         "positive integer — never NaN. Present when status='ok'."
     ),
   contextWindowSource: z
-    .enum(["explicit", "model-table", "default"])
+    .enum(["explicit", "model-table", "model-suffix", "default"])
     .optional()
     .describe(
       "How contextWindowTokens was resolved. 'explicit' = a valid " +
         "contextWindowTokens input; 'model-table' = a recognized model id; " +
-        "'default' = an unknown/absent model fell back to 200000. Present " +
-        "when status='ok'."
+        "'model-suffix' = an unlisted id whose trailing [Nm] capacity suffix " +
+        "was parsed to N×1000000; 'default' = an unknown/absent model fell " +
+        "back to 200000. Present when status='ok'."
     ),
   files: z
     .object({
@@ -188,6 +216,17 @@ export const bootstrapConfigOutputSchema = z.object({
     .describe(
       "Cleaned, human-readable failure description. Present when status='error'."
     ),
+  warnings: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Advisory warnings about the bootstrapped configuration. Non-empty only " +
+        "when status='ok' and the freshly-written commands.json is empty ({}) — " +
+        "meaning no recognized project type was detected and the capability gates " +
+        "(run_tests, run_build, etc.) will report 'not-configured', allowing a " +
+        "slice to merge green with no verification. Empty array when the written " +
+        "commands map is non-empty. Present when status='ok'."
+    ),
 });
 
 // ─── TS types — derived from the schemas (single source of truth) ─────────────
@@ -214,14 +253,15 @@ function toJsonFile(value: unknown): string {
 /** How the context-window token count was resolved. */
 type ContextWindowResolution = {
   tokens: number;
-  source: "explicit" | "model-table" | "default";
+  source: "explicit" | "model-table" | "model-suffix" | "default";
 };
 
 /**
  * Resolves the context-window token count from the bootstrap input. Precedence:
  *   1. An explicit `contextWindowTokens` that is a positive integer.
  *   2. An exact model-table hit.
- *   3. The {@link DEFAULT_CONTEXT_WINDOW_TOKENS} fallback.
+ *   3. A trailing `[Nm]` capacity suffix on the model id, parsed to N×1M.
+ *   4. The {@link DEFAULT_CONTEXT_WINDOW_TOKENS} fallback.
  *
  * Always returns a positive integer — never NaN — so a malformed input can
  * never write a broken value into handoff.json.
@@ -243,6 +283,22 @@ export function resolveContextWindow(
     if (fromTable !== undefined) {
       return { tokens: fromTable, source: "model-table" };
     }
+
+    // Bracket-only, post-miss fallback: parse a trailing `[Nm]` capacity token
+    // (e.g. the `[1m]` in `claude-future-x[1m]`) to N×1M. This is orthogonal to
+    // the exact-match table invariant — it never matches the table by
+    // substring and never inspects the model FAMILY; it reads only the
+    // end-anchored bracketed capacity token and runs solely after an exact
+    // table miss, so it cannot alter any exact-table outcome. The `N > 0` guard
+    // sends a pathological `[0m]` through to the default, preserving the
+    // never-zero/never-NaN contract.
+    const suffixMatch = /\[(\d+)m\]$/.exec(input.model);
+    if (suffixMatch !== undefined && suffixMatch !== null) {
+      const n = Number.parseInt(suffixMatch[1], 10);
+      if (n > 0) {
+        return { tokens: n * ONE_MILLION_TOKENS, source: "model-suffix" };
+      }
+    }
   }
 
   return { tokens: DEFAULT_CONTEXT_WINDOW_TOKENS, source: "default" };
@@ -250,10 +306,13 @@ export function resolveContextWindow(
 
 /**
  * Builds the `commands.json` content for a detected project. The four
- * capability verbs come from the capability detector. `install: ["npm", "ci"]`
- * is added for an npm project only — a fresh worktree needs the dependency
- * install, and a wrong install command for another toolchain is worse than
- * none. A manifest-less ('none') project yields an empty object.
+ * capability verbs AND the `install` setup verb come from the capability
+ * detector ({@link detectCommandMap}), which is package-manager-aware for the
+ * JS ecosystem: it emits a **mutating/resolving** install keyed on the lockfile
+ * (`pnpm install` / `yarn install` / `npm install`, defaulting to pnpm with no
+ * lock — never `npm ci`), plus `cargo fetch` for cargo and `pip install -e .`
+ * for python. A `make`/manifest-less ('none') project has no install verb. The
+ * detected install flows through unchanged — there is no hardcoded override.
  */
 export function buildCommandsConfig(repoRoot: string): {
   config: CommandsConfig;
@@ -269,9 +328,6 @@ export function buildCommandsConfig(repoRoot: string): {
   const capabilities = detectCommandMap(repoRoot);
 
   const config: CommandsConfig = { ...capabilities };
-  if (projectType === "npm") {
-    config.install = ["npm", "ci"];
-  }
   return { config, projectType };
 }
 
@@ -501,6 +557,23 @@ export function bootstrapConfig(
     };
   }
 
+  // Emit a loud warning when the bootstrapper just wrote an empty commands.json
+  // ({}). This happens for unrecognized project types ('none') where no manifest
+  // is detected. An empty map means all capability gates (run_tests, run_build,
+  // etc.) will report 'not-configured' — a slice can merge green with no
+  // verification, which is a common source of false-green merges.
+  const commandsMapEmpty =
+    Object.keys(validatedCommands.data).length === 0;
+  const warnings: string[] =
+    commandsResult.kind === "written" && commandsMapEmpty
+      ? [
+          "commands.json was written empty ({}): no recognized project type detected. " +
+            "The capability gates run_tests and run_build will report 'not-configured' — " +
+            "a slice can merge green with no verification. " +
+            "Edit .orchestrate/commands.json to add your project's test and build commands.",
+        ]
+      : [];
+
   return {
     status: "ok",
     projectType,
@@ -513,5 +586,6 @@ export function bootstrapConfig(
     },
     runsDir: runsDirExisted ? "already-present" : "created",
     gitignore: gitignoreResult.kind,
+    warnings,
   };
 }

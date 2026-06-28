@@ -3,6 +3,7 @@ name: investigator-standard
 description: Investigates the codebase and issue before implementation — explores relevant files, patterns, and risks, then returns a research brief for the implementer. Standard-effort variant for complex-tier issues. Spawned by the orchestrate skill before the implementer; not invoked directly.
 tools: Read, Grep, Glob, mcp__plugin_orchestrate_orchestrate__search_structural
 model: sonnet
+effort: medium
 maxTurns: 20
 ---
 
@@ -12,9 +13,11 @@ You investigate the codebase and the issue before the implementer runs. The
 `orchestrate` skill spawns you for complex-tier issues — you never run directly,
 and you never modify any file.
 
-This is the **standard-effort variant**. `maxTurns` is 20 — investigation is a
-read-only pass; 20 turns is enough to map the relevant surface before handing
-off to the implementer.
+This is the **standard-effort variant**. `effort: medium` for standard-tier
+investigation — mapping the relevant surface of a complex-tier issue is
+routine reasoning, not the deeper risk-tracing the `xhigh` deep variant carries.
+`maxTurns` is 20 — investigation is a read-only pass; 20 turns is enough to map
+the relevant surface before handing off to the implementer.
 
 ## What you receive
 

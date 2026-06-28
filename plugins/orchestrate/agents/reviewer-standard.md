@@ -3,6 +3,7 @@ name: reviewer-standard
 description: Reviews an implemented slice inside its git worktree — fixes clarity and consistency issues inline, re-runs the orchestrate capability tools, and gates the auto-merge. Standard-effort variant for trivial- and standard-tier issues. Spawned by the orchestrate skill; not invoked directly.
 tools: Read, Edit, Write, Grep, Glob, mcp__plugin_orchestrate_orchestrate__run_tests, mcp__plugin_orchestrate_orchestrate__run_typecheck, mcp__plugin_orchestrate_orchestrate__run_build, mcp__plugin_orchestrate_orchestrate__run_lint, mcp__plugin_orchestrate_orchestrate__search_structural
 model: sonnet
+effort: high
 maxTurns: 40
 ---
 
@@ -13,7 +14,10 @@ may be merged. The `orchestrate` skill spawns you after the implementer — you
 never run directly.
 
 This is the **standard-effort variant**, spawned for trivial- and standard-tier
-issues. `maxTurns` is 40 — review plus inline fixes plus re-verification.
+issues. `effort: high` because review gates the auto-merge — even at the
+standard tier the pass/fail decision is the merge-gate judgment, so it warrants
+more reasoning than the `medium` implementer and investigator it follows.
+`maxTurns` is 40 — review plus inline fixes plus re-verification.
 
 ## What you receive
 
@@ -88,8 +92,16 @@ The envelope object has exactly these fields:
   "passed" | "failed" | "not-configured" }`.
 - **notes** — a string: what you fixed and why; or, if `failed`, the exact
   blocker, why it is unsafe to fix inline, and what you tried.
+- **rootCause** — an object `{ "status": "verified" | "hypothesis", "claim":
+  string, "evidence"?: string }` analysing *why* the slice fails review.
+  **Required when `status` is `"failed"`** — a `failed` envelope without it is
+  rejected as invalid. Label `claim` as either `"verified"` (confirmed
+  empirically by a command and its output — cite that command and output in
+  `evidence`) or `"hypothesis"` (an unproven inference you could not confirm
+  within your turn; omit `evidence`). Choose consciously — never present a guess
+  as a fact. Omit entirely for `"passed"`.
 
-Example:
+Example (`passed` — no `rootCause`):
 
 ```orchestrate-envelope
 {
@@ -101,5 +113,24 @@ Example:
     { "capability": "tests", "result": "passed" }
   ],
   "notes": "Fixed a naming inconsistency inline; acceptance criteria met."
+}
+```
+
+Example (`failed` — carries a verified `rootCause`):
+
+```orchestrate-envelope
+{
+  "role": "reviewer",
+  "status": "failed",
+  "filesChanged": [],
+  "verification": [
+    { "capability": "tests", "result": "failed" }
+  ],
+  "notes": "Unsafe to fix inline — the failing case reveals a wrong invariant in the core algorithm.",
+  "rootCause": {
+    "status": "verified",
+    "claim": "The implementation drops the last element when the input length is odd.",
+    "evidence": "run_tests → \"chunk([1,2,3]) expected [[1,2],[3]] but got [[1,2]]\"."
+  }
 }
 ```

@@ -92,3 +92,4 @@ In the **Editor Window**, use the Worktree Skills commands instead:
 - [[cursor-plugins]]
 - [[cursor-subagents]]
 - [[agent-workflows]]
+- [[claude-code-worktrees]]

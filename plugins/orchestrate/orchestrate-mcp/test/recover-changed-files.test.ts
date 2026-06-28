@@ -83,6 +83,15 @@ describe("recover_changed_files", () => {
     expect(r.changedFiles).toContain("new-file.ts");
   });
 
+  it("enumerates files inside a new untracked directory, not the dir stub", async () => {
+    fs.mkdirSync(path.join(repoPath, "subdir", "nested"), { recursive: true });
+    fs.writeFileSync(path.join(repoPath, "subdir", "nested", "file.ts"), "export const x = 1;\n");
+    const r = await recoverChangedFiles({ worktreePath: repoPath });
+    expect(r.status).toBe("ok");
+    expect(r.changedFiles).toContain("subdir/nested/file.ts");
+    expect(r.changedFiles).not.toContain("subdir/");
+  });
+
   it("recovers both real paths of a staged rename, never as 'old -> new'", async () => {
     git(["mv", "README.md", "RENAMED.md"], repoPath);
 

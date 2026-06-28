@@ -1,8 +1,8 @@
 # Agent Configuration Files
 
 **Summary**: Repository-level context files (AGENTS.md, CLAUDE.md, .cursorrules) that provide persistent project-specific instructions to coding agents — the primary interface between developers and AI tools, governed by the principle that less is more.
-**Sources**: a-guide-to-agents.md, how-claude-remembers-a-project.md, rules.md, Evaluating-AGENTS-paper.md, analysis-a-guide-to-agents.md, analysis-how-claude-remembers-a-project.md
-**Last updated**: 2026-04-18
+**Sources**: a-guide-to-agents.md, how-claude-remembers-a-project.md, rules.md, Evaluating-AGENTS-paper.md, analysis-a-guide-to-agents.md, analysis-how-claude-remembers-a-project.md, monorepos-and-large-repos.md
+**Last updated**: 2026-06-04
 
 ---
 
@@ -72,6 +72,15 @@ Four activation modes for `.cursor/rules/*.mdc` files:
 - Personal preferences in project files
 - Conflicting rules (model picks one arbitrarily)
 
+## Per-directory CLAUDE.md vs path-scoped rules
+
+When a convention belongs to one part of a large repo, choose between two placement mechanisms:
+
+- **Per-directory `CLAUDE.md`** — lives with the code it governs, versioned by that directory's owners, and loads either at launch (when you start Claude from that directory) or on demand (when Claude reads files there) (source: monorepos-and-large-repos.md).
+- **Path-scoped `.claude/rules/`** — centralized at the repo root and loads only when files matching its `paths:` glob are touched (source: monorepos-and-large-repos.md).
+
+Prefer path-scoped rules when one convention applies to many scattered paths, or when you want all conventions collected in one place rather than spread across directory-local files (source: monorepos-and-large-repos.md). See [[monorepo-large-codebase-setup]] for scoping Claude Code to part of a monorepo.
+
 ## Related pages
 
 - [[progressive-disclosure]]
@@ -79,3 +88,4 @@ Four activation modes for `.cursor/rules/*.mdc` files:
 - [[claude-code-memory]]
 - [[cursor-rules]]
 - [[context-engineering]]
+- [[monorepo-large-codebase-setup]]

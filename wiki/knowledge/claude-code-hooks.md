@@ -1,8 +1,8 @@
 # Claude Code Hooks
 
 **Summary**: Deterministic automation points in the Claude Code lifecycle that execute shell commands, HTTP requests, MCP tool calls, LLM prompts, or agent-based verification at specific events — enabling formatting, validation, auditing, and control flow without relying on the model's judgment.
-**Sources**: automate-workflow-with-hooks.md, claude-hook-reference-doc.md, analysis-automate-workflow-with-hooks.md, analysis-claude-hook-reference-doc.md
-**Last updated**: 2026-05-22
+**Sources**: automate-workflow-with-hooks.md, claude-hook-reference-doc.md, analysis-automate-workflow-with-hooks.md, analysis-claude-hook-reference-doc.md, agent-teams.md, goals.md, monorepos-and-large-repos.md, parallel-sessions-worktrees.md
+**Last updated**: 2026-06-11
 
 ---
 
@@ -22,7 +22,9 @@ There are **five** hook handler types (source: claude-hook-reference-doc.md):
 | **Prompt**   | Single-turn Claude evaluation            | Conditional logic, policy decisions        | 30s             |
 | **Agent**    | Claude with tool access (up to 50 turns) | Complex verification, multi-step checks    | 60s             |
 
-All timeouts are configurable per hook via the `timeout` field (in seconds). `UserPromptSubmit` lowers the `command`/`http`/`mcp_tool` default to 30s. **Agent hooks are experimental** and may change — prefer command hooks for production (source: automate-workflow-with-hooks.md).
+All timeouts are configurable per hook via the `timeout` field (in seconds). `UserPromptSubmit` lowers the `command`/`http`/`mcp_tool` default to 30s. `MessageDisplay` lowers it to 10s. **Agent hooks are experimental** and may change — prefer command hooks for production (source: automate-workflow-with-hooks.md).
+
+**Hook type support by event**: All five types (`command`, `http`, `mcp_tool`, `prompt`, `agent`) are supported on most events. `SessionStart` and `Setup` support only `command` and `mcp_tool`. `MessageDisplay` supports only `command` (source: claude-hook-reference-doc.md).
 
 ## Complete Lifecycle Events
 
@@ -46,6 +48,7 @@ Every event in the Claude Code lifecycle has a corresponding hook point. Events 
 | `UserPromptSubmit`    | User sends a prompt (before Claude processes it)           | No matcher support                                                                                                      | Yes — blocks prompt processing and erases the prompt |
 | `UserPromptExpansion` | A user-typed command expands into a prompt, before Claude  | Command name (your skill/command names)                                                                                 | Yes — blocks the expansion                           |
 | `Notification`        | Claude Code sends a notification                           | Type: `permission_prompt`, `idle_prompt`, `auth_success`, `elicitation_dialog`, `elicitation_complete`, `elicitation_response` | No                                             |
+| `MessageDisplay`      | Each batch of completed lines is ready to render while an assistant message streams | No matcher support                                                                                         | No — replacement changes only on-screen display, not the transcript |
 
 ### Tool Execution Events
 
@@ -96,6 +99,8 @@ Tool events support an optional per-handler `if` field that uses permission-rule
 | `WorktreeCreate` | Worktree created via `--worktree` or `isolation: "worktree"` | No matcher support | Yes — non-zero exit fails creation |
 | `WorktreeRemove` | Worktree removed at session exit or subagent finish          | No matcher support | No                                 |
 
+Because a `WorktreeCreate` hook **replaces the default git logic entirely**, `.worktreeinclude` is **not** processed when using `--worktree` — local config files (e.g. `.env`) must be copied inside the hook script instead (source: parallel-sessions-worktrees.md). See [[claude-code-worktrees]].
+
 ### MCP Elicitation Events
 
 | Event               | Triggers When                                   | Matcher Target  | Can Block?                                     |
@@ -134,7 +139,7 @@ hooks → event name → matcher group array → hooks array → handler
 | `statusMessage` | No       | Custom spinner message while hook runs                                                               |
 | `once`          | No       | If `true`, runs only once per session (skill frontmatter only)                                       |
 
-Command hooks also accept `args` (switches to exec form — no shell tokenization), `async`/`asyncRewake` (background execution), and `shell` (`"bash"` default or `"powershell"`). Exec form is preferred for any hook that references a path placeholder, since each `args` element passes as one argument with no quoting (source: claude-hook-reference-doc.md).
+Command hooks also accept `args` (switches to exec form — no shell tokenization), `async` (background without blocking), `asyncRewake` (background that wakes Claude on exit code 2 — implies `async`; the hook's stderr is shown to Claude as a system reminder so it can react to a background failure), and `shell` (`"bash"` default or `"powershell"`). Exec form is preferred for any hook that references a path placeholder, since each `args` element passes as one argument with no quoting (source: claude-hook-reference-doc.md).
 
 ## Exit Code Control
 
@@ -148,12 +153,13 @@ For structured control, return JSON on exit 0: `{hookSpecificOutput: {hookEventN
 
 ### Universal JSON Output Fields
 
-| Field            | Default | Description                                                                       |
-| ---------------- | ------- | --------------------------------------------------------------------------------- |
-| `continue`       | `true`  | If `false`, Claude stops processing entirely (overrides event-specific decisions) |
-| `stopReason`     | none    | Message shown to user when `continue` is `false`                                  |
-| `suppressOutput` | `false` | If `true`, hides stdout from verbose mode                                         |
-| `systemMessage`  | none    | Warning message shown to the user                                                 |
+| Field              | Default | Description                                                                                                                                                               |
+| ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `continue`         | `true`  | If `false`, Claude stops processing entirely (overrides event-specific decisions)                                                                                         |
+| `stopReason`       | none    | Message shown to user when `continue` is `false`                                                                                                                          |
+| `suppressOutput`   | `false` | If `true`, hides stdout from verbose mode                                                                                                                                 |
+| `systemMessage`    | none    | Warning message shown to the user                                                                                                                                         |
+| `terminalSequence` | none    | Terminal escape sequence for Claude Code to emit on your behalf — desktop notifications, window titles, BEL. Allowed: OSC 0/1/2/9/99/777 and bare BEL. Replaces writing directly to `/dev/tty`, which is unavailable to hooks (source: claude-hook-reference-doc.md) |
 
 ## Advanced Control Patterns
 
@@ -174,7 +180,16 @@ For structured control, return JSON on exit 0: `{hookSpecificOutput: {hookEventN
 
 ### `updatedPermissions` — Programmatic Permission Control
 
-`PermissionRequest` hooks can modify session permissions when allowing an action. Use `setMode` to change the permission mode, or `addAllowRule`/`addDenyRule` to add persistent rules:
+`PermissionRequest` hooks can modify session permissions when allowing an action. Each `updatedPermissions` entry has a `type` that determines its fields and a `destination` (`session`, `localSettings`, `projectSettings`, `userSettings`) (source: claude-hook-reference-doc.md):
+
+| `type`              | Fields                             | Effect                                                                                      |
+| ------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------- |
+| `addRules`          | `rules`, `behavior`, `destination` | Adds permission rules. `rules` is an array of `{toolName, ruleContent?}` objects            |
+| `replaceRules`      | `rules`, `behavior`, `destination` | Replaces all rules of the given `behavior` at the destination with the provided rules       |
+| `removeRules`       | `rules`, `behavior`, `destination` | Removes matching rules                                                                      |
+| `setMode`           | `mode`, `destination`              | Changes permission mode (`default`, `auto`, `acceptEdits`, `dontAsk`, `bypassPermissions`, `plan`) |
+| `addDirectories`    | `directories`, `destination`       | Adds working directories                                                                    |
+| `removeDirectories` | `directories`, `destination`       | Removes working directories                                                                 |
 
 ```json
 {
@@ -190,9 +205,25 @@ For structured control, return JSON on exit 0: `{hookSpecificOutput: {hookEventN
 }
 ```
 
+### `defer` — Pause and Resume Tool Calls
+
+`PreToolUse` hooks can return `permissionDecision: "defer"` to pause a tool call and let a calling process collect input through its own UI before resuming. Claude Code honors this only in non-interactive (`-p`) mode. The process exits with `stop_reason: "tool_deferred"`, the calling process reads `deferred_tool_use` from the SDK result, and resumes with `claude -p --resume <session-id>`. On resume, the hook fires again — return `"allow"` (with the answer in `updatedInput`) or `"deny"` to complete the round-trip. `defer` works only when Claude makes a single tool call in the turn; batch tool calls ignore it (source: claude-hook-reference-doc.md).
+
+### `MessageDisplay` — Output Transformation
+
+`MessageDisplay` hooks run while each batch of completed lines streams to the screen. They can return `displayContent` to replace what is shown, without affecting the transcript or what Claude sees. Use for stripping markdown, redacting secrets from responses, or customizing Agent SDK output. Default timeout is 10 seconds. Fires for every assistant message that includes text; tool-call-only responses do not trigger it. In non-interactive runs, fires once per full message (source: claude-hook-reference-doc.md).
+
+### `reloadSkills` — Install Skills During Session
+
+`SessionStart` hooks can return `reloadSkills: true` in `hookSpecificOutput` to tell Claude Code to re-scan skill directories after the hook completes. Without this, skill discovery runs before `SessionStart` hooks finish, so skills installed by a hook only appear in the next session (source: claude-hook-reference-doc.md).
+
 ### `additionalContext` — Context Injection
 
 Multiple events support injecting text into Claude's context via the `additionalContext` field in JSON output: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Notification`, and `SubagentStart`. Multiple hooks' values are concatenated. For `SessionStart`, `CLAUDE_ENV_FILE` enables persisting environment variables for all subsequent Bash commands in the session.
+
+### Monorepo Onboarding Hooks
+
+In a large monorepo, a `SessionStart` hook can print a path-to-plugin recommendation to stdout, which is added to context before the first prompt — so a session started in an unfamiliar subtree learns which plugin owns that area (source: monorepos-and-large-repos.md). Complementarily, a `Stop` hook receives the session-transcript path and can propose `CLAUDE.md` updates while the gap exposed during the session is still fresh (source: monorepos-and-large-repos.md). See [[monorepo-large-codebase-setup]].
 
 ## Async Hooks
 
@@ -249,6 +280,10 @@ fi
 
 Use for decisions requiring judgment rather than deterministic rules.
 
+### `/goal` — Productized Session-Scoped Stop Hook
+
+The `/goal` command is a productized wrapper around a session-scoped prompt-based `Stop` hook: it sets a completion condition inline for the current session rather than living in a settings file across all sessions in scope (source: goals.md). After each turn a small fast model (Haiku by default) evaluates the condition and either continues — feeding its reason back as next-turn guidance — or clears the goal once the condition is met (source: goals.md). The evaluator **does not call tools or read files**; it judges only what Claude has already surfaced in the transcript, so an effective condition must be demonstrable in Claude's own output (source: goals.md). `/goal` is unavailable when `disableAllHooks` is set at any level or when `allowManagedHooksOnly` is set in managed settings, and it requires Claude Code v2.1.139+ (source: goals.md). See [[agent-workflows]] for how `/goal` compares with `/loop`, raw Stop hooks, and auto mode as session-continuing autonomous approaches.
+
 ## Agent-Based Hooks
 
 `type: "agent"` hooks spawn a subagent with tool access (Read, Grep, Glob, etc.) to verify conditions against the actual state of the codebase. Same `"ok"`/`"reason"` response format as prompt hooks, but supports up to 50 tool-use turns with a longer default timeout of 60 seconds. Use `$ARGUMENTS` as a placeholder for hook input JSON in the prompt.
@@ -296,5 +331,13 @@ Hooks can be defined directly in [[claude-code-skills]] and [[claude-code-subage
 - [[claude-code-plugins]]
 - [[claude-code-memory]]
 - [[claude-code-subagents]]
+- [[claude-code-agent-teams]]
+- [[claude-code-workflows]]
+- [[claude-code-worktrees]]
+- [[monorepo-large-codebase-setup]]
 - [[cursor-hooks]]
 - [[agent-workflows]]
+- [[claude-code-commands]] — `/hooks` and `/goal` are session entry-points for hook configuration
+- [[claude-code-env-vars]] — `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_ENV_FILE`, `CLAUDE_EFFORT`, `CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS`, and `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` are env vars that hooks read at runtime
+- [[claude-code-mcp]] — the `Elicitation` hook can auto-respond to MCP elicitation dialogs
+- [[claude-code-tools]] — the tools reference documents which tool names are valid hook matcher targets and the `if` field rule syntax
