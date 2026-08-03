@@ -1,6 +1,30 @@
 # Orchestrate subagent advisor policy
 
-**Status:** accepted (2026-05-22)
+**Status:** superseded (2026-08-02) — originally accepted 2026-05-22
+
+## Superseded
+
+This decision no longer holds, on both of its legs.
+
+**Its mechanism never worked.** The premise below — that a restricted `tools:`
+frontmatter withholds the `advisor` tool — was disproved empirically on Claude Code
+2.1.220. The runtime injects `advisor` into every subagent regardless of `tools:`, and
+the tool survives an explicit `disallowedTools: advisor`. Two independent probes
+reported it, including one against `orchestrate:investigator-standard`, which does not
+declare it. The frontmatter expressed an intention; it never produced an absence.
+
+**Its intent is withdrawn.** Subagent advisor use is now accepted: enabling the advisor
+feature is the operator's choice, so a subagent that calls it is acting within what the
+operator switched on. There is no prohibition to enforce.
+
+What remains true is the positive half — advisor passes at the **orchestrator boundary**
+are unrestricted and useful. The `## Advisor policy` section in each definition, and its
+word-for-word parity between the `-standard` and `-deep` variants, now record a
+preference rather than a boundary; the parity requirement itself is unaffected.
+
+The original text follows unchanged as the historical record.
+
+---
 
 All eight orchestrate subagents (`investigator`, `implementer`, `reviewer`, and
 `conflict-resolver`, in both `-standard` and `-deep` variants) do **not** consult

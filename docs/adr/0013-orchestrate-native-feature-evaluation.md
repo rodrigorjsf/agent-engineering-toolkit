@@ -130,3 +130,10 @@ violate the distribution-degradation requirement and forfeit durable resume.
   these features" to "evaluated and rejected — decomposition is the path"; the
   bespoke continue-in-place and per-slice-capability reconciliations (#267,
   #268-A) resolve to "build the bespoke fix; no native feature would replace it."
+- **A fifth native capability arrived later and was adopted on its own grounds.**
+  Nested subagent spawning — a subagent spawning subagents of its own — was not a
+  documented feature when this ADR was written and is therefore **not** one of the
+  four evaluated here. It is adopted in [ADR-0017](0017-orchestrate-slice-executor-delegation-layer.md),
+  which introduces the slice-executor delegation layer. That adoption is **not** a
+  reversal of this decision and none of the four reevaluation triggers above has
+  fired; the four features remain rejected.
