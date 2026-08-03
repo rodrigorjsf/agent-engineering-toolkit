@@ -24652,7 +24652,19 @@ var bootstrapConfigOutputSchema = external_exports.object({
     "Cleaned, human-readable failure description. Present when status='error'."
   ),
   warnings: external_exports.array(external_exports.string()).optional().describe(
-    "Advisory warnings about the bootstrapped configuration. Non-empty only when status='ok' and the freshly-written commands.json is empty ({}) \u2014 meaning no recognized project type was detected and the capability gates (run_tests, run_build, etc.) will report 'not-configured', allowing a slice to merge green with no verification. Empty array when the written commands map is non-empty. Present when status='ok'."
+    "Advisory warnings about the bootstrapped configuration. Non-empty exactly when `falseGreenRisk` is true \u2014 see that field. Present when status='ok'."
+  ),
+  capabilities: external_exports.object({
+    tests: external_exports.boolean(),
+    typecheck: external_exports.boolean(),
+    build: external_exports.boolean(),
+    lint: external_exports.boolean(),
+    install: external_exports.boolean()
+  }).optional().describe(
+    "Which capability verbs resolve to a configured command in the FINAL commands.json \u2014 read after this call, whether it just wrote the file or the file was already present. `true` = a command is configured for that verb, so the matching capability tool (run_tests, run_typecheck, run_build, run_lint) will execute it; `false` = that tool reports 'not-configured' \u2014 either the verb is absent or its argv array is empty, which the capability tools treat identically. `install` is the setup verb (run_install), not a capability gate. Present when status='ok'."
+  ),
+  falseGreenRisk: external_exports.boolean().optional().describe(
+    "True exactly when BOTH `capabilities.tests` and `capabilities.build` are false \u2014 the specific conjunction that lets a slice merge green with nothing ever executed. An individual missing verb (`lint`, `typecheck`, `install`) is common and NOT flagged here: many projects legitimately skip a linter or need no install step. This reflects the FINAL commands.json regardless of whether it was freshly written this call or was already on disk \u2014 a stale or hand-authored partial file is exactly as risky as a fresh empty one. Present when status='ok'."
   )
 });
 function firstLine8(message) {
@@ -24708,6 +24720,22 @@ function writeIfAbsent(filePath, content) {
       message: firstLine8(err instanceof Error ? err.message : String(err))
     };
   }
+}
+function readExistingCommandsConfig(filePath) {
+  let raw;
+  try {
+    raw = fs12.readFileSync(filePath, "utf8");
+  } catch {
+    return {};
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  const validated = commandsConfigSchema.safeParse(parsed);
+  return validated.success ? validated.data : {};
 }
 function ensureGitignoreEntry(repoRoot) {
   const gitignorePath = path8.join(repoRoot, ".gitignore");
@@ -24851,9 +24879,19 @@ function bootstrapConfig(input) {
       errorMessage: `Failed to update .gitignore: ${gitignoreResult.message}`
     };
   }
-  const commandsMapEmpty = Object.keys(validatedCommands.data).length === 0;
-  const warnings = commandsResult.kind === "written" && commandsMapEmpty ? [
-    "commands.json was written empty ({}): no recognized project type detected. The capability gates run_tests and run_build will report 'not-configured' \u2014 a slice can merge green with no verification. Edit .orchestrate/commands.json to add your project's test and build commands."
+  const finalCommands = commandsResult.kind === "written" ? validatedCommands.data : readExistingCommandsConfig(path8.join(orchestrateDir, "commands.json"));
+  const configured = (argv) => argv !== void 0 && argv.length > 0;
+  const capabilities = {
+    tests: configured(finalCommands.tests),
+    typecheck: configured(finalCommands.typecheck),
+    build: configured(finalCommands.build),
+    lint: configured(finalCommands.lint),
+    install: configured(finalCommands.install)
+  };
+  const falseGreenRisk = !capabilities.tests && !capabilities.build;
+  const commandsMapEmpty = Object.keys(finalCommands).length === 0;
+  const warnings = falseGreenRisk ? [
+    commandsResult.kind === "written" && commandsMapEmpty ? "commands.json was written empty ({}): no recognized project type detected. The capability gates run_tests and run_build will report 'not-configured' \u2014 a slice can merge green with no verification. Edit .orchestrate/commands.json to add your project's test and build commands." : `commands.json has neither \`tests\` nor \`build\` configured (commandsJson: ${commandsResult.kind}). The capability gates run_tests and run_build will report 'not-configured' \u2014 a slice can merge green with no verification. Edit .orchestrate/commands.json to add your project's test and build commands.`
   ] : [];
   return {
     status: "ok",
@@ -24867,6 +24905,8 @@ function bootstrapConfig(input) {
     },
     runsDir: runsDirExisted ? "already-present" : "created",
     gitignore: gitignoreResult.kind,
+    capabilities,
+    falseGreenRisk,
     warnings
   };
 }
@@ -26588,7 +26628,7 @@ registerTool(
   "bootstrap_config",
   {
     title: "Bootstrap Orchestrate Configuration",
-    description: "Sets up a repository's .orchestrate/ configuration for a first-ever orchestrate run. Detects the project type and writes a project-aware commands.json (with a PM-aware mutating `install` command for npm/cargo/python projects \u2014 keyed on the JS lockfile for the npm ecosystem \u2014 empty for an unrecognized project), writes routing.json from the shipped defaults, and writes handoff.json with a context-window size derived from the running model \u2014 pass the model id (or an explicit contextWindowTokens) as input; the MCP process cannot see the calling LLM's model. An unknown or absent model falls back to 200000. Creates .orchestrate/runs/ and idempotently adds it to the repository's .gitignore. Every step is idempotent: an existing config file is never overwritten and the .gitignore line is never duplicated. Returns a discriminated `status` of 'ok' or 'error'.",
+    description: "Completes a repository's .orchestrate/ configuration \u2014 writes whichever of its three files are missing. Call this unconditionally at the start of every run, never gated on whether .orchestrate/ already exists: a directory that already has some files (e.g. an earlier run's routing.json and handoff.json but no commands.json) is exactly the case this closes, and calling it on an already-complete repository is a safe no-op. Detects the project type and writes a project-aware commands.json (with a PM-aware mutating `install` command for npm/cargo/python projects \u2014 keyed on the JS lockfile for the npm ecosystem \u2014 empty for an unrecognized project), writes routing.json from the shipped defaults, and writes handoff.json with a context-window size derived from the running model \u2014 pass the model id (or an explicit contextWindowTokens) as input; the MCP process cannot see the calling LLM's model. An unknown or absent model falls back to 200000. Creates .orchestrate/runs/ and idempotently adds it to the repository's .gitignore. Every step is idempotent: an existing config file is never overwritten and the .gitignore line is never duplicated. Reports config completeness read from the FINAL commands.json regardless of whether this call wrote it: `capabilities` names which of tests/typecheck/build/lint/install resolve to a command, and `falseGreenRisk` is true exactly when both `tests` and `build` are unconfigured \u2014 the conjunction that lets a slice merge green with nothing executed. Treat a true `falseGreenRisk` as a loud, blocking finding: report it and stop before starting the run. Returns a discriminated `status` of 'ok' or 'error'.",
     inputSchema: bootstrapConfigInputSchema.shape,
     outputSchema: bootstrapConfigOutputSchema.shape
   },
