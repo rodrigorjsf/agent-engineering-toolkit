@@ -90,6 +90,13 @@ import {
   type RecoverChangedFilesOutput,
 } from "./tools/recover-changed-files.js";
 import {
+  recoverSliceProgress,
+  recoverSliceProgressInputSchema,
+  recoverSliceProgressOutputSchema,
+  type RecoverSliceProgressInput,
+  type RecoverSliceProgressOutput,
+} from "./tools/recover-slice-progress.js";
+import {
   cleanRuns,
   cleanRunsInputSchema,
   cleanRunsOutputSchema,
@@ -849,6 +856,55 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleRecoverChangedFiles as unknown as AnyToolHandler
+);
+
+// ─── recover_slice_progress ───────────────────────────────────────────────────
+
+const handleRecoverSliceProgress: ToolHandler<
+  RecoverSliceProgressInput,
+  RecoverSliceProgressOutput
+> = async (input) => {
+  const result = await recoverSliceProgress(input);
+  let text: string;
+  if (result.status === "ok") {
+    const stage = result.record!.lastCompletedStage ?? "none";
+    text = `Recovered the progress record for slice #${input.issue} (last completed stage: ${stage}).`;
+  } else {
+    text = `Slice progress recovery failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "recover_slice_progress",
+  {
+    title: "Recover a Slice's Progress Record",
+    description:
+      "Reads and validates one slice's progress record at " +
+      "`.orchestrate/runs/<runId>/slice-<issue>-progress.json` — the resume " +
+      "anchor a slice-executor writes at each completed stage (ADR-0017), " +
+      "carrying the last completed stage, the investigator brief, the " +
+      "continuation count, the worktree fingerprint, and the once-only " +
+      "model-fallback guard. Call it when a slice-executor's result envelope " +
+      "is missing or invalid: the orchestrator recovers the record's contents " +
+      "through this tool INSTEAD of opening the file, so the recovered data is " +
+      "validated and the executor's read boundary stays intact — the same " +
+      "structured-recovery posture as `recover_changed_files`. The path is " +
+      "derived from `runId` and `issue`; no file path is accepted, so the read " +
+      "can never leave this run's own directory. Reads only; writes nothing. " +
+      "Returns a discriminated `status` of 'ok' (with `record`) or 'error' " +
+      "(with `RUN_ID_INVALID`, `ISSUE_INVALID`, `PROGRESS_NOT_FOUND` — no " +
+      "record written yet — or `PROGRESS_INVALID` — the file exists but is " +
+      "malformed JSON, fails the schema, or names a different run or slice).",
+    inputSchema: recoverSliceProgressInputSchema.shape,
+    outputSchema: recoverSliceProgressOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRecoverSliceProgress as unknown as AnyToolHandler
 );
 
 // ─── clean_runs ────────────────────────────────────────────────────────────────

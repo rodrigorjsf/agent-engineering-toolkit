@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs14, exportName) {
+    function addFormats(ajv, list, fs15, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs14[f]);
+        ajv.addFormat(f, fs15[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -21176,14 +21176,14 @@ function optionInjectionError(field, value) {
 }
 function cleanGitError(err) {
   if (err instanceof GitExecError && err.stderr.trim().length > 0) {
-    const firstLine10 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-    if (firstLine10) {
-      return firstLine10;
+    const firstLine11 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+    if (firstLine11) {
+      return firstLine11;
     }
   }
   const message = err instanceof Error ? err.message : String(err);
-  const firstLine9 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-  return firstLine9 ?? "Unknown git error";
+  const firstLine10 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return firstLine10 ?? "Unknown git error";
 }
 
 // src/tools/run-command.ts
@@ -22297,6 +22297,30 @@ function resolveRunDir(repoPath, runId) {
       graphPath: path4.join(runDir, "graph.html"),
       reportPath: path4.join(runDir, "report.html")
     }
+  };
+}
+function isValidIssueId(issue2) {
+  return typeof issue2 === "number" && Number.isSafeInteger(issue2) && issue2 > 0;
+}
+function resolveSliceProgressPath(repoPath, runId, issue2) {
+  const resolved = resolveRunDir(repoPath, runId);
+  if (!resolved.ok) {
+    return {
+      ok: false,
+      errorCode: resolved.errorCode,
+      errorMessage: resolved.errorMessage
+    };
+  }
+  if (!isValidIssueId(issue2)) {
+    return {
+      ok: false,
+      errorCode: "ISSUE_INVALID",
+      errorMessage: `Invalid issue '${String(issue2)}': an issue must be a positive integer (e.g. 355). The id becomes part of the record's filename, so anything else is rejected before it can escape the run directory.`
+    };
+  }
+  return {
+    ok: true,
+    path: path4.join(resolved.paths.runDir, `slice-${issue2}-progress.json`)
   };
 }
 
@@ -23495,6 +23519,12 @@ var SLICE_EXECUTOR_FAILURE_CLASSES = [
   "empty-changeset",
   "model-refusal"
 ];
+var SLICE_EXECUTOR_STAGES = [
+  "investigator",
+  "implementer",
+  "capability-gate",
+  "reviewer"
+];
 var sliceExecutorFailureClassSchema = external_exports.enum(SLICE_EXECUTOR_FAILURE_CLASSES).describe(
   "Closed-set classification of why the slice did not reach a verified changeset: 'unrecoverable-obstacle' (a blocker with no safe workaround, including a capability-gate failure with no more specific class); 'incomplete-budget-exhausted' (the executor's own nested continuation loop ran out of turns \u2014 the slice-level analogue of the implementer's graceful 'incomplete' self-report); 'no-progress-stall' (repeated attempts converged on nothing); 'invalid-or-missing-worker-envelope' (a worker the executor spawned returned a truncated, malformed, or missing envelope); 'changeset-mismatch' (the implementer's declared `filesChanged` did not match the worktree's actual changeset); 'empty-changeset' (the slice produced no file changes at all); 'model-refusal' (a spawned worker's model refused the task)."
 );
@@ -23509,7 +23539,7 @@ var sliceExecutorEnvelopeSchema = external_exports.object({
   status: external_exports.enum(["completed", "incomplete", "blocked", "failed"]).describe(
     "Outcome of the WHOLE SLICE, not a single worker \u2014 reuses the schema's existing status vocabulary rather than inventing a fifth. 'completed' = a verified changeset was reached; 'incomplete' = the executor's own graceful continuation-budget self-report, mirroring the implementer's 'incomplete'; 'blocked' = an unrecoverable obstacle hit by the executor or one of the workers it spawned; 'failed' = the slice did not reach a trustworthy changeset (a worker or verification failure). There is no loop-continue/loop-end value \u2014 see the module-level note above."
   ),
-  failedStage: external_exports.enum(["investigator", "implementer", "capability-gate", "reviewer"]).optional().describe(
+  failedStage: external_exports.enum(SLICE_EXECUTOR_STAGES).optional().describe(
     "Which inner stage of the slice pipeline was running when a non-'completed' outcome occurred. Absent for a 'completed' envelope. 'implementer' also covers the changeset-verification check that immediately follows the implementer's turn (it gates trust in the implementer's own output, before the reviewer stage begins) \u2014 so 'changeset-mismatch' and 'empty-changeset' are reported here, not under a separate stage."
   ),
   failureClass: sliceExecutorFailureClassSchema.optional().describe(
@@ -23744,19 +23774,131 @@ async function recoverChangedFiles(input) {
   };
 }
 
+// src/tools/recover-slice-progress.ts
+var fs7 = __toESM(require("fs"));
+var sliceProgressRecordSchema = external_exports.object({
+  runId: external_exports.string().describe(
+    "The run this record belongs to. Must equal the runId whose directory the record was read from \u2014 a mismatch means the record was mis-filed and is rejected rather than trusted."
+  ),
+  issue: external_exports.number().int().describe(
+    "The issue number of the slice this record tracks. Must equal the issue the record's filename encodes; a mismatch is rejected."
+  ),
+  lastCompletedStage: external_exports.enum(SLICE_EXECUTOR_STAGES).optional().describe(
+    "The last inner stage that FINISHED. Note this is NOT the envelope's `failedStage`, which names the stage that was RUNNING when a failure occurred \u2014 the value set is deliberately shared, the meaning is not. The enum is a set of stage NAMES, not an order: which stages run, in what sequence, and which are skipped are the executor's decisions, never implied by this field's member order. ABSENT means no stage has completed yet \u2014 omit the key entirely; an explicit null is rejected."
+  ),
+  investigatorBrief: investigatorEnvelopeSchema.omit({ role: true }).optional().describe(
+    "The investigator's research brief, carried forward so a resumed executor does not re-run a finished investigation. Reuses the investigator envelope's own fields rather than a free-form blob, so the brief stays validated end to end. Absent when the slice's tier skips investigation entirely (`resolvedRouting.investigator` is null)."
+  ),
+  continuationsUsed: external_exports.number().int().nonnegative().describe(
+    "How many continuations the executor's continue-in-place loop has spent on this slice. Persisted because two continuation loops now nest, and ADR-0017 caps the PRODUCT of their budgets at 6 \u2014 a counter that reset on every handoff could not enforce that bound across sessions."
+  ),
+  worktreeFingerprint: external_exports.string().optional().describe(
+    "Opaque content-level fingerprint of the worktree's uncommitted state at the last completed stage, used by the no-progress guard to tell a real continuation from a stalled one. Stored as an opaque string: COMPUTING it is the executor's job, so this record fixes only how it is carried, never how it is derived. Absent before the first fingerprint is taken."
+  ),
+  fallbackTaken: external_exports.boolean().describe(
+    "The once-only Model fallback guard: true when the premium-lane retry has already been spent on this slice. REQUIRED, with no default \u2014 an absent key must never silently read as `false`, which would re-arm a fallback that was already used. This deliberately DUPLICATES the orchestrator's `resolvedRouting.fallbackTaken` in run-state.json, and the duplication is ADR-0017-sanctioned, not an oversight: the run-state field is orchestrator-owned and drives the legacy non-executor path, while this copy is executor-owned, because the executor cannot write the orchestrator's checkpoint. Do not unify them."
+  ),
+  updatedAt: external_exports.string().describe(
+    "ISO-8601 UTC timestamp of the last write, matching run-state.json's timestamp convention (documented in prose, not enforced by the schema)."
+  )
+});
+var recoverSliceProgressInputSchema = external_exports.object({
+  runId: external_exports.string().describe(
+    "The orchestration run's id (its YYYYMMDD-HHMMSS timestamp, optionally prefixed `prd<N>-` or `backlog-`). It selects the per-run directory .orchestrate/runs/<runId>/ the record is read from."
+  ),
+  issue: external_exports.number().int().positive().describe(
+    "The issue number of the slice whose record to read. Together with `runId` it derives the record's path \u2014 the tool deliberately accepts no file path, so it can never read outside this run's directory."
+  ),
+  repoPath: external_exports.string().optional().describe(
+    "Path to the project root that holds the .orchestrate/ directory. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default."
+  )
+});
+var recoverSliceProgressOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the record was found, parsed, and validated; 'error' = it could not be resolved, read, parsed, or it failed schema validation."
+  ),
+  record: sliceProgressRecordSchema.optional().describe(
+    "The validated slice progress record. Present ONLY when status='ok'."
+  ),
+  errorCode: external_exports.enum([
+    "RUN_ID_INVALID",
+    "ISSUE_INVALID",
+    "PROGRESS_NOT_FOUND",
+    "PROGRESS_INVALID"
+  ]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'RUN_ID_INVALID' = the runId is malformed and cannot resolve a run directory; 'ISSUE_INVALID' = the issue is not a positive integer and cannot form a record filename; 'PROGRESS_NOT_FOUND' = no slice-<issue>-progress.json under .orchestrate/runs/<runId>/ (the slice has not recorded a completed stage yet) \u2014 distinct from 'PROGRESS_INVALID', which means the file EXISTS but is malformed JSON, fails the record schema, or self-identifies as a different run/slice than the one requested."
+  ),
+  errorMessage: external_exports.string().optional().describe("Human-readable failure description. Present when status='error'.")
+});
+function firstLine7(message) {
+  const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return line ?? message.trim();
+}
+async function recoverSliceProgress(input) {
+  const repoPath = input.repoPath ?? process.cwd();
+  const resolved = resolveSliceProgressPath(repoPath, input.runId, input.issue);
+  if (!resolved.ok) {
+    return {
+      status: "error",
+      errorCode: resolved.errorCode,
+      errorMessage: resolved.errorMessage
+    };
+  }
+  let raw;
+  try {
+    raw = fs7.readFileSync(resolved.path, "utf8");
+  } catch {
+    return {
+      status: "error",
+      errorCode: "PROGRESS_NOT_FOUND",
+      errorMessage: `No slice progress record found at ${resolved.path}.`
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "PROGRESS_INVALID",
+      errorMessage: `The slice progress record is not valid JSON: ${firstLine7(
+        err instanceof Error ? err.message : String(err)
+      )}`
+    };
+  }
+  const result = sliceProgressRecordSchema.safeParse(parsed);
+  if (!result.success) {
+    const detail = result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+    return {
+      status: "error",
+      errorCode: "PROGRESS_INVALID",
+      errorMessage: `The slice progress record does not match the expected shape: ${detail}`
+    };
+  }
+  const record2 = result.data;
+  if (record2.runId !== input.runId || record2.issue !== input.issue) {
+    return {
+      status: "error",
+      errorCode: "PROGRESS_INVALID",
+      errorMessage: `The slice progress record self-identifies as runId '${record2.runId}' / issue ${record2.issue}, but was read from the record of runId '${input.runId}' / issue ${input.issue}.`
+    };
+  }
+  return { status: "ok", record: record2 };
+}
+
 // src/tools/clean-runs.ts
 var path7 = __toESM(require("path"));
-var fs8 = __toESM(require("fs"));
+var fs9 = __toESM(require("fs"));
 
 // src/run-state-guard.ts
-var fs7 = __toESM(require("fs"));
+var fs8 = __toESM(require("fs"));
 function readRunState(runStatePath) {
-  if (!fs7.existsSync(runStatePath)) {
+  if (!fs8.existsSync(runStatePath)) {
     return { ok: false, reason: "missing-run-state" };
   }
   let raw;
   try {
-    raw = fs7.readFileSync(runStatePath, "utf8");
+    raw = fs8.readFileSync(runStatePath, "utf8");
   } catch {
     return { ok: false, reason: "malformed-run-state" };
   }
@@ -24047,7 +24189,7 @@ async function removeRunFootprint(runId, runDir, state, repoPath, opts) {
     report.runDirRemoved = false;
   } else {
     try {
-      fs8.rmSync(runDir, { recursive: true, force: true });
+      fs9.rmSync(runDir, { recursive: true, force: true });
       report.runDirRemoved = true;
     } catch {
       report.runDirRemoved = false;
@@ -24076,12 +24218,12 @@ async function cleanRuns(input) {
     };
   }
   const runsRoot = path7.join(repoPath, ".orchestrate", "runs");
-  if (!fs8.existsSync(runsRoot)) {
+  if (!fs9.existsSync(runsRoot)) {
     return { status: "ok", runs: [] };
   }
   let entries;
   try {
-    entries = fs8.readdirSync(runsRoot, { withFileTypes: true });
+    entries = fs9.readdirSync(runsRoot, { withFileTypes: true });
   } catch (err) {
     return {
       status: "error",
@@ -24159,7 +24301,7 @@ async function reclaimRun(input) {
     };
   }
   const runDir = path7.join(repoPath, ".orchestrate", "runs", input.runId);
-  if (!fs8.existsSync(runDir)) {
+  if (!fs9.existsSync(runDir)) {
     return {
       status: "ok",
       report: skippedReport(input.runId, "run-not-found")
@@ -24185,7 +24327,7 @@ async function reclaimRun(input) {
 }
 
 // src/tools/verify-changeset.ts
-var fs9 = __toESM(require("fs"));
+var fs10 = __toESM(require("fs"));
 var verifyChangesetInputSchema = external_exports.object({
   worktreePath: external_exports.string().describe(
     "Absolute path to the slice worktree to inspect. The verification treats this worktree as the source of truth for what was actually changed."
@@ -24233,7 +24375,7 @@ async function verifyChangeset(input) {
       errorMessage: guardErr
     };
   }
-  if (!fs9.existsSync(worktreePath)) {
+  if (!fs10.existsSync(worktreePath)) {
     return {
       status: "error",
       errorCode: "PATH_NOT_FOUND",
@@ -24291,10 +24433,10 @@ function classifyMatch(declaredCount, actualCount, absentCount, undeclaredCount)
 
 // src/tools/bootstrap-config.ts
 var path8 = __toESM(require("path"));
-var fs11 = __toESM(require("fs"));
+var fs12 = __toESM(require("fs"));
 
 // src/tools/detect-project.ts
-var fs10 = __toESM(require("fs"));
+var fs11 = __toESM(require("fs"));
 function detectJsPackageManager(filesPresent) {
   const present = new Set(filesPresent);
   if (present.has("pnpm-lock.yaml")) {
@@ -24383,7 +24525,7 @@ function buildCommandMap(type, jsPackageManager) {
 function detectCommandMap(repoRoot) {
   let entries;
   try {
-    entries = fs10.readdirSync(repoRoot);
+    entries = fs11.readdirSync(repoRoot);
   } catch {
     return {};
   }
@@ -24493,7 +24635,7 @@ var bootstrapConfigOutputSchema = external_exports.object({
     "Advisory warnings about the bootstrapped configuration. Non-empty only when status='ok' and the freshly-written commands.json is empty ({}) \u2014 meaning no recognized project type was detected and the capability gates (run_tests, run_build, etc.) will report 'not-configured', allowing a slice to merge green with no verification. Empty array when the written commands map is non-empty. Present when status='ok'."
   )
 });
-function firstLine7(message) {
+function firstLine8(message) {
   const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
   return line ?? message.trim();
 }
@@ -24524,7 +24666,7 @@ function resolveContextWindow(input) {
 function buildCommandsConfig(repoRoot) {
   let entries;
   try {
-    entries = fs11.readdirSync(repoRoot);
+    entries = fs12.readdirSync(repoRoot);
   } catch {
     entries = [];
   }
@@ -24534,16 +24676,16 @@ function buildCommandsConfig(repoRoot) {
   return { config: config2, projectType };
 }
 function writeIfAbsent(filePath, content) {
-  if (fs11.existsSync(filePath)) {
+  if (fs12.existsSync(filePath)) {
     return { kind: "already-present" };
   }
   try {
-    fs11.writeFileSync(filePath, content);
+    fs12.writeFileSync(filePath, content);
     return { kind: "written" };
   } catch (err) {
     return {
       kind: "error",
-      message: firstLine7(err instanceof Error ? err.message : String(err))
+      message: firstLine8(err instanceof Error ? err.message : String(err))
     };
   }
 }
@@ -24551,19 +24693,19 @@ function ensureGitignoreEntry(repoRoot) {
   const gitignorePath = path8.join(repoRoot, ".gitignore");
   let existing;
   try {
-    existing = fs11.readFileSync(gitignorePath, "utf8");
+    existing = fs12.readFileSync(gitignorePath, "utf8");
   } catch {
     existing = null;
   }
   if (existing === null) {
     try {
-      fs11.writeFileSync(gitignorePath, `${RUNS_GITIGNORE_LINE}
+      fs12.writeFileSync(gitignorePath, `${RUNS_GITIGNORE_LINE}
 `);
       return { kind: "created-with-line" };
     } catch (err) {
       return {
         kind: "error",
-        message: firstLine7(err instanceof Error ? err.message : String(err))
+        message: firstLine8(err instanceof Error ? err.message : String(err))
       };
     }
   }
@@ -24573,7 +24715,7 @@ function ensureGitignoreEntry(repoRoot) {
   }
   const separator = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
   try {
-    fs11.appendFileSync(
+    fs12.appendFileSync(
       gitignorePath,
       `${separator}${RUNS_GITIGNORE_LINE}
 `
@@ -24582,7 +24724,7 @@ function ensureGitignoreEntry(repoRoot) {
   } catch (err) {
     return {
       kind: "error",
-      message: firstLine7(err instanceof Error ? err.message : String(err))
+      message: firstLine8(err instanceof Error ? err.message : String(err))
     };
   }
 }
@@ -24590,14 +24732,14 @@ function bootstrapConfig(input) {
   const repoRoot = input.repoPath ?? process.cwd();
   const orchestrateDir = path8.join(repoRoot, ".orchestrate");
   const runsDir = path8.join(orchestrateDir, "runs");
-  const runsDirExisted = fs11.existsSync(runsDir);
+  const runsDirExisted = fs12.existsSync(runsDir);
   try {
-    fs11.mkdirSync(runsDir, { recursive: true });
+    fs12.mkdirSync(runsDir, { recursive: true });
   } catch (err) {
     return {
       status: "error",
       errorCode: "WRITE_FAILED",
-      errorMessage: `Failed to create ${runsDir}: ${firstLine7(
+      errorMessage: `Failed to create ${runsDir}: ${firstLine8(
         err instanceof Error ? err.message : String(err)
       )}`
     };
@@ -24884,7 +25026,7 @@ async function pushAndVerify(input, opts) {
 }
 
 // src/tools/validate-run-state.ts
-var fs12 = __toESM(require("fs"));
+var fs13 = __toESM(require("fs"));
 var validateRunStateInputSchema = external_exports.object({
   runId: external_exports.string().describe(
     "The orchestration run's id (its YYYYMMDD-HHMMSS timestamp, optionally prefixed `prd<N>-` or `backlog-`). It selects the per-run directory .orchestrate/runs/<runId>/, which holds that run's run-state.json. Required \u2014 every validate call happens after the run has a runId."
@@ -24902,7 +25044,7 @@ var validateRunStateOutputSchema = external_exports.object({
   ),
   errorMessage: external_exports.string().optional().describe("Human-readable failure description. Present when status='invalid'.")
 });
-function firstLine8(message) {
+function firstLine9(message) {
   const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
   return line ?? message.trim();
 }
@@ -24918,7 +25060,7 @@ async function validateRunState(input) {
   }
   let raw;
   try {
-    raw = fs12.readFileSync(resolved.paths.runStatePath, "utf8");
+    raw = fs13.readFileSync(resolved.paths.runStatePath, "utf8");
   } catch {
     return {
       status: "invalid",
@@ -24933,7 +25075,7 @@ async function validateRunState(input) {
     return {
       status: "invalid",
       errorCode: "RUN_STATE_INVALID",
-      errorMessage: `run-state.json is not valid JSON: ${firstLine8(
+      errorMessage: `run-state.json is not valid JSON: ${firstLine9(
         err instanceof Error ? err.message : String(err)
       )}`
     };
@@ -24951,7 +25093,7 @@ async function validateRunState(input) {
 }
 
 // src/tools/finalize-slice.ts
-var fs13 = __toESM(require("fs"));
+var fs14 = __toESM(require("fs"));
 var finalizeSliceInputSchema = external_exports.object({
   phase: external_exports.enum(["commit-push", "post-merge"]).describe(
     "Which finalization phase to run. 'commit-push' = \xA73 step 6: stage the named file set, guard an empty changeset, commit (subject + `Closes #<N>`), push-and-verify, and write `subState:'pushed'` on a confirmed landing. 'post-merge' = \xA73 step 9 (the thin tail): write `subState:'merged'`, remove the worktree, then force-reclaim the local slice branch (idempotent). Forge ops and the `pr-open` checkpoint stay in the spine."
@@ -25041,7 +25183,7 @@ function writeSubState(repoPath, runId, sliceId, subState) {
   const statePath = resolved.paths.runStatePath;
   let raw;
   try {
-    raw = fs13.readFileSync(statePath, "utf8");
+    raw = fs14.readFileSync(statePath, "utf8");
   } catch {
     return {
       ok: false,
@@ -25089,7 +25231,7 @@ function writeSubState(repoPath, runId, sliceId, subState) {
   slice.updatedAt = nowIso;
   obj.updatedAt = nowIso;
   try {
-    fs13.writeFileSync(statePath, JSON.stringify(obj, null, 2), "utf8");
+    fs14.writeFileSync(statePath, JSON.stringify(obj, null, 2), "utf8");
     return { ok: true };
   } catch (err) {
     return {
@@ -26286,6 +26428,32 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleRecoverChangedFiles
+);
+var handleRecoverSliceProgress = async (input) => {
+  const result = await recoverSliceProgress(input);
+  let text;
+  if (result.status === "ok") {
+    const stage = result.record.lastCompletedStage ?? "none";
+    text = `Recovered the progress record for slice #${input.issue} (last completed stage: ${stage}).`;
+  } else {
+    text = `Slice progress recovery failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "recover_slice_progress",
+  {
+    title: "Recover a Slice's Progress Record",
+    description: "Reads and validates one slice's progress record at `.orchestrate/runs/<runId>/slice-<issue>-progress.json` \u2014 the resume anchor a slice-executor writes at each completed stage (ADR-0017), carrying the last completed stage, the investigator brief, the continuation count, the worktree fingerprint, and the once-only model-fallback guard. Call it when a slice-executor's result envelope is missing or invalid: the orchestrator recovers the record's contents through this tool INSTEAD of opening the file, so the recovered data is validated and the executor's read boundary stays intact \u2014 the same structured-recovery posture as `recover_changed_files`. The path is derived from `runId` and `issue`; no file path is accepted, so the read can never leave this run's own directory. Reads only; writes nothing. Returns a discriminated `status` of 'ok' (with `record`) or 'error' (with `RUN_ID_INVALID`, `ISSUE_INVALID`, `PROGRESS_NOT_FOUND` \u2014 no record written yet \u2014 or `PROGRESS_INVALID` \u2014 the file exists but is malformed JSON, fails the schema, or names a different run or slice).",
+    inputSchema: recoverSliceProgressInputSchema.shape,
+    outputSchema: recoverSliceProgressOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRecoverSliceProgress
 );
 var handleCleanRuns = async (input) => {
   const result = await cleanRuns(input);

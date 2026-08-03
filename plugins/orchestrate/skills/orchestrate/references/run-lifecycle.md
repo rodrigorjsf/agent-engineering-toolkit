@@ -90,7 +90,8 @@ is what `/orchestrate clean` (section 0) runs on demand.
 
 Every run keeps its ephemeral state in a **per-run directory**,
 `.orchestrate/runs/<runId>/`, holding that run's `run-state.json`,
-`context-flag.json`, and rendered HTML artifacts. The committed config files
+`context-flag.json`, one `slice-<issue>-progress.json` slice progress record per
+slice, and rendered HTML artifacts. The committed config files
 (`commands.json`, `routing.json`, `handoff.json`) stay flat at the
 `.orchestrate/` top level. `routing.json` carries both per-tier subagent routing
 and run-wide run policy (the optional `intraWaveConcurrency` knob — see section

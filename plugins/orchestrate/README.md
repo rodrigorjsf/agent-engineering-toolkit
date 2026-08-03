@@ -61,6 +61,7 @@ The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing 
 | `resolve_routing` | Resolve the model and routing variant for each role from a complexity tier |
 | `validate_envelope` | Validate a subagent's result envelope against its role schema — distinguishes a valid, a truncated/invalid, and a missing envelope. The implementer status carries `completed`, `incomplete` (a graceful turn-budget self-report), and `blocked`. The schema also defines a `slice-executor` envelope shape (ADR-0017) describing a whole slice's outcome, with a `failureClass` drawn from a closed set — schema groundwork only; no `slice-executor` subagent is spawned yet |
 | `recover_changed_files` | Recover a worktree's changed-file set by inspecting it directly — the orchestrator's fallback when an envelope is missing or invalid |
+| `recover_slice_progress` | Read and validate one slice's progress record at `.orchestrate/runs/<runId>/slice-<issue>-progress.json` — the resume anchor a slice executor writes at each completed stage (ADR-0017), carrying the last completed stage, the investigator brief, the continuation count, the worktree fingerprint, and the once-only model-fallback guard. The orchestrator's structured recovery when a slice-executor envelope is missing or invalid: it obtains the record's contents through this tool instead of opening the file, so the data is validated and the read boundary holds. The path is derived from `runId` + `issue` — no file path is accepted — so a read can never leave the run's own directory; reports a missing record distinctly from a malformed one, and never throws. Reads only |
 | `verify_changeset` | Compare a worktree's actual changeset against the file set an implementer declared — the post-implementer scope check before a `completed` envelope is trusted |
 | `resolve_cleanup_verdicts` | The PURE verdict logic of the start-of-run cleanup sweep, in two phases: `enumerate` (apply the `completed && finalPullRequest != null` eligibility gate to the parsed run-states, return the deduplicated final-PR identifiers the spine fetches with `gh pr view`) and `classify` (turn the fetched `{state, mergedAt}` facts into the four-way `merged`/`open`/`closed-unmerged`/`unknown` verdict `clean_runs` consumes, capturing each merged run's passed-slice close-set in the same pass). No fs/git/`gh` — the fetch loop, `gh issue close`, and `clean_runs`' removal stay in the spine |
 | `clean_runs` | Remove a concluded run's worktrees, branches, and run directory once its final pull request has merged — git + filesystem only |
@@ -244,7 +245,7 @@ To run orchestrate against another repository, that repository needs:
 
 Optionally, install the **`ast-grep` CLI** to enable the investigator and reviewer subagents' structural code search; without it, they fall back to text search.
 
-The run's generated, ephemeral files must be gitignored. Every run keeps its `run-state.json`, `context-flag.json`, and rendered HTML artifacts under a per-run directory, `.orchestrate/runs/<runId>/`, so one gitignore line covers them all:
+The run's generated, ephemeral files must be gitignored. Every run keeps its `run-state.json`, `context-flag.json`, per-slice progress records, and rendered HTML artifacts under a per-run directory, `.orchestrate/runs/<runId>/`, so one gitignore line covers them all:
 
 ```gitignore
 .orchestrate/runs/
@@ -366,6 +367,7 @@ Generated, not authored. Every run keeps its ephemeral state in its own per-run 
 
 - `run-state.json` — the durable run checkpoint. The orchestrator writes it after every slice state change and every wave, and reads it on startup to resume an interrupted run.
 - `context-flag.json` — the context-handoff signal, written by the watchdog when the threshold is reached.
+- `slice-<issue>-progress.json` — one **slice progress record** per slice, written by the slice executor at each completed stage and read back through the `recover_slice_progress` MCP tool. The filename carries the issue number so the concurrent slices of one wave never clobber each other's resume anchor.
 - `dashboard.html`, `graph.html`, `report.html` — the rendered HTML artifacts.
 
 Two distinct runs never share a directory, so their ephemeral state never collides — the per-run layout is the structural foundation for concurrent runs. The committed config files (`commands.json`, `routing.json`, `handoff.json`) stay flat at the `.orchestrate/` top level.
@@ -379,6 +381,8 @@ Two distinct runs never share a directory, so their ephemeral state never collid
     └── 20260521-015143/          # one per-run directory per run
         ├── run-state.json
         ├── context-flag.json     # present only after a handoff is signalled
+        ├── slice-157-progress.json   # one slice progress record per slice
+        ├── slice-158-progress.json
         ├── dashboard.html
         ├── graph.html
         └── report.html

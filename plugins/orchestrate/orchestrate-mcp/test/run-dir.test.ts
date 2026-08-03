@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import * as path from "path";
-import { resolveRunDir, isValidRunId } from "../src/run-dir.js";
+import {
+  resolveRunDir,
+  isValidRunId,
+  isValidIssueId,
+  resolveSliceProgressPath,
+} from "../src/run-dir.js";
 
 // `run-dir` is a pure module — every test exercises path computation only, with
 // no filesystem I/O. The resolver maps a (repoPath, runId) pair to the run's
@@ -192,6 +197,141 @@ describe("resolveRunDir — per-run path isolation", () => {
     if (result.ok) {
       const expectedPrefix = path.join("/repo", ".orchestrate", "runs");
       expect(result.paths.runDir.startsWith(expectedPrefix)).toBe(true);
+    }
+  });
+});
+
+// ─── isValidIssueId ──────────────────────────────────────────────────────────
+
+describe("isValidIssueId", () => {
+  it("accepts a positive integer issue number", () => {
+    expect(isValidIssueId(355)).toBe(true);
+    expect(isValidIssueId(1)).toBe(true);
+  });
+
+  it("rejects zero and negatives — GitHub issue numbers start at 1", () => {
+    expect(isValidIssueId(0)).toBe(false);
+    expect(isValidIssueId(-355)).toBe(false);
+  });
+
+  it("rejects a non-integer", () => {
+    expect(isValidIssueId(1.5)).toBe(false);
+    expect(isValidIssueId(NaN)).toBe(false);
+    expect(isValidIssueId(Infinity)).toBe(false);
+  });
+
+  it("rejects a traversal-y value arriving across the MCP process boundary", () => {
+    // The tool's zod input types `issue` as a number, but MCP input crosses a
+    // process boundary — a string that would traverse must still be rejected.
+    expect(isValidIssueId("../../etc/passwd" as unknown as number)).toBe(false);
+    expect(isValidIssueId("355" as unknown as number)).toBe(false);
+  });
+});
+
+// ─── resolveSliceProgressPath ────────────────────────────────────────────────
+
+describe("resolveSliceProgressPath — invalid inputs", () => {
+  it("returns ok:false with RUN_ID_INVALID for a path-traversal runId", () => {
+    const result = resolveSliceProgressPath("/repo", "../../etc", 355);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errorCode).toBe("RUN_ID_INVALID");
+      expect(result.errorMessage).toContain("../../etc");
+    }
+  });
+
+  it("returns ok:false with ISSUE_INVALID for a path-traversal issue id", () => {
+    const result = resolveSliceProgressPath(
+      "/repo",
+      "20260521-015143",
+      "../../etc/passwd" as unknown as number
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errorCode).toBe("ISSUE_INVALID");
+    }
+  });
+
+  it("returns ok:false with ISSUE_INVALID for a non-positive-integer issue id", () => {
+    for (const issue of [0, -1, 2.5]) {
+      const result = resolveSliceProgressPath("/repo", "20260521-015143", issue);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errorCode).toBe("ISSUE_INVALID");
+      }
+    }
+  });
+});
+
+describe("resolveSliceProgressPath — valid inputs", () => {
+  it("places the record inside the run directory under its per-slice filename", () => {
+    const result = resolveSliceProgressPath("/repo", "20260521-015143", 355);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.path).toBe(
+        path.join(
+          "/repo",
+          ".orchestrate",
+          "runs",
+          "20260521-015143",
+          "slice-355-progress.json"
+        )
+      );
+    }
+  });
+
+  it("resolves deterministically for the same (repoPath, runId, issue)", () => {
+    const first = resolveSliceProgressPath("/repo", "20260521-015143", 355);
+    const second = resolveSliceProgressPath("/repo", "20260521-015143", 355);
+    expect(first).toEqual(second);
+  });
+
+  it("stays inside the run directory resolveRunDir computes", () => {
+    const runDir = resolveRunDir("/repo", "20260521-015143");
+    const progress = resolveSliceProgressPath("/repo", "20260521-015143", 355);
+    expect(runDir.ok && progress.ok).toBe(true);
+    if (runDir.ok && progress.ok) {
+      expect(path.dirname(progress.path)).toBe(runDir.paths.runDir);
+    }
+  });
+
+  it("never collides with the run-state checkpoint sharing the directory", () => {
+    const runDir = resolveRunDir("/repo", "20260521-015143");
+    const progress = resolveSliceProgressPath("/repo", "20260521-015143", 355);
+    if (runDir.ok && progress.ok) {
+      for (const p of Object.values(runDir.paths)) {
+        expect(progress.path).not.toBe(p);
+      }
+    }
+  });
+});
+
+// ─── Per-slice AND per-run isolation (ADR-0012) ──────────────────────────────
+
+describe("resolveSliceProgressPath — no-collision invariant", () => {
+  it("resolves two runs x two issues to four distinct paths", () => {
+    const runs = ["prd195-20260521-015143", "backlog-20260521-022540"];
+    const issues = [355, 356];
+    const paths: string[] = [];
+    for (const runId of runs) {
+      for (const issue of issues) {
+        const result = resolveSliceProgressPath("/repo", runId, issue);
+        expect(result.ok).toBe(true);
+        if (result.ok) paths.push(result.path);
+      }
+    }
+    expect(new Set(paths).size).toBe(4);
+  });
+
+  it("gives each slice of ONE parallel wave its own record path", () => {
+    // The intra-run hazard: sibling slices share a run directory, so a single
+    // `progress.json` would have them clobber each other.
+    const a = resolveSliceProgressPath("/repo", "prd352-20260803-015333", 355);
+    const b = resolveSliceProgressPath("/repo", "prd352-20260803-015333", 356);
+    expect(a.ok && b.ok).toBe(true);
+    if (a.ok && b.ok) {
+      expect(a.path).not.toBe(b.path);
+      expect(path.dirname(a.path)).toBe(path.dirname(b.path));
     }
   });
 });
