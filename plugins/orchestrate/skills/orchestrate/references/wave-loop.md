@@ -72,11 +72,13 @@ Process waves in order, starting at index `completedWaves`. For each wave:
 
    - **`parallel` (the default).** Run section 3 for the processable slices,
      **up to the wave's planned width** (below). Slices in a wave are
-     independent, so parallelize: when several in-flight slices are at the same
-     subagent stage (investigation, implementation, review), spawn those
-     subagents by issuing all the Agent tool calls **in a single message**.
-     Each slice has its own worktree, so they never collide. Then integrate them
-     sequentially — step 4 below.
+     independent, so parallelize: spawn **one slice executor per slice** —
+     issuing all the Agent tool calls **in a single message** — and let each
+     executor run its own stages inside its own worktree. You have no
+     visibility into those stages and no stage-level batching to do; the
+     executors are the only subagents you spawn. Each slice has its own
+     worktree, so they never collide. Then integrate them sequentially —
+     step 4 below.
 
      **Plan the wave's width first.** A parallel wave holds roughly **twice** as
      many live agents as it has slices — each in-flight slice occupies its slice

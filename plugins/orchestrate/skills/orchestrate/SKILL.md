@@ -255,8 +255,8 @@ run policy.
 different guarantees, and the choice is a deliberate judgment:
 
 - **`parallel` (the default)** processes a wave's independent slices
-  concurrently — each in its own worktree, spawned in a single message at each
-  shared subagent stage — then integrates them **sequentially** (merges into the
+  concurrently — one slice executor per slice, all spawned in a single message,
+  each in its own worktree — then integrates them **sequentially** (merges into the
   umbrella must not race). Because every slice branches from the wave's
   *starting* umbrella, a parallel wave needs the per-slice post-merge unit
   re-verify and may need the conflict-resolver when two slices touch the same
