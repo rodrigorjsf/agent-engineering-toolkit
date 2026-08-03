@@ -2,7 +2,7 @@
 
 **Summary**: Task-specific assistants defined as Markdown files with YAML frontmatter that run in isolated context windows within Claude Code sessions — supporting tool restriction, model selection, permission modes, persistent memory, and worktree isolation.
 **Sources**: creating-custom-subagents.md, claude-orchestrate-of-claude-code-sessions.md, analysis-creating-custom-subagents.md, research-subagent-best-practices.md, agent-teams.md, dynamic-workflows.md, parallel-sessions-worktrees.md
-**Last updated**: 2026-06-11
+**Last updated**: 2026-08-02
 
 ---
 
@@ -169,15 +169,19 @@ When Claude invokes a subagent, the model is resolved in this order (source: cre
 
 ## Agent(agent_type) Spawn Restrictions
 
-When an agent runs as the main thread with `claude --agent`, use `Agent(worker, researcher)` syntax in the `tools` field to restrict which subagent types it can spawn — an allowlist. `Agent` without parentheses allows any subagent. Omitting `Agent` from `tools` prevents spawning any subagents. This restriction only applies to agents running as the main thread; subagents themselves cannot spawn other subagents regardless (source: creating-custom-subagents.md).
+When an agent runs as the main thread with `claude --agent`, use `Agent(worker, researcher)` syntax in the `tools` field to restrict which subagent types it can spawn — an allowlist. `Agent` without parentheses allows any subagent. Omitting `Agent` from `tools` prevents spawning any subagents. The `Agent(agent_type)` allowlist syntax applies **only** to an agent running as the main thread with `claude --agent`; in a subagent definition, listing `Agent` in `tools` lets that subagent spawn subagents of its own while the depth limit allows it, but any type list inside the parentheses is ignored (source: creating-custom-subagents.md).
 
 ## MCP Server Restrictions (v2.1.153+)
 
 As of v2.1.153, the MCP restrictions that apply to the main session also cover servers declared in subagent `mcpServers` frontmatter: `--strict-mcp-config`, `--bare`, enterprise managed MCP configuration, and `allowedMcpServers`/`deniedMcpServers` policies. When a restriction blocks a server, Claude Code skips it and shows a warning. Managed-settings restrictions apply to every subagent regardless of definition method (source: creating-custom-subagents.md).
 
-## Key Constraint
+## Nested subagents
 
-**Subagents cannot spawn other subagents** — this prevents infinite nesting. Use the `Agent(worker, researcher)` tool syntax to restrict which named subagents can be spawned from the parent context.
+**A subagent can spawn subagents of its own**, by default up to three layers below the main conversation. At the depth limit Claude Code withholds the `Agent` tool from every subagent except a fork; a fork at the limit keeps `Agent` in its inherited tool list but the tool returns an error instead of spawning (source: creating-custom-subagents.md). Nested subagents suit a delegated task that itself splits into parallel subtasks — a reviewer subagent that dispatches a verifier per finding, for instance — so the intermediate output never reaches the main conversation; only the top-level subagent's summary returns (source: creating-custom-subagents.md).
+
+As of v2.1.217 the limit is configurable through `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`, set to the number of subagent layers wanted below the main conversation; `1` turns nesting off (source: creating-custom-subagents.md). Version history: v2.1.172 through v2.1.216 nested by default up to five layers and the limit could not be changed (source: creating-custom-subagents.md).
+
+To keep one subagent from spawning while nesting is on — a reviewer that must stay read-only, say — omit `Agent` from its `tools` list or add it to `disallowedTools` (source: creating-custom-subagents.md). A nested subagent is configured the same way as a top-level one and resolves from the same scopes; every nested spawn counts toward the session-wide subagent limit (source: creating-custom-subagents.md).
 
 **Plugin security**: Agents bundled in [[claude-code-plugins]] cannot use `hooks`, `mcpServers`, or `permissionMode` frontmatter fields — these are silently ignored when loading from a plugin context. To use these fields, copy the agent file to `.claude/agents/` or `~/.claude/agents/`.
 

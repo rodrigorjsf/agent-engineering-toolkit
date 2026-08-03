@@ -20,7 +20,7 @@ Total pages: **49**
 | ----------------------------- | ---------------------------------------------------------------------- |
 | [[evaluating-agents-paper]]   | ETH Zurich 2026 study: minimal configs outperform comprehensive ones   |
 | [[agent-workflows]]           | Fundamental loop, five core patterns, orchestration strategies, autonomy modes, dynamic workflows |
-| [[subagents]]                 | Cross-platform subagent comparison, context firewall pattern           |
+| [[subagents]]                 | Cross-platform subagent comparison including nesting support, context firewall pattern |
 | [[agent-configuration-files]] | AGENTS.md, CLAUDE.md, .cursorrules patterns and hierarchy              |
 | [[agent-best-practices]]      | Cross-platform guide: harness model, context management, anti-patterns |
 | [[agent-protocols]]           | MCP + A2A as complementary standards, protocol comparison, decision framework |
@@ -38,7 +38,7 @@ Total pages: **49**
 | [[claude-code-hooks]]     | Lifecycle events, hook types, exit codes, matchers, /goal     |
 | [[claude-code-plugins]]   | Plugin structure, manifest, distribution, namespacing, CLI commands |
 | [[claude-code-memory]]    | CLAUDE.md hierarchy, path-scoped rules, imports, auto memory, claudeMdExcludes + start-dir caveat |
-| [[claude-code-subagents]] | Definition format, frontmatter fields, fork mode; teams covered on [[claude-code-agent-teams]] |
+| [[claude-code-subagents]] | Definition format, frontmatter fields, fork mode, nested spawning and its depth limit; teams covered on [[claude-code-agent-teams]] |
 | [[claude-code-agent-teams]] | Experimental multi-session teams: file-locked shared task list, point-to-point messaging, three team hooks, plan-approval, sizing |
 | [[claude-code-workflows]] | Dynamic workflows: JS script orchestrates dozens–hundreds of subagents; plan-in-code, results in script variables off the main context |
 | [[claude-code-worktrees]] | CLI-native git-worktree isolation: --worktree flag, base-branch selection, .worktreeinclude, change-aware cleanup, non-git VCS hooks |

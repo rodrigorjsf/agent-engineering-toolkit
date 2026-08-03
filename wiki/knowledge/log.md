@@ -258,3 +258,20 @@ Summarize: Pages created (4): claude-code-agent-teams, claude-code-workflows, mo
 **Note:** `docs/claude/claude-interaction-guide.md` and `docs/claude/prompting-best-practices.md` were deleted — Anthropic consolidated its prompt-engineering pages upstream into one page; `docs/claude-code/claude-prompting-best-practices.md` is the surviving single mirror. The earlier log reference to the now-deleted file is left intact as historical record.
 
 **Method:** Two parallel subagents refreshed the 10 pages from the re-synced source docs following the `wiki-ingest` compile methodology; `**Sources**` lines reconciled against `docs/analysis/`.
+
+## 2026-08-02 — Subagent-nesting correction (falsified claim)
+
+**Reason:** A capability probe during an orchestrate design session empirically disproved a claim carried by both the mirror and two wiki pages: that a subagent cannot spawn another subagent. On Claude Code 2.1.220 a subagent spawned a nested subagent successfully, confirmed by harness-written metadata (`parentAgentId`, `spawnDepth: 2`) rather than agent self-report. A tool-restricted subagent whose `tools:` list includes `Agent` nests; one that omits `Agent` has no such tool. Upstream now documents this in a dedicated section, so the mirror was re-synced.
+
+**Source re-synced (1):** `docs/claude-code/subagents/creating-custom-subagents.md` — 1300 → 1251 lines; the "Subagents cannot spawn other subagents" claim is gone, replaced by the "Let subagents spawn their own subagents" section (default 3 layers below the main conversation; `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` configurable as of v2.1.217; `1` disables; v2.1.172–v2.1.216 nested at up to 5 layers with no override).
+
+**Pages refreshed (2):**
+
+| Page                       | Key updates                                                                                          |
+| -------------------------- | ---------------------------------------------------------------------------------------------------- |
+| claude-code-subagents.md   | "Key Constraint" section replaced by "Nested subagents" (depth limit, env var, version history, how to keep a subagent read-only); `Agent(agent_type)` section corrected — the allowlist syntax is main-thread-only, but bare `Agent` in a subagent's `tools` does enable nesting |
+| subagents.md               | Cross-platform comparison table: the `Nesting` row no longer claims Claude Code cannot nest           |
+
+**Known remaining drift:** `docs/claude-code/env-var-ref.md` still lacks `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`. A re-sync attempt was reverted because the upstream env-vars page exceeds the fetch limit and returned a truncated table (68 of 172 variables); the mirror was restored from `HEAD` rather than degraded. The authoritative statement about the variable lives in the re-synced subagents page.
+
+**Method:** Empirical probe first (nested spawn at `tools: *` and at a restricted `tools: Read, Agent`, plus a negative control on `orchestrate:investigator-standard`), harness metadata verified in `~/.claude/projects/*/subagents/*.meta.json`, then upstream re-sync and manual page correction in the main thread.

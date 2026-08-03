@@ -2,7 +2,7 @@
 
 **Summary**: Specialized assistants running in isolated context windows with custom system prompts and restricted tool sets — the primary mechanism for keeping main agent context clean while enabling complex parallel work across both Claude Code and Cursor platforms.
 **Sources**: creating-custom-subagents.md, subagents-guide.md, research-subagent-best-practices.md, analysis-creating-custom-subagents.md, analysis-research-subagent-best-practices.md, research-plan-implement-rpi.md, skill-issue-harness-engineering-for-coding-agents.md, dynamic-workflows.md, agent-teams.md
-**Last updated**: 2026-06-04
+**Last updated**: 2026-08-02
 
 ---
 
@@ -17,7 +17,7 @@ Subagents are the workhorse of [[agent-workflows]]. They receive only their syst
 | Model default    | `inherit` (from parent)              | `inherit` (from parent)                                        |
 | Model options    | sonnet, opus, haiku, full ID         | inherit, fast, specific ID                                     |
 | Tool restriction | `tools` / `disallowedTools` fields   | `readonly: true` only                                          |
-| Nesting          | Cannot spawn other subagents         | Supports nested launches (Cursor 2.5+, restricted per-project) |
+| Nesting          | Up to 3 layers below the main conversation by default; configurable via `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` (v2.1.217+), `1` disables | Supports nested launches (Cursor 2.5+, restricted per-project) |
 | Execution        | Synchronous (in parent turn)         | Foreground (blocking) or Background (async)                    |
 | Locations        | session, project, user, plugin       | project, user, compatibility dirs                              |
 | Max turns        | `maxTurns` field (15–20 typical)     | Not available                                                  |
