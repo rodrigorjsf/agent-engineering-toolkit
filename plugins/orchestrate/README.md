@@ -144,6 +144,12 @@ A long backlog can exhaust the orchestrator session before every wave is done �
 
 When several runs proceed concurrently in one repository, the watchdog binds to the correct run by **driver-session identity**: a companion `SessionStart` hook captures the session's `session_id` into `$ORCHESTRATE_SESSION_ID`, the orchestrator records it as `driverSessionId` in `run-state.json` (refreshed on resume), and the watchdog matches the event's `session_id` against each in-progress run — writing the flag only under the matching run's directory. If it cannot disambiguate, or the identity is unavailable, the watchdog safely writes nothing: the run stays correct and merely loses automatic handoff, remaining manually resumable with `/orchestrate`.
 
+### Read guard
+
+The slice-executor delegation layer saves the orchestrator's context by keeping slice-internal artifacts — each slice's progress record and its report — out of the orchestrator's window entirely: it learns a slice's outcome from the executor's result envelope and passes those paths forward without opening them. The bundled `read-guard` hook (a `PreToolUse` hook scoped to `Read` and `Bash`) enforces that boundary mechanically, denying such a read and returning a reason that names what to do instead — use the envelope's own fields, and recover the record through the `recover_slice_progress` tool if the envelope is missing or invalid. It tells the orchestrator from a subagent by the agent identity the hook event carries, so an executor reading its own record is untouched, and with no run in progress it is a silent no-op for every path.
+
+It is **defence in depth, not a dependency.** The same boundary is stated as a rule in the orchestrator's own instructions and stays load-bearing: enterprise policy (`allowManagedHooksOnly`) or a user setting (`disableAllHooks`, which is all-or-nothing and would also give up the context watchdog) can switch plugin hooks off, and even when enabled the hook cannot see a file referenced with `@` in a prompt, which Claude Code inserts without any tool call.
+
 ## Installation
 
 ```bash
@@ -421,7 +427,8 @@ plugins/orchestrate/
 ├── README.md                    # This file
 ├── hooks/
 │   └── hooks.json               # context-watchdog (PostToolUse) +
-│                                #   session-start (SessionStart) hooks
+│                                #   session-start (SessionStart) +
+│                                #   read-guard (PreToolUse) hooks
 ├── skills/
 │   ├── orchestrate/
 │   │   ├── SKILL.md             # The orchestrator judgment spine
@@ -440,7 +447,7 @@ plugins/orchestrate/
     ├── src/                     # Tool implementations
     ├── test/                    # Unit suite
     └── dist/                    # Bundled server + context-watchdog +
-                                 #   session-start hooks
+                                 #   session-start + read-guard hooks
 ```
 
 ## Contributing to orchestrate-mcp
@@ -450,7 +457,7 @@ The `orchestrate-mcp/` directory contains a TypeScript MCP server whose compiled
 ```bash
 cd plugins/orchestrate/orchestrate-mcp
 npm ci          # if node_modules is stale
-npm run build   # regenerates dist/index.js, dist/context-watchdog.js, dist/session-start.js
+npm run build   # regenerates dist/index.js, dist/context-watchdog.js, dist/session-start.js, dist/read-guard.js
 git add dist/
 ```
 
