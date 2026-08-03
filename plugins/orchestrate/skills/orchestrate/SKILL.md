@@ -105,8 +105,14 @@ This skill has three modes, selected by the invocation argument.
   section 1's `in-progress`-only run-discovery — a concluded-but-uncleaned run
   still counts). If any match exists → report that run and **stop**; never fall
   through to section 1. On **zero matches**, run **only** `references/preflight-mode.md`
-  (fresh-run steps 1–6, then the resumable checkpoint), then **stop before the
-  wave loop** — do not create worktrees or slice branches, do not enter section 2.
+  (fresh-run steps 1–6, the resumable checkpoint, then the **capability probe** —
+  which executes the configured verbs once in a throwaway dependency-free
+  checkout and reports, per verb, what the gate will actually verify), then
+  **stop before the wave loop** — no slice branch and no slice worktree is
+  created, do not enter section 2. A failing probe is a loud report, never a
+  stop: the checkpoint is already written and the operator decides whether to
+  resume. `bootstrap_config`'s `falseGreenRisk` stop (Prerequisites, above) is
+  unchanged and fires earlier.
 
 ## 1. Start or resume the run
 
