@@ -422,12 +422,15 @@ plugins/orchestrate/
 │   └── hooks.json               # context-watchdog (PostToolUse) +
 │                                #   session-start (SessionStart) hooks
 ├── skills/
-│   └── orchestrate/
-│       ├── SKILL.md             # The orchestrator judgment spine
-│       └── references/          # phase-loaded references:
-│                                #   prerequisites, clean-mode, run-lifecycle,
-│                                #   wave-loop, slice-pipeline, failure-handling,
-│                                #   run-state, context-handoff
+│   ├── orchestrate/
+│   │   ├── SKILL.md             # The orchestrator judgment spine
+│   │   └── references/          # phase-loaded references:
+│   │                            #   prerequisites, clean-mode, run-lifecycle,
+│   │                            #   wave-loop, slice-pipeline, failure-handling,
+│   │                            #   run-state, context-handoff
+│   └── slice-pipeline/
+│       └── SKILL.md             # The per-slice procedure the slice-executor
+│                                #   subagent loads
 ├── agents/                      # 8 subagents — {investigator,implementer,
 │                                #   reviewer,conflict-resolver}-{standard,deep}
 ├── templates/                   # commands.json, routing.json, handoff.json
