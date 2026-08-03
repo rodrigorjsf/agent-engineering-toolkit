@@ -232,6 +232,25 @@ export const SLICE_EXECUTOR_FAILURE_CLASSES = [
   "model-refusal",
 ] as const;
 
+/**
+ * The closed set of inner stages a slice-executor runs through (ADR-0017).
+ * Defined in exactly one place — the envelope's `failedStage` and the slice
+ * progress record's `lastCompletedStage` import this same union, so the set
+ * cannot drift into a second, restated literal.
+ *
+ * This is a set of stage NAMES, not an ordering: array position carries no
+ * meaning, and which stages run, in what order, and which are skipped are the
+ * executor's decisions, not this vocabulary's. The two consumers also read the
+ * same member differently — `failedStage` names the stage that was RUNNING when
+ * a failure occurred, `lastCompletedStage` names the stage that FINISHED.
+ */
+export const SLICE_EXECUTOR_STAGES = [
+  "investigator",
+  "implementer",
+  "capability-gate",
+  "reviewer",
+] as const;
+
 const sliceExecutorFailureClassSchema = z
   .enum(SLICE_EXECUTOR_FAILURE_CLASSES)
   .describe(
@@ -294,7 +313,7 @@ export const sliceExecutorEnvelopeSchema = z.object({
         "see the module-level note above."
     ),
   failedStage: z
-    .enum(["investigator", "implementer", "capability-gate", "reviewer"])
+    .enum(SLICE_EXECUTOR_STAGES)
     .optional()
     .describe(
       "Which inner stage of the slice pipeline was running when a non-" +
