@@ -149,7 +149,7 @@ agent-engineering-toolkit/
 │       ├── .claude-plugin/plugin.json
 │       ├── .mcp.json                # Registers the orchestrate-mcp server
 │       ├── README.md                # Full plugin documentation
-│       ├── hooks/                   # context-watchdog PostToolUse hook
+│       ├── hooks/                   # 3 hooks: SessionStart, PreToolUse read guard, PostToolUse watchdog
 │       ├── skills/                  # 2 skills: orchestrate, slice-pipeline
 │       ├── agents/                  # 10 subagents: {investigator,implementer,reviewer,conflict-resolver,slice-executor}-{standard,deep}
 │       ├── templates/               # commands.json, routing.json, handoff.json
