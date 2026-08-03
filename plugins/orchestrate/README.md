@@ -55,7 +55,7 @@ The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing 
 | `push_and_verify` | Push a slice branch and verify it actually landed on the remote (SHA-match `git ls-remote` check + bounded backoff) — fails loud when an exit-0 push never lands; git-only, never shells `gh` |
 | `finalize_slice` | Land one reviewed slice's git + run-state mechanics in two phases: `commit-push` (stage exactly the named files, guard an empty changeset, commit with `Closes #<N>`, compose `push_and_verify`, checkpoint `subState: pushed`) and `post-merge` (checkpoint `subState: merged`, remove the worktree, reclaim the local branch). Forge ops and the `pr-open` checkpoint stay in the spine; git-only, never shells `gh` |
 | `run_tests` / `run_typecheck` / `run_build` / `run_lint` | Run the project's configured capability commands |
-| `run_wave` | A family of bracketed deterministic wave-loop operations behind one tool, selected by the `operation` discriminant — so only the higher-level policy that decides how a wave processes its slices stays the orchestrator's concern. `refresh-base` (fast-forward the local umbrella ref to its remote tip via a `git merge-base` ancestor proof, or report `diverged` and leave the ref untouched), `select-processable` (gate one slice on its in-partition and out-of-partition blocker states — consumed from state passed in, never read with `gh`), `reverify-slice` (no-op for the first merged slice; else fetch + merge the umbrella into the worktree and run the tests + build verbs, returning `passed`/`failed{which}`/`conflict` — a conflict is flagged in place, never resolved), and `integration-gate` (run the per-wave integration suite → `proceed`/`halt`/`tolerate`). Git-only, run-scoped, never throws |
+| `run_wave` | A family of bracketed deterministic wave-loop operations behind one tool, selected by the `operation` discriminant — so only the higher-level policy that decides how a wave processes its slices stays the orchestrator's concern. `refresh-base` (fast-forward the local umbrella ref to its remote tip via a `git merge-base` ancestor proof, or report `diverged` and leave the ref untouched), `select-processable` (gate one slice on its in-partition and out-of-partition blocker states — consumed from state passed in, never read with `gh`), `reverify-slice` (no-op for the first merged slice; else fetch + merge the umbrella into the worktree and run the tests + build verbs, returning `passed`/`failed{which}`/`conflict` — a conflict is flagged in place, never resolved), `integration-gate` (run the per-wave integration suite → `proceed`/`halt`/`tolerate`), `plan-wave-width` (cap a wave's in-flight slices against the session's concurrent-subagent limit — two agent slots per slice, so half the limit, floored at 1 — returning `waveWidth` + a `deferredCount` that keeps its state), and `classify-spawn-outcome` (classify an observed spawn refusal as `backpressure` — requeue the slice unchanged, never fail it — or `spawn-error`, keeping a spent session spawn budget distinguishable). Git-only, run-scoped, never throws |
 | `resolve_merge_conflict` | The two deterministic git operations around the conflict-resolver spawn, behind one tool selected by the `operation` discriminant — the resolver spawn, envelope validation, clean-path re-verify, and attempt-once policy stay in the spine. `prepare` (re-entrant recovery first — abort a stale in-progress merge before the fresh fetch + merge of the umbrella into the worktree, returning `clean` (auto-committed, nothing to resolve) or `conflicted{conflictedFiles}`, a rename-conflict emitting both paths) and `finalize` (stage the resolved set, scan the staged diff for residual conflict markers, complete the merge commit → `completed`, or `markers_remain` with the merge aborted leaving the worktree clean). Git-only, run-scoped, never shells `gh`, never throws |
 | `plan_waves` | Topologically sort issues into dependency waves; detects cycles |
 | `resolve_routing` | Resolve the model and routing variant for each role — investigator, implementer, reviewer, conflict-resolver, and slice-executor (ADR-0017, #356; schema groundwork only — no `slice-executor` subagent is spawned yet) — from a complexity tier. A routing.json predating the role still resolves: `slice-executor` defaults to the tier's own `implementer` entry, flagged with a warning |
@@ -139,7 +139,7 @@ Every step is individually idempotent: a committed config file is never overwrit
 
 ### Context handoff
 
-A long backlog can fill the orchestrator session's context window before every wave is done. The bundled `context-watchdog` hook (a `PostToolUse` hook) estimates context usage from the session transcript and, past a configurable threshold (default 40%), writes the active run's `.orchestrate/runs/<runId>/context-flag.json`. The orchestrator finishes the current slice, checkpoints, and calls `spawn_successor` to launch a new interactive Claude Code session that resumes from `run-state.json` — then the predecessor exits. The successor clears the stale flag on startup, so there is no handoff loop.
+A long backlog can exhaust the orchestrator session before every wave is done — by filling its context window, or by spending the platform's per-session subagent-spawn budget. The bundled `context-watchdog` hook (a `PostToolUse` hook) watches both: it estimates context usage from the session transcript and counts **this session's** subagent spawns out of a per-run append-only log, and past either configurable threshold (both default 40%) writes the active run's `.orchestrate/runs/<runId>/context-flag.json`, recording in `trigger` which budget raised it. The orchestrator finishes the current slice, checkpoints, and calls `spawn_successor` to launch a new interactive Claude Code session that resumes from `run-state.json` — then the predecessor exits. The successor clears the stale flag on startup, so there is no handoff loop.
 
 When several runs proceed concurrently in one repository, the watchdog binds to the correct run by **driver-session identity**: a companion `SessionStart` hook captures the session's `session_id` into `$ORCHESTRATE_SESSION_ID`, the orchestrator records it as `driverSessionId` in `run-state.json` (refreshed on resume), and the watchdog matches the event's `session_id` against each in-progress run — writing the flag only under the matching run's directory. If it cannot disambiguate, or the identity is unavailable, the watchdog safely writes nothing: the run stays correct and merely loses automatic handoff, remaining manually resumable with `/orchestrate`.
 
@@ -250,7 +250,7 @@ To run orchestrate against another repository, that repository needs:
 
 Optionally, install the **`ast-grep` CLI** to enable the investigator and reviewer subagents' structural code search; without it, they fall back to text search.
 
-The run's generated, ephemeral files must be gitignored. Every run keeps its `run-state.json`, `context-flag.json`, per-slice progress records, and rendered HTML artifacts under a per-run directory, `.orchestrate/runs/<runId>/`, so one gitignore line covers them all:
+The run's generated, ephemeral files must be gitignored. Every run keeps its `run-state.json`, `context-flag.json`, `spawn-log.jsonl`, per-slice progress records, and rendered HTML artifacts under a per-run directory, `.orchestrate/runs/<runId>/`, so one gitignore line covers them all:
 
 ```gitignore
 .orchestrate/runs/
@@ -336,13 +336,15 @@ Maps each complexity tier to the model and routing variant for each role, and co
 
 ### `.orchestrate/handoff.json`
 
-Optional. Tunes the context-watchdog threshold and the successor-session launcher. When absent, built-in defaults apply. `bootstrap_config` writes this file the first time it is absent, with `watchdog.contextWindowTokens` derived from the running model — `1000000` for a 1M-context model, `200000` otherwise.
+Optional. Tunes the context-watchdog's two thresholds and the successor-session launcher. When absent, built-in defaults apply — every field carries one, so a config written before a field existed still resolves. Note that a key the schema did not recognize used to be silently stripped; once it becomes a real field it is validated, so an off-schema value now sends the whole file down the defaults-plus-warning path. `bootstrap_config` writes this file the first time it is absent, with `watchdog.contextWindowTokens` derived from the running model — `1000000` for a 1M-context model, `200000` otherwise.
 
 ```json
 {
   "watchdog": {
     "thresholdPercent": 40,
-    "contextWindowTokens": 200000
+    "contextWindowTokens": 200000,
+    "spawnThresholdPercent": 40,
+    "sessionSpawnBudget": 200
   },
   "successor": {
     "claudeArgs": ["--remote-control", "orchestrate-successor", "--permission-mode", "auto"],
@@ -365,6 +367,8 @@ Optional. Tunes the context-watchdog threshold and the successor-session launche
 |-------|---------|---------|
 | `watchdog.thresholdPercent` | `40` | Raise the handoff flag at this percentage of the context window. |
 | `watchdog.contextWindowTokens` | `200000` | The window the percentage measures against. Set to `1000000` for a 1M-context session. |
+| `watchdog.spawnThresholdPercent` | `40` | Raise the handoff flag at this percentage of the session spawn budget. Mirrors `thresholdPercent`. |
+| `watchdog.sessionSpawnBudget` | `200` | Total subagent spawns the session may make — the platform's own per-session default, changed by `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`. Nested and background subagents count toward it, and a finished subagent still counts. |
 | `successor.claudeArgs` | Remote Control + auto mode | Flags for the successor's `claude` CLI invocation. |
 | `successor.resumePrompt` | `/orchestrate` | The successor's initial prompt — appended last, as a positional argument. |
 | `successor.terminals` | Windows Terminal, then Warp | Ordered terminal fallback chain. `{claudeCommand}` and `{repoPath}` are substituted into each argv. |
@@ -376,7 +380,8 @@ The default terminal chain targets a WSL2 environment. On another host, replace 
 Generated, not authored. Every run keeps its ephemeral state in its own per-run directory, `.orchestrate/runs/<runId>/`, where `<runId>` is the run's timestamp id. The directory holds:
 
 - `run-state.json` — the durable run checkpoint. The orchestrator writes it after every slice state change and every wave, and reads it on startup to resume an interrupted run.
-- `context-flag.json` — the context-handoff signal, written by the watchdog when the threshold is reached.
+- `context-flag.json` — the context-handoff signal, written by the watchdog when either threshold is reached.
+- `spawn-log.jsonl` — the watchdog's append-only spawn record, one line per subagent spawn observed while the run is in progress, each tagged with the session that made it. It is stored per run but **counted per session**: the platform's cap resets in a new session while the log survives a handoff, so only the current session's lines count toward the budget.
 - `slice-<issue>-progress.json` — one **slice progress record** per slice, written by the slice executor at each completed stage and read back through the `recover_slice_progress` MCP tool. The filename carries the issue number so the concurrent slices of one wave never clobber each other's resume anchor.
 - `dashboard.html`, `graph.html`, `report.html` — the rendered HTML artifacts.
 
@@ -391,6 +396,7 @@ Two distinct runs never share a directory, so their ephemeral state never collid
     └── 20260521-015143/          # one per-run directory per run
         ├── run-state.json
         ├── context-flag.json     # present only after a handoff is signalled
+        ├── spawn-log.jsonl       # one line per subagent spawn (the spawn budget)
         ├── slice-157-progress.json   # one slice progress record per slice
         ├── slice-158-progress.json
         ├── dashboard.html

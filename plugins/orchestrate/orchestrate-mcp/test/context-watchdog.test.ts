@@ -5,6 +5,7 @@ import * as path from "path";
 import {
   parseLatestUsage,
   contextTokens,
+  countSpawns,
   evaluateWatchdog,
   runWatchdog,
 } from "../src/hooks/context-watchdog.js";
@@ -41,6 +42,28 @@ function userLine(text: string): string {
   return JSON.stringify({ type: "user", message: { role: "user", content: text } });
 }
 
+/**
+ * One spawn-log line, as the watchdog appends it for an `Agent` tool call.
+ * Omitting `session` produces a legacy, untagged line — what a log written
+ * before spawns were session-tagged looks like.
+ */
+function spawnLine(
+  session?: string,
+  at = "2026-05-21T10:00:00.000Z"
+): string {
+  return JSON.stringify(
+    session === undefined ? { at, tool: "Agent" } : { at, tool: "Agent", session }
+  );
+}
+
+/** A spawn log carrying exactly `n` recorded spawns, all from one session. */
+function spawnLog(n: number, session?: string): string {
+  return (
+    Array.from({ length: n }, () => spawnLine(session)).join("\n") +
+    (n > 0 ? "\n" : "")
+  );
+}
+
 // ─── Test project scaffolding ─────────────────────────────────────────────────
 
 const created: string[] = [];
@@ -59,6 +82,7 @@ function project(opts: {
   transcript?: string;
   flag?: unknown;
   runId?: string;
+  spawnLog?: string;
 }): { dir: string; transcriptPath?: string } {
   const runId = opts.runId ?? RUN_ID;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrate-watchdog-"));
@@ -86,6 +110,9 @@ function project(opts: {
       JSON.stringify(opts.flag)
     );
   }
+  if (opts.spawnLog !== undefined) {
+    fs.writeFileSync(path.join(runDir, "spawn-log.jsonl"), opts.spawnLog);
+  }
 
   let transcriptPath: string | undefined;
   if (opts.transcript !== undefined) {
@@ -104,6 +131,10 @@ afterEach(() => {
 
 function flagPath(dir: string, runId: string = RUN_ID): string {
   return path.join(dir, ".orchestrate", "runs", runId, "context-flag.json");
+}
+
+function spawnLogPath(dir: string, runId: string = RUN_ID): string {
+  return path.join(dir, ".orchestrate", "runs", runId, "spawn-log.jsonl");
 }
 
 // ─── parseLatestUsage ─────────────────────────────────────────────────────────
@@ -174,15 +205,104 @@ describe("contextTokens", () => {
 
 // ─── evaluateWatchdog ─────────────────────────────────────────────────────────
 
+/** `evaluateWatchdog` args with no spawn pressure — the token-only baseline. */
+function noSpawns(): {
+  spawnCount: number;
+  sessionSpawnBudget: number;
+  spawnThresholdPercent: number;
+} {
+  return { spawnCount: 0, sessionSpawnBudget: 200, spawnThresholdPercent: 40 };
+}
+
+describe("countSpawns", () => {
+  it("counts one spawn per non-empty line", () => {
+    expect(countSpawns(spawnLog(3))).toBe(3);
+  });
+
+  it("is zero for an empty or blank log", () => {
+    expect(countSpawns("")).toBe(0);
+    expect(countSpawns("\n\n  \n")).toBe(0);
+  });
+
+  it("does not miscount a log with no trailing newline", () => {
+    expect(countSpawns(spawnLine())).toBe(1);
+  });
+
+  it("counts a torn final line as one line", () => {
+    // A torn line is not lost — but it also does not add a spawn, because the
+    // NEXT append merges into it (it has no trailing newline). A torn write
+    // therefore costs one line rather than adding one.
+    expect(countSpawns(spawnLine() + '\n{"at":"2026')).toBe(2);
+    const merged = spawnLine() + '\n{"at":"2026' + spawnLine() + "\n";
+    expect(countSpawns(merged)).toBe(2);
+  });
+});
+
+// ─── countSpawns — session partitioning ───────────────────────────────────────
+//
+// The spawn log lives in the per-RUN directory and is append-only, but the
+// budget it is measured against is the platform's per-SESSION cap, which resets
+// in a new session. Counting is therefore partitioned by session id: a run that
+// hands off keeps its log, and the successor counts only its own spawns.
+
+describe("countSpawns — session partitioning", () => {
+  it("counts only the named session's lines", () => {
+    const log = spawnLog(3, "session-a") + spawnLog(2, "session-b");
+    expect(countSpawns(log, "session-a")).toBe(3);
+    expect(countSpawns(log, "session-b")).toBe(2);
+  });
+
+  it("counts untagged legacy lines toward every session", () => {
+    // A log written before spawns were tagged cannot be attributed, so it is
+    // counted — over-counting raises the flag early, while under-counting walks
+    // the run into an unrecoverable spawn error.
+    const log = spawnLog(2) + spawnLog(1, "session-a");
+    expect(countSpawns(log, "session-a")).toBe(3);
+    expect(countSpawns(log, "session-b")).toBe(2);
+  });
+
+  it("counts every line when no session is given", () => {
+    const log = spawnLog(3, "session-a") + spawnLog(2, "session-b");
+    expect(countSpawns(log)).toBe(5);
+  });
+
+  it("counts a line whose session tag is not a string", () => {
+    const log = JSON.stringify({ at: "x", tool: "Agent", session: 7 }) + "\n";
+    expect(countSpawns(log, "session-a")).toBe(1);
+  });
+
+  it("counts every line when the session asked for is empty", () => {
+    // An empty session id is no identity at all — the same guard
+    // `findActiveRunForSession` applies. Partitioning on it would match no
+    // line ever written and so hide the entire log: an under-count, the one
+    // direction this counting must never take.
+    const log = spawnLog(3, "session-a") + spawnLog(2, "session-b");
+    expect(countSpawns(log, "")).toBe(5);
+  });
+
+  it("counts a line whose session tag is empty toward every session", () => {
+    // Symmetric with the rule above, on the write side: an empty tag cannot
+    // attribute the line, so it is charged to whoever asks rather than dropped.
+    const log =
+      JSON.stringify({ at: "x", tool: "Agent", session: "" }) +
+      "\n" +
+      spawnLog(1, "session-a");
+    expect(countSpawns(log, "session-a")).toBe(2);
+    expect(countSpawns(log, "session-b")).toBe(1);
+  });
+});
+
 describe("evaluateWatchdog", () => {
   it("is over threshold when usage exceeds the percentage", () => {
     const e = evaluateWatchdog({
       usedTokens: 110000,
       contextWindowTokens: 200000,
       thresholdPercent: 40,
+      ...noSpawns(),
     });
     expect(e.overThreshold).toBe(true);
     expect(e.usagePercent).toBe(55);
+    expect(e.trigger).toBe("tokens");
   });
 
   it("is under threshold when usage is below the percentage", () => {
@@ -190,9 +310,11 @@ describe("evaluateWatchdog", () => {
       usedTokens: 50000,
       contextWindowTokens: 200000,
       thresholdPercent: 40,
+      ...noSpawns(),
     });
     expect(e.overThreshold).toBe(false);
     expect(e.usagePercent).toBe(25);
+    expect(e.trigger).toBeNull();
   });
 
   it("fires exactly at the threshold boundary (>=)", () => {
@@ -200,8 +322,97 @@ describe("evaluateWatchdog", () => {
       usedTokens: 80000,
       contextWindowTokens: 200000,
       thresholdPercent: 40,
+      ...noSpawns(),
     });
     expect(e.overThreshold).toBe(true);
+  });
+});
+
+// ─── evaluateWatchdog — the spawn-budget threshold ────────────────────────────
+//
+// The session's total spawn budget is the watchdog's SECOND threshold: at
+// roughly five spawns per slice a long run can exhaust the platform's
+// per-session subagent budget well before it exhausts its context window.
+
+describe("evaluateWatchdog — spawn budget", () => {
+  it("raises on the spawn budget while token usage is far below its threshold", () => {
+    const e = evaluateWatchdog({
+      usedTokens: 10000, // 5% of the window — nowhere near 40%
+      contextWindowTokens: 200000,
+      thresholdPercent: 40,
+      spawnCount: 100,
+      sessionSpawnBudget: 200,
+      spawnThresholdPercent: 40,
+    });
+    expect(e.overThreshold).toBe(true);
+    expect(e.trigger).toBe("spawns");
+    expect(e.spawnPercent).toBe(50);
+  });
+
+  it("fires exactly at the spawn boundary (>=)", () => {
+    const e = evaluateWatchdog({
+      usedTokens: 0,
+      contextWindowTokens: 200000,
+      thresholdPercent: 40,
+      spawnCount: 80, // 80/200 = exactly 40%
+      sessionSpawnBudget: 200,
+      spawnThresholdPercent: 40,
+    });
+    expect(e.overThreshold).toBe(true);
+    expect(e.trigger).toBe("spawns");
+  });
+
+  it("does not raise when both thresholds are unmet", () => {
+    const e = evaluateWatchdog({
+      usedTokens: 10000,
+      contextWindowTokens: 200000,
+      thresholdPercent: 40,
+      spawnCount: 79,
+      sessionSpawnBudget: 200,
+      spawnThresholdPercent: 40,
+    });
+    expect(e.overThreshold).toBe(false);
+    expect(e.trigger).toBeNull();
+  });
+
+  it("reports `tokens` when both thresholds cross on the same sample (documented tiebreak)", () => {
+    const e = evaluateWatchdog({
+      usedTokens: 150000,
+      contextWindowTokens: 200000,
+      thresholdPercent: 40,
+      spawnCount: 190,
+      sessionSpawnBudget: 200,
+      spawnThresholdPercent: 40,
+    });
+    expect(e.overThreshold).toBe(true);
+    expect(e.trigger).toBe("tokens");
+  });
+
+  it("evaluates the spawn threshold even when token usage is unknown", () => {
+    const e = evaluateWatchdog({
+      usedTokens: null,
+      contextWindowTokens: 200000,
+      thresholdPercent: 40,
+      spawnCount: 120,
+      sessionSpawnBudget: 200,
+      spawnThresholdPercent: 40,
+    });
+    expect(e.overThreshold).toBe(true);
+    expect(e.trigger).toBe("spawns");
+    expect(e.usagePercent).toBeNull();
+  });
+
+  it("stays quiet when token usage is unknown and spawns are under budget", () => {
+    const e = evaluateWatchdog({
+      usedTokens: null,
+      contextWindowTokens: 200000,
+      thresholdPercent: 40,
+      spawnCount: 1,
+      sessionSpawnBudget: 200,
+      spawnThresholdPercent: 40,
+    });
+    expect(e.overThreshold).toBe(false);
+    expect(e.trigger).toBeNull();
   });
 });
 
@@ -598,6 +809,283 @@ describe("runWatchdog — active run", () => {
 
     expect(result.flagRaised).toBe(true);
     expect(result.evaluation!.usedTokens).toBe(108002);
+  });
+});
+
+// ─── runWatchdog — the spawn-budget threshold ─────────────────────────────────
+//
+// The spawn threshold must fire INDEPENDENTLY of token usage: the transcript is
+// written asynchronously and may lag, so an unknown token figure must skip only
+// the token comparison, never the spawn one.
+
+describe("runWatchdog — spawn budget", () => {
+  it("raises on the spawn budget with no transcript at all", () => {
+    const { dir } = project({
+      runState: { status: "in-progress" },
+      spawnLog: spawnLog(80), // 80/200 = 40%, the default spawn threshold
+    });
+    const result = runWatchdog({
+      transcriptPath: undefined,
+      cwd: dir,
+      runId: RUN_ID,
+    });
+
+    expect(result.acted).toBe(true);
+    expect(result.flagRaised).toBe(true);
+    expect(result.evaluation!.trigger).toBe("spawns");
+    expect(fs.existsSync(flagPath(dir))).toBe(true);
+  });
+
+  it("raises on the spawn budget when the transcript carries no usage yet", () => {
+    const { dir, transcriptPath } = project({
+      runState: { status: "in-progress" },
+      transcript: [userLine("one"), userLine("two")].join("\n"),
+      spawnLog: spawnLog(100),
+    });
+    const result = runWatchdog({ transcriptPath, cwd: dir, runId: RUN_ID });
+
+    expect(result.flagRaised).toBe(true);
+    expect(result.evaluation!.trigger).toBe("spawns");
+  });
+
+  it("records the spawn figures and the trigger in the flag file", () => {
+    const { dir } = project({
+      runState: { status: "in-progress" },
+      spawnLog: spawnLog(120),
+    });
+    runWatchdog({ cwd: dir, runId: RUN_ID });
+
+    const flag = JSON.parse(fs.readFileSync(flagPath(dir), "utf8"));
+    expect(flag.trigger).toBe("spawns");
+    expect(flag.spawnCount).toBe(120);
+    expect(flag.sessionSpawnBudget).toBe(200);
+    expect(flag.spawnThresholdPercent).toBe(40);
+    expect(flag.spawnPercent).toBe(60);
+    // Token usage was never observable — recorded as unknown, not as zero.
+    expect(flag.usedTokens).toBeNull();
+    expect(flag.usagePercent).toBeNull();
+  });
+
+  it("appends one spawn-log line for an Agent tool call", () => {
+    const { dir } = project({ runState: { status: "in-progress" } });
+    const result = runWatchdog({ cwd: dir, runId: RUN_ID, toolName: "Agent" });
+
+    expect(countSpawns(fs.readFileSync(spawnLogPath(dir), "utf8"))).toBe(1);
+    expect(result.evaluation!.spawnCount).toBe(1);
+  });
+
+  it("appends nothing for a tool call that is not a spawn", () => {
+    const { dir } = project({ runState: { status: "in-progress" } });
+    runWatchdog({ cwd: dir, runId: RUN_ID, toolName: "Read" });
+
+    expect(fs.existsSync(spawnLogPath(dir))).toBe(false);
+  });
+
+  it("counts the spawn it just recorded in the same invocation", () => {
+    const { dir } = project({
+      runState: { status: "in-progress" },
+      spawnLog: spawnLog(79), // one short of the 80-spawn threshold
+    });
+    const result = runWatchdog({ cwd: dir, runId: RUN_ID, toolName: "Agent" });
+
+    expect(result.evaluation!.spawnCount).toBe(80);
+    expect(result.flagRaised).toBe(true);
+  });
+
+  it("records no spawn when no run is in progress", () => {
+    const { dir } = project({ runState: { status: "completed" } });
+    const result = runWatchdog({ cwd: dir, runId: RUN_ID, toolName: "Agent" });
+
+    expect(result.acted).toBe(false);
+    expect(fs.existsSync(spawnLogPath(dir))).toBe(false);
+  });
+
+  it("honours a custom spawn budget and threshold from handoff.json", () => {
+    const { dir } = project({
+      runState: { status: "in-progress" },
+      handoff: { watchdog: { sessionSpawnBudget: 400, spawnThresholdPercent: 90 } },
+      spawnLog: spawnLog(120), // 30% of 400 — under the custom 90% threshold
+    });
+    const result = runWatchdog({ cwd: dir, runId: RUN_ID });
+
+    expect(result.flagRaised).toBe(false);
+    expect(result.evaluation!.sessionSpawnBudget).toBe(400);
+    expect(result.evaluation!.spawnThresholdPercent).toBe(90);
+  });
+
+  it("falls back to the default spawn budget when handoff.json is malformed", () => {
+    const { dir } = project({
+      runState: { status: "in-progress" },
+      spawnLog: spawnLog(80),
+    });
+    fs.writeFileSync(
+      path.join(dir, ".orchestrate", "handoff.json"),
+      "{ not valid json"
+    );
+    const result = runWatchdog({ cwd: dir, runId: RUN_ID });
+
+    expect(result.flagRaised).toBe(true);
+    expect(result.evaluation!.sessionSpawnBudget).toBe(200);
+    expect(result.evaluation!.spawnThresholdPercent).toBe(40);
+  });
+});
+
+// ─── runWatchdog — the spawn budget is the SESSION's, not the run's ───────────
+//
+// The log is per-run storage; the budget is a per-session cap that resets in a
+// new session. A handoff keeps the runId — and therefore the log — so without
+// session partitioning every successor would re-raise on its first Agent call
+// and the run would degrade to one slice per session, defeating the feature in
+// exactly the long-run case it exists for.
+
+describe("runWatchdog — session-partitioned spawn budget", () => {
+  it("does not re-raise in a successor session that inherits the run's spawn log", () => {
+    const { dir } = project({
+      runState: { status: "in-progress" },
+      spawnLog: spawnLog(80, "session-predecessor"),
+    });
+
+    const first = runWatchdog({
+      cwd: dir,
+      runId: RUN_ID,
+      sessionId: "session-predecessor",
+    });
+    expect(first.flagRaised).toBe(true);
+    expect(first.evaluation!.trigger).toBe("spawns");
+
+    // The successor's documented startup step — delete the flag, nothing else.
+    fs.unlinkSync(flagPath(dir));
+
+    // A brand-new session: its own fresh budget, one Agent call in.
+    const second = runWatchdog({
+      cwd: dir,
+      runId: RUN_ID,
+      sessionId: "session-successor",
+      toolName: "Agent",
+    });
+    expect(second.evaluation!.spawnCount).toBe(1);
+    expect(second.flagRaised).toBe(false);
+    expect(fs.existsSync(flagPath(dir))).toBe(false);
+  });
+
+  it("still counts the same session's earlier spawns on a re-invocation without a handoff", () => {
+    // Resuming a run in the SAME session does not reset the platform's budget,
+    // so those spawns must keep counting — which is why the fix is a session
+    // tag rather than an instruction to delete the log on resume.
+    const { dir } = project({
+      runState: { status: "in-progress" },
+      spawnLog: spawnLog(79, "session-a"),
+    });
+    const result = runWatchdog({
+      cwd: dir,
+      runId: RUN_ID,
+      sessionId: "session-a",
+      toolName: "Agent",
+    });
+
+    expect(result.evaluation!.spawnCount).toBe(80);
+    expect(result.flagRaised).toBe(true);
+  });
+
+  it("tags each recorded spawn with the session that made it", () => {
+    const { dir } = project({ runState: { status: "in-progress" } });
+    runWatchdog({
+      cwd: dir,
+      runId: RUN_ID,
+      sessionId: "session-a",
+      toolName: "Agent",
+    });
+
+    const line = JSON.parse(
+      fs.readFileSync(spawnLogPath(dir), "utf8").trim()
+    );
+    expect(line.session).toBe("session-a");
+    expect(line.tool).toBe("Agent");
+  });
+
+  it("does not let a concurrent session's spawns inflate this session's count", () => {
+    const { dir } = project({
+      runState: { status: "in-progress" },
+      spawnLog: spawnLog(100, "session-other") + spawnLog(2, "session-mine"),
+    });
+    const result = runWatchdog({
+      cwd: dir,
+      runId: RUN_ID,
+      sessionId: "session-mine",
+    });
+
+    expect(result.evaluation!.spawnCount).toBe(2);
+    expect(result.flagRaised).toBe(false);
+  });
+
+  it("counts an untagged legacy log toward the current session", () => {
+    const { dir } = project({
+      runState: { status: "in-progress" },
+      spawnLog: spawnLog(80),
+    });
+    const result = runWatchdog({
+      cwd: dir,
+      runId: RUN_ID,
+      sessionId: "session-new",
+    });
+
+    expect(result.evaluation!.spawnCount).toBe(80);
+    expect(result.flagRaised).toBe(true);
+  });
+});
+
+// ─── runWatchdog — at most once per run, whichever threshold arrives first ────
+//
+// The flag file itself is the latch: `fs.existsSync(flagPath)` is checked before
+// every raise, so whichever threshold writes it first suppresses every later
+// raise — no in-memory once-flag is needed, and none would survive the hook's
+// per-invocation process anyway.
+
+describe("runWatchdog — at most once across both thresholds", () => {
+  it("does not re-raise on the spawn budget once a token raise wrote the flag", () => {
+    const { dir, transcriptPath } = project({
+      runState: { status: "in-progress" },
+      transcript: assistantLine(2, 8000, 100000), // 54% — over the token threshold
+      spawnLog: spawnLog(79),
+    });
+
+    const first = runWatchdog({ transcriptPath, cwd: dir, runId: RUN_ID });
+    expect(first.flagRaised).toBe(true);
+    expect(first.evaluation!.trigger).toBe("tokens");
+
+    // The spawn count now crosses too — but the flag is already raised.
+    const second = runWatchdog({
+      transcriptPath,
+      cwd: dir,
+      runId: RUN_ID,
+      toolName: "Agent",
+    });
+    expect(second.flagRaised).toBe(false);
+    expect(second.evaluation!.trigger).toBe("tokens");
+
+    const flag = JSON.parse(fs.readFileSync(flagPath(dir), "utf8"));
+    expect(flag.trigger).toBe("tokens");
+  });
+
+  it("does not re-raise on tokens once a spawn raise wrote the flag", () => {
+    const { dir } = project({
+      runState: { status: "in-progress" },
+      spawnLog: spawnLog(80),
+    });
+
+    const first = runWatchdog({ cwd: dir, runId: RUN_ID });
+    expect(first.flagRaised).toBe(true);
+    expect(first.evaluation!.trigger).toBe("spawns");
+
+    // A later sample where token usage crosses as well writes nothing new.
+    const { dir: _unused, transcriptPath } = project({
+      transcript: assistantLine(2, 8000, 100000),
+    });
+    const second = runWatchdog({ transcriptPath, cwd: dir, runId: RUN_ID });
+    expect(second.flagRaised).toBe(false);
+
+    const flag = JSON.parse(fs.readFileSync(flagPath(dir), "utf8"));
+    expect(flag.trigger).toBe("spawns");
   });
 });
 

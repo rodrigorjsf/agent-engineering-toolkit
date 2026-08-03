@@ -238,7 +238,14 @@ different guarantees, and the choice is a deliberate judgment:
   umbrella must not race). Because every slice branches from the wave's
   *starting* umbrella, a parallel wave needs the per-slice post-merge unit
   re-verify and may need the conflict-resolver when two slices touch the same
-  region.
+  region. How many of a wave's slices run at once is **capped**, not unbounded:
+  each in-flight slice holds two live agents (its executor plus the one worker
+  that executor is running), so the wave's width is planned against the
+  session's concurrent-subagent limit (`run_wave` `plan-wave-width`) and the
+  remainder is deferred, keeping its state. A refusal that slips through anyway
+  is **backpressure, never a slice failure** — the slice returns to the queue
+  unchanged (`run_wave` `classify-spawn-outcome`). Both are in
+  `references/wave-loop.md` step 3.
 - **`sequential`** processes the wave's slices **one at a time, in issue-id
   ascending order**, each branching from `base + slice1..N-1` — the integrated
   state of every earlier slice in the wave. This imposes a deterministic order
@@ -296,13 +303,18 @@ in `references/slice-pipeline.md`.
 
 ## 4. Context handoff
 
-A long run can fill this session's context before every wave is done. The
-`context-watchdog` hook bundled with this plugin watches token usage and writes
-`.orchestrate/runs/<runId>/context-flag.json` past a configurable threshold.
-When the wave loop (section 2, step 4) sees that flag, hand the run off to a
-fresh Claude Code session instead of continuing — the successor resumes from
-the `run-state.json` checkpoint exactly as section 1 describes. See
-`references/context-handoff.md` for the full mechanism.
+A long run can exhaust this session before every wave is done — by filling its
+context **or** by spending its subagent-spawn budget. The `context-watchdog`
+hook bundled with this plugin watches **both**: token usage against the context
+window, and **this session's** recorded spawn count against the session spawn
+budget (default 200, at roughly five spawns per slice — the spawn log is kept
+per run but counted per session, so a successor starts from a fresh budget). It writes
+`.orchestrate/runs/<runId>/context-flag.json` past whichever threshold is
+reached first — at most once per run either way — recording which one in the
+flag's `trigger` field. When the wave loop (section 2, step 4) sees that flag,
+hand the run off to a fresh Claude Code session instead of continuing — the
+successor resumes from the `run-state.json` checkpoint exactly as section 1
+describes. See `references/context-handoff.md` for the full mechanism.
 
 The watchdog binds to the correct run by matching this session's identity:
 it compares the hook event's `session_id` against each in-progress run's

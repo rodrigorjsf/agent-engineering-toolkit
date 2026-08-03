@@ -103,6 +103,7 @@ describe("resolveRunDir — valid runId", () => {
       expect(result.paths.dashboardPath).toBeDefined();
       expect(result.paths.graphPath).toBeDefined();
       expect(result.paths.reportPath).toBeDefined();
+      expect(result.paths.spawnLogPath).toBeDefined();
     }
   });
 
@@ -125,6 +126,16 @@ describe("resolveRunDir — valid runId", () => {
       );
       expect(result.paths.contextFlagPath).toBe(
         path.join(result.paths.runDir, "context-flag.json")
+      );
+    }
+  });
+
+  it("places the spawn log inside the run directory (removed with the run)", () => {
+    const result = resolveRunDir("/repo", "20260521-015143");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.paths.spawnLogPath).toBe(
+        path.join(result.paths.runDir, "spawn-log.jsonl")
       );
     }
   });

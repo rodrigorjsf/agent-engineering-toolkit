@@ -3,10 +3,18 @@ import { runWatchdog } from "./context-watchdog.js";
 import { findActiveRunForSession } from "./run-discovery.js";
 
 // Entry point for the `context-watchdog` PostToolUse hook. Claude Code pipes
-// the hook event JSON on stdin; this script estimates the session's context
-// usage and raises the orchestrate handoff flag past the threshold. It always
-// exits 0 — a hook must never fail a tool call — and only emits output on the
-// turn the flag is first raised, so it stays silent in unrelated sessions.
+// the hook event JSON on stdin; this script samples the session's two budgets —
+// context usage and the run's subagent-spawn count — and raises the orchestrate
+// handoff flag past either threshold. It always exits 0 — a hook must never
+// fail a tool call — and only emits output on the turn the flag is first
+// raised, so it stays silent in unrelated sessions.
+//
+// Two event fields are forwarded to the watchdog beyond what run discovery
+// needs. `tool_name` identifies a SPAWN: an `Agent` call appends one line to
+// the run's spawn log, which is how the session spawn budget is counted at all.
+// `session_id` says whose budget that spawn spends — the log outlives a handoff
+// with its run, while the platform's cap resets per session, so each line is
+// tagged and only the current session's lines are counted.
 //
 // The hook event carries `cwd`, `transcript_path`, and `session_id` — never a
 // runId. Run state lives in per-run directories (.orchestrate/runs/<runId>/),
@@ -42,8 +50,16 @@ async function main(): Promise<void> {
   try {
     const event = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
     const cwd = typeof event.cwd === "string" ? event.cwd : process.cwd();
+    // An EMPTY `session_id` is treated as absent, the same guard
+    // `findActiveRunForSession` applies. An empty string is not an identity:
+    // tagging a spawn with it would partition the count on a value no earlier
+    // line can carry, hiding every one of them — an under-count, the single
+    // direction this counting is built to avoid. Absent instead means every
+    // line counts, which only hands off early.
     const sessionId =
-      typeof event.session_id === "string" ? event.session_id : undefined;
+      typeof event.session_id === "string" && event.session_id.length > 0
+        ? event.session_id
+        : undefined;
 
     // Discover the run this session drives. With concurrent runs, the session
     // identity disambiguates; when it cannot, discovery returns null and the
@@ -60,15 +76,29 @@ async function main(): Promise<void> {
           : undefined,
       cwd,
       runId,
+      toolName: typeof event.tool_name === "string" ? event.tool_name : undefined,
+      // The same `session_id` that discovery matched on — here it charges the
+      // spawn to the session whose budget it actually spends, so a successor
+      // session inheriting this run's spawn log starts from its own budget.
+      sessionId,
     });
 
     if (result.flagRaised && result.evaluation) {
       const e = result.evaluation;
+      // The message names the budget that actually raised the flag — a
+      // spawn-triggered raise reported in token phrasing would send a reader
+      // looking at the wrong number.
+      const reason =
+        e.trigger === "spawns"
+          ? `${e.spawnCount} of ${e.sessionSpawnBudget} session subagent ` +
+            `spawns used (${e.spawnPercent}%, threshold ` +
+            `${e.spawnThresholdPercent}%)`
+          : `context at ${e.usagePercent}% of ${e.contextWindowTokens} tokens ` +
+            `(threshold ${e.thresholdPercent}%)`;
       process.stdout.write(
         JSON.stringify({
           systemMessage:
-            `orchestrate context-watchdog: context at ${e.usagePercent}% of ` +
-            `${e.contextWindowTokens} tokens (threshold ${e.thresholdPercent}%). ` +
+            `orchestrate context-watchdog: ${reason}. ` +
             `Handoff flag raised — the run will hand off to a successor ` +
             `session after the current slice finishes.`,
         })

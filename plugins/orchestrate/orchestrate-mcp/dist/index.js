@@ -22310,6 +22310,7 @@ function resolveRunDir(repoPath, runId) {
       runDir,
       runStatePath: path4.join(runDir, "run-state.json"),
       contextFlagPath: path4.join(runDir, "context-flag.json"),
+      spawnLogPath: path4.join(runDir, "spawn-log.jsonl"),
       dashboardPath: path4.join(runDir, "dashboard.html"),
       graphPath: path4.join(runDir, "graph.html"),
       reportPath: path4.join(runDir, "report.html")
@@ -23009,6 +23010,12 @@ var watchdogConfigSchema = external_exports.object({
   ),
   contextWindowTokens: external_exports.number().int().positive().default(2e5).describe(
     "Total context window the percentage is measured against. Default 200000 \u2014 raise to 1000000 for a 1M-context session."
+  ),
+  spawnThresholdPercent: external_exports.number().min(1).max(100).default(40).describe(
+    "Raise the handoff flag once the run's recorded subagent spawns reach this percentage of `sessionSpawnBudget`. Default 40, matching `thresholdPercent` \u2014 at roughly five spawns per slice a long run can spend its spawn budget well before it fills its context window, so this threshold must be as conservative as the token one."
+  ),
+  sessionSpawnBudget: external_exports.number().int().positive().default(200).describe(
+    "Total subagent spawns the session may make, the figure `spawnThresholdPercent` is measured against. Default 200 \u2014 the platform's own per-session default, which `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` changes. Nested and background subagents count toward it, and a finished subagent still counts, so the budget is cumulative and never decreases."
   )
 });
 var terminalEntrySchema = external_exports.object({
@@ -25616,9 +25623,11 @@ var runWaveInputSchema = external_exports.object({
     "refresh-base",
     "select-processable",
     "reverify-slice",
-    "integration-gate"
+    "integration-gate",
+    "plan-wave-width",
+    "classify-spawn-outcome"
   ]).describe(
-    "Which bracketed wave operation to run. 'refresh-base' (\xA72 step 1): fast-forward the local umbrella ref to its remote tip, or report `diverged` when that is not a fast-forward. 'select-processable' (\xA72 step 2): gate one slice on its in-partition + out-of-partition blocker states (passed in), returning `processable` or `skip`. 'reverify-slice' (\xA72 step 4 inner re-verify): merge the umbrella into the slice worktree and run the two correctness verbs, returning `passed`/`failed`/`conflict` (or `skipped-first-merge` for the first merged slice). 'integration-gate' (\xA72 step 4a): run the per-wave integration suite, returning `proceed`/`halt`/`tolerate`."
+    "Which bracketed wave operation to run. 'refresh-base' (\xA72 step 1): fast-forward the local umbrella ref to its remote tip, or report `diverged` when that is not a fast-forward. 'select-processable' (\xA72 step 2): gate one slice on its in-partition + out-of-partition blocker states (passed in), returning `processable` or `skip`. 'reverify-slice' (\xA72 step 4 inner re-verify): merge the umbrella into the slice worktree and run the two correctness verbs, returning `passed`/`failed`/`conflict` (or `skipped-first-merge` for the first merged slice). 'integration-gate' (\xA72 step 4a): run the per-wave integration suite, returning `proceed`/`halt`/`tolerate`. 'plan-wave-width' (\xA72 step 3): cap how many processable slices may be in flight at once against the concurrent-subagent limit, returning `width-planned` with `waveWidth` + `deferredCount`. 'classify-spawn-outcome' (\xA72 step 3): classify an observed spawn failure as `backpressure` (retry-later, the slice is fine) or `spawn-error`."
   ),
   repoPath: external_exports.string().optional().describe(
     "The directory the operation runs in. For 'refresh-base' it is the main repo root holding the local umbrella ref. For 'reverify-slice' and 'integration-gate' it is the slice/deferred WORKTREE the merge and the capability commands run against \u2014 the same `repoPath` the run_* capability tools take (config is resolved from the main root, the command execs here). Unused by 'select-processable' (pure)."
@@ -25637,11 +25646,20 @@ var runWaveInputSchema = external_exports.object({
   ),
   outOfPartitionBlockers: external_exports.array(outOfPartitionBlockerSchema).optional().describe(
     "'select-processable' only: the dependent slice's blockers that are NOT slices in this run's partition, each with the tracker state the orchestrator resolved and passed in (ADR-0008). The slice is processable only when every one is `CLOSED`. Pass [] when the slice has no out-of-partition blockers."
+  ),
+  processableCount: external_exports.number().int().positive().optional().describe(
+    "'plan-wave-width' only: how many slices in this wave passed the 'select-processable' gate. Required for that operation."
+  ),
+  concurrencyLimit: external_exports.number().int().positive().optional().default(20).describe(
+    "'plan-wave-width' only: how many subagents may run CONCURRENTLY in this session. Defaults to 20 \u2014 the platform's own default, which `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` changes. Pass the raised value when that variable is set; the plugin cannot read it (it works within the limit, it never sets it)."
+  ),
+  spawnFailureText: external_exports.string().optional().describe(
+    "'classify-spawn-outcome' only: the verbatim failure text the orchestrator got back when a spawn was refused. This tool never observes a spawn itself \u2014 the orchestrator makes every Agent call, so it passes in what it saw (the same ADR-0008 posture as 'select-processable'). Required for that operation."
   )
 });
 var runWaveOutputSchema = external_exports.object({
   status: external_exports.enum(["ok", "failed"]).describe(
-    "Outcome discriminant. 'ok' = the operation reached a non-failure verdict (refreshed | processable | skip | skipped-first-merge | passed | proceed | tolerate); 'failed' = a blocking verdict or error (diverged | failed | conflict | halt | error). The `verdict` field carries the specific outcome."
+    "Outcome discriminant. 'ok' = the operation reached a non-failure verdict (refreshed | processable | skip | skipped-first-merge | passed | proceed | tolerate | width-planned | backpressure); 'failed' = a blocking verdict or error (diverged | failed | conflict | halt | spawn-error | error). `backpressure` is deliberately on the 'ok' side: a slice refused for a platform limit has nothing wrong with it. The `verdict` field carries the specific outcome."
   ),
   verdict: external_exports.enum([
     "refreshed",
@@ -25655,9 +25673,12 @@ var runWaveOutputSchema = external_exports.object({
     "proceed",
     "halt",
     "tolerate",
+    "width-planned",
+    "backpressure",
+    "spawn-error",
     "error"
   ]).describe(
-    "The operation's specific outcome. 'refresh-base' \u2192 `refreshed` (fast-forwarded) | `diverged` (not a fast-forward \u2014 the ref is left untouched). 'select-processable' \u2192 `processable` | `skip` (see `blockerId`). 'reverify-slice' \u2192 `skipped-first-merge` | `passed` | `failed` (see `which`) | `conflict` (the merge left an unmerged index, flagged not resolved). 'integration-gate' \u2192 `proceed` | `halt` | `tolerate` (no integration command configured). `error` = a git or input failure (see `errorCode`)."
+    "The operation's specific outcome. 'refresh-base' \u2192 `refreshed` (fast-forwarded) | `diverged` (not a fast-forward \u2014 the ref is left untouched). 'select-processable' \u2192 `processable` | `skip` (see `blockerId`). 'reverify-slice' \u2192 `skipped-first-merge` | `passed` | `failed` (see `which`) | `conflict` (the merge left an unmerged index, flagged not resolved). 'integration-gate' \u2192 `proceed` | `halt` | `tolerate` (no integration command configured). 'plan-wave-width' \u2192 `width-planned` (see `waveWidth` + `deferredCount`). 'classify-spawn-outcome' \u2192 `backpressure` (the concurrent-subagent limit \u2014 requeue the slice unchanged, never fail it) | `spawn-error` (anything else, including a spent session spawn budget; see `limitSignal`). `error` = a git or input failure (see `errorCode`)."
   ),
   sha: external_exports.string().optional().describe(
     "'refresh-base' `refreshed`: the umbrella SHA the local ref now points at (the fetched remote tip)."
@@ -25668,13 +25689,30 @@ var runWaveOutputSchema = external_exports.object({
   which: external_exports.enum(["tests", "build"]).optional().describe(
     "'reverify-slice' `failed`: which correctness verb failed after the umbrella was merged into the worktree."
   ),
+  waveWidth: external_exports.number().int().optional().describe(
+    "'plan-wave-width' `width-planned`: how many of this wave's processable slices may be in flight at once \u2014 `min(processableCount, floor(concurrencyLimit / 2))`, floored at 1."
+  ),
+  deferredCount: external_exports.number().int().optional().describe(
+    "'plan-wave-width' `width-planned`: how many processable slices the cap defers to a later turn of the wave \u2014 `processableCount - waveWidth`. A deferred slice stays `pending` in the wave's queue; it is NOT skipped and NOT failed."
+  ),
+  limitSignal: external_exports.enum([
+    "concurrent-subagent-limit",
+    "session-spawn-limit",
+    "unrecognized"
+  ]).optional().describe(
+    "'classify-spawn-outcome': which documented platform signal the failure text matched. 'concurrent-subagent-limit' = transient backpressure, a slot frees and the slice is re-attempted. 'session-spawn-limit' = the session's total spawn budget is SPENT \u2014 unrecoverable in-session, and the reason the two limits must never be conflated (requeueing on this one would loop forever). 'unrecognized' = no documented literal matched, classified conservatively as a spawn error."
+  ),
   errorCode: external_exports.enum(["INVALID_INPUT", "GIT_ERROR"]).optional().describe(
     "Machine-readable failure category for `verdict: 'error'`. 'INVALID_INPUT' = a ref/remote would be parsed by git as an option flag, or a required field for the operation is missing; 'GIT_ERROR' = a git command failed for a reason other than divergence or a merge conflict (e.g. an unreachable remote, a missing local umbrella ref)."
   ),
   errorMessage: external_exports.string().optional().describe(
-    "Cleaned, human-readable failure description. Present for `diverged`, `conflict`, `failed`, `halt`, and `error`."
+    "Cleaned, human-readable failure description. Present for `diverged`, `conflict`, `failed`, `halt`, `spawn-error`, and `error` \u2014 and deliberately ABSENT for `backpressure`, which is not a failure."
   )
 });
+var DEFAULT_CONCURRENCY_LIMIT = 20;
+var AGENT_SLOTS_PER_SLICE = 2;
+var CONCURRENT_LIMIT_LITERAL = "concurrent subagent limit reached";
+var SESSION_LIMIT_LITERAL = "subagent spawn limit reached";
 var FETCH_ATTEMPTS = 3;
 var FETCH_BASE_DELAY_MS = 500;
 var FETCH_BACKOFF_FACTOR = 2;
@@ -25690,6 +25728,10 @@ async function runWave(input, opts) {
       return reverifySlice(input, opts);
     case "integration-gate":
       return integrationGate(input);
+    case "plan-wave-width":
+      return planWaveWidth(input);
+    case "classify-spawn-outcome":
+      return classifySpawnOutcome(input);
   }
 }
 async function refreshBase(input, opts) {
@@ -25854,6 +25896,64 @@ async function integrationGate(input) {
         errorMessage: `The per-wave integration suite did not pass (status: ${result.status}) \u2014 halting rather than building the next wave on a broken umbrella.`
       };
   }
+}
+function planWaveWidth(input) {
+  const processableCount = input.processableCount;
+  const concurrencyLimit = input.concurrencyLimit ?? DEFAULT_CONCURRENCY_LIMIT;
+  if (processableCount === void 0 || !Number.isInteger(processableCount) || processableCount < 1) {
+    return failed2(
+      "INVALID_INPUT",
+      "operation 'plan-wave-width' requires a positive integer `processableCount`."
+    );
+  }
+  if (!Number.isInteger(concurrencyLimit) || concurrencyLimit < 1) {
+    return failed2(
+      "INVALID_INPUT",
+      "operation 'plan-wave-width' requires a positive integer `concurrencyLimit`."
+    );
+  }
+  const maxWidth = Math.max(
+    1,
+    Math.floor(concurrencyLimit / AGENT_SLOTS_PER_SLICE)
+  );
+  const waveWidth = Math.min(processableCount, maxWidth);
+  return {
+    status: "ok",
+    verdict: "width-planned",
+    waveWidth,
+    deferredCount: processableCount - waveWidth
+  };
+}
+function classifySpawnOutcome(input) {
+  const text = input.spawnFailureText;
+  if (text === void 0) {
+    return failed2(
+      "INVALID_INPUT",
+      "operation 'classify-spawn-outcome' requires `spawnFailureText`."
+    );
+  }
+  const haystack = text.toLowerCase();
+  if (haystack.includes(CONCURRENT_LIMIT_LITERAL)) {
+    return {
+      status: "ok",
+      verdict: "backpressure",
+      limitSignal: "concurrent-subagent-limit"
+    };
+  }
+  if (haystack.includes(SESSION_LIMIT_LITERAL)) {
+    return {
+      status: "failed",
+      verdict: "spawn-error",
+      limitSignal: "session-spawn-limit",
+      errorMessage: "The session's total subagent spawn budget is spent \u2014 this is NOT backpressure and re-attempting the slice in this session cannot succeed. Hand the run off to a successor session."
+    };
+  }
+  return {
+    status: "failed",
+    verdict: "spawn-error",
+    limitSignal: "unrecognized",
+    errorMessage: `The spawn failure matched no documented platform limit, so it is classified conservatively as a spawn error: ${text}`
+  };
 }
 async function fetchWithRetry(fetchArgs, repoPath, opts) {
   const attempts = opts?.fetchAttempts ?? FETCH_ATTEMPTS;
@@ -26778,6 +26878,15 @@ var handleRunWave = async (input) => {
     case "tolerate":
       text = `Integration gate tolerated \u2014 no integration suite configured.`;
       break;
+    case "width-planned":
+      text = `Wave width planned \u2014 run ${result.waveWidth} slice(s) concurrently, deferring ${result.deferredCount} to a later turn of this wave.`;
+      break;
+    case "backpressure":
+      text = `Spawn refused by the concurrent-subagent limit \u2014 BACKPRESSURE, not a slice failure. Return the slice to the wave's processable queue with its state unchanged and re-attempt it when a slot frees.`;
+      break;
+    case "spawn-error":
+      text = `Spawn failed [${result.limitSignal}]: ${result.errorMessage}`;
+      break;
     case "error":
       text = `run_wave failed [${result.errorCode}]: ${result.errorMessage}`;
       break;
@@ -26791,7 +26900,7 @@ registerTool(
   "run_wave",
   {
     title: "Run a Bracketed Deterministic Wave Operation",
-    description: "A family of bracketed deterministic wave-loop operations behind one tool, selected by the `operation` discriminant, so only the higher-level policy that decides how a wave processes its slices stays the orchestrator's concern. 'refresh-base' (\xA72 step 1): fetch the remote umbrella and fast-forward the local umbrella ref to it (FETCH_HEAD + a `git merge-base` ancestor proof before the ref moves), or report `diverged` \u2014 distinct from a generic git error \u2014 when that is not a fast-forward, leaving the ref untouched. 'select-processable' (\xA72 step 2): gate one slice on its in-partition (must be `passed`) and out-of-partition (must be `CLOSED`) blocker states \u2014 consumed from STATE PASSED IN, never read with `gh` (ADR-0008) \u2014 returning `processable` or `skip{blockerId}`. 'reverify-slice' (\xA72 step 4 inner re-verify): a no-op (`skipped-first-merge`) for the first merged slice of a wave; otherwise fetch + merge the umbrella into the slice worktree, then run the two correctness verbs (tests + build), returning `passed`, `failed{which}`, or `conflict` (the unmerged index is left IN PLACE and only flagged \u2014 resolution is a downstream concern). 'integration-gate' (\xA72 step 4a): run the per-wave integration suite, mapping `proceed` (passed), `halt` (failed/error), or `tolerate` (not configured). All loop state (umbrella ref, remote, first-merged flag) is PASSED IN, never inferred. Git-only via the hardened exec seam, run-scoped (mutates nothing outside the passed worktree), and never throws \u2014 every failure mode is a structured `verdict`.",
+    description: "A family of bracketed deterministic wave-loop operations behind one tool, selected by the `operation` discriminant, so only the higher-level policy that decides how a wave processes its slices stays the orchestrator's concern. 'refresh-base' (\xA72 step 1): fetch the remote umbrella and fast-forward the local umbrella ref to it (FETCH_HEAD + a `git merge-base` ancestor proof before the ref moves), or report `diverged` \u2014 distinct from a generic git error \u2014 when that is not a fast-forward, leaving the ref untouched. 'select-processable' (\xA72 step 2): gate one slice on its in-partition (must be `passed`) and out-of-partition (must be `CLOSED`) blocker states \u2014 consumed from STATE PASSED IN, never read with `gh` (ADR-0008) \u2014 returning `processable` or `skip{blockerId}`. 'reverify-slice' (\xA72 step 4 inner re-verify): a no-op (`skipped-first-merge`) for the first merged slice of a wave; otherwise fetch + merge the umbrella into the slice worktree, then run the two correctness verbs (tests + build), returning `passed`, `failed{which}`, or `conflict` (the unmerged index is left IN PLACE and only flagged \u2014 resolution is a downstream concern). 'integration-gate' (\xA72 step 4a): run the per-wave integration suite, mapping `proceed` (passed), `halt` (failed/error), or `tolerate` (not configured). 'plan-wave-width' (\xA72 step 3): cap how many processable slices may be in flight at once against the session's concurrent-subagent limit (default 20) \u2014 each in-flight slice occupies TWO live agent slots (its executor plus one worker), so the width is half the limit floored at 1, and the remainder is `deferredCount`, DEFERRED (state unchanged) rather than skipped. 'classify-spawn-outcome' (\xA72 step 3): classify an observed spawn failure as `backpressure` (the concurrent-subagent limit \u2014 `status: 'ok'`, no error message, the slice is fine and returns to the queue) or `spawn-error`, keeping a SPENT session spawn budget distinguishable via `limitSignal` and defaulting an unrecognized failure to the conservative class. All loop state (umbrella ref, remote, first-merged flag) is PASSED IN, never inferred. Git-only via the hardened exec seam, run-scoped (mutates nothing outside the passed worktree), and never throws \u2014 every failure mode is a structured `verdict`.",
     inputSchema: runWaveInputSchema.shape,
     outputSchema: runWaveOutputSchema.shape
   },
