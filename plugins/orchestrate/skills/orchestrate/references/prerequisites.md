@@ -97,10 +97,22 @@ and the successor launcher; without it, built-in defaults apply (see
 it enables the investigator and reviewer subagents' structural code search,
 which otherwise falls back to text search.
 
+**Configured is not the same as working.** `bootstrap_config` reports which
+verbs *resolve to a command*; it never executes one. A command can be present
+and still fail in a slice worktree — which checks out tracked files only and has
+no installed dependencies — because it targets a package that is not at the
+repository root, or because its binary only exists after the install step. That
+gap is what the pre-flight capability probe closes, by running the install step
+and each configured verb once in a throwaway dependency-free checkout and
+reporting each verb's **outcome** (passed / failed / broken configuration / not
+configured) alongside `bootstrap_config`'s configuredness. See
+`references/preflight-mode.md` step 3.
+
 To run the one-time setup and inspect the partition and wave plan before
 committing the full execution, use the pre-flight mode: `/orchestrate preflight
-<PRD#>` runs Fresh-run steps 1–6 (including this bootstrap), then stops before
-the wave loop; `/orchestrate <PRD#>` in a fresh session resumes it.
+<PRD#>` runs Fresh-run steps 1–6 (including this bootstrap), probes the
+capability gate, then stops before the wave loop; `/orchestrate <PRD#>` in a
+fresh session resumes it.
 
 ## Fresh-run config bootstrap (`bootstrap_config`)
 
