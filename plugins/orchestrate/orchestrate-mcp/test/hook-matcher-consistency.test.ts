@@ -81,12 +81,24 @@ function shippedAgentNames(): string[] {
   const names: string[] = [];
   for (const file of fs.readdirSync(agentsDir).filter((f) => f.endsWith(".md"))) {
     const raw = fs.readFileSync(path.join(agentsDir, file), "utf8");
-    const lines = raw.split("\n");
+    // Strip a trailing CR: under `core.autocrlf=true` these files are checked out
+    // with CRLF endings even though the blobs are LF. Without this the `continue`
+    // below skips EVERY definition, and the checks that consume this set then
+    // compare against an empty one — passing while asserting nothing, which is
+    // exactly the silently-never-fires guard this suite exists to prevent.
+    const lines = raw.split("\n").map((line) => line.replace(/\r$/, ""));
     if (lines[0] !== "---") continue;
     const closing = lines.indexOf("---", 1);
     if (closing === -1) continue;
     const name = frontmatterField(lines.slice(1, closing).join("\n"), "name");
     if (name !== undefined && name !== "") names.push(name);
+  }
+  if (names.length === 0) {
+    // Fail loudly rather than let every consumer assert against an empty set.
+    throw new Error(
+      `no agent definitions parsed from ${agentsDir} — the shipped-name set is ` +
+        "empty, so any consistency check over it would pass vacuously"
+    );
   }
   return names.sort();
 }

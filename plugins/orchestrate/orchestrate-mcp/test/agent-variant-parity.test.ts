@@ -70,7 +70,13 @@ const agentsDir = path.join(
 
 /** Split a definition into its YAML frontmatter block and its markdown body. */
 function splitDefinition(raw: string): { frontmatter: string; body: string } {
-  const lines = raw.split("\n");
+  // Strip a trailing CR before comparing: a checkout under `core.autocrlf=true`
+  // materialises these files with CRLF endings even though the blobs are LF, and
+  // an exact `=== "---"` there makes every definition unparseable. That failure is
+  // not loud where it matters — the sibling matcher-consistency suite would build
+  // an EMPTY shipped-name set and then pass vacuously, which is the one outcome a
+  // guard must never have.
+  const lines = raw.split("\n").map((line) => line.replace(/\r$/, ""));
   if (lines[0] !== "---") {
     throw new Error("definition does not open with a '---' frontmatter fence");
   }
