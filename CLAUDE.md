@@ -85,5 +85,9 @@ When something fails repeatedly, when User has to re-explain, or when a workarou
 - WebFetch truncates long doc pages; verify tail before overwriting a mirror.
 - Verify harness capability claims empirically; vendor doc mirrors go stale.
 - orchestrate refresh-base syncs umbrella↔its own remote only; land base docs before minting umbrella.
+- Check a rule's `paths:` before assuming its cap or convention reaches your file.
+- Project agents in `.claude/agents/` hot-register; plugin-cache agents need a session restart.
+- Spawning an unregistered agent type silently yields a generic agent — make probes self-report.
+- Call `validate_run_state` right after the first slice checkpoint, not only on resume.
 
 
