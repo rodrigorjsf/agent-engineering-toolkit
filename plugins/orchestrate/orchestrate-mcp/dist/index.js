@@ -23408,11 +23408,12 @@ function filterToOneParentPrd(issues, prdNumber) {
 }
 
 // src/tools/validate-envelope.ts
+var capabilityResultSchema = external_exports.enum(["passed", "failed", "not-configured"]).describe(
+  "Outcome of a capability-tool run. 'not-configured' means the verb has no command set."
+);
 var verificationEntrySchema = external_exports.object({
   capability: external_exports.enum(["tests", "typecheck", "build", "lint"]).describe("Which capability tool was run."),
-  result: external_exports.enum(["passed", "failed", "not-configured"]).describe(
-    "Outcome of that run. 'not-configured' means the verb has no command set."
-  )
+  result: capabilityResultSchema
 });
 var rootCauseSchema = external_exports.object({
   status: external_exports.enum(["verified", "hypothesis"]).describe(
@@ -23485,11 +23486,60 @@ var investigatorEnvelopeSchema = external_exports.object({
   approach: external_exports.string().describe("A suggested implementation approach \u2014 what to change and why."),
   notes: external_exports.string().describe("Anything else that does not fit the fields above.")
 });
+var SLICE_EXECUTOR_FAILURE_CLASSES = [
+  "unrecoverable-obstacle",
+  "incomplete-budget-exhausted",
+  "no-progress-stall",
+  "invalid-or-missing-worker-envelope",
+  "changeset-mismatch",
+  "empty-changeset",
+  "model-refusal"
+];
+var sliceExecutorFailureClassSchema = external_exports.enum(SLICE_EXECUTOR_FAILURE_CLASSES).describe(
+  "Closed-set classification of why the slice did not reach a verified changeset: 'unrecoverable-obstacle' (a blocker with no safe workaround, including a capability-gate failure with no more specific class); 'incomplete-budget-exhausted' (the executor's own nested continuation loop ran out of turns \u2014 the slice-level analogue of the implementer's graceful 'incomplete' self-report); 'no-progress-stall' (repeated attempts converged on nothing); 'invalid-or-missing-worker-envelope' (a worker the executor spawned returned a truncated, malformed, or missing envelope); 'changeset-mismatch' (the implementer's declared `filesChanged` did not match the worktree's actual changeset); 'empty-changeset' (the slice produced no file changes at all); 'model-refusal' (a spawned worker's model refused the task)."
+);
+var sliceExecutorVerificationSchema = external_exports.object({
+  tests: capabilityResultSchema.optional(),
+  typecheck: capabilityResultSchema.optional(),
+  build: capabilityResultSchema.optional(),
+  lint: capabilityResultSchema.optional()
+});
+var sliceExecutorEnvelopeSchema = external_exports.object({
+  role: external_exports.literal("slice-executor").describe("Discriminant \u2014 the slice-executor role."),
+  status: external_exports.enum(["completed", "incomplete", "blocked", "failed"]).describe(
+    "Outcome of the WHOLE SLICE, not a single worker \u2014 reuses the schema's existing status vocabulary rather than inventing a fifth. 'completed' = a verified changeset was reached; 'incomplete' = the executor's own graceful continuation-budget self-report, mirroring the implementer's 'incomplete'; 'blocked' = an unrecoverable obstacle hit by the executor or one of the workers it spawned; 'failed' = the slice did not reach a trustworthy changeset (a worker or verification failure). There is no loop-continue/loop-end value \u2014 see the module-level note above."
+  ),
+  failedStage: external_exports.enum(["investigator", "implementer", "capability-gate", "reviewer"]).optional().describe(
+    "Which inner stage of the slice pipeline was running when a non-'completed' outcome occurred. Absent for a 'completed' envelope. 'implementer' also covers the changeset-verification check that immediately follows the implementer's turn (it gates trust in the implementer's own output, before the reviewer stage begins) \u2014 so 'changeset-mismatch' and 'empty-changeset' are reported here, not under a separate stage."
+  ),
+  failureClass: sliceExecutorFailureClassSchema.optional().describe(
+    "Closed-set classification of the failure. Absent for a 'completed' envelope. The orchestrator maps this class to a tracker triage label; it never re-derives the classification itself \u2014 that authority stays with the executor that observed the failure."
+  ),
+  failureReason: external_exports.string().optional().describe(
+    "Prose description of what happened, in the executor's own words. Complements `failureClass` (the closed-set machine label) with the specific detail a human or the next executor needs. Absent for a 'completed' envelope."
+  ),
+  reportPath: external_exports.string().describe(
+    "Path, relative to the worktree root, of the slice's report \u2014 the human-readable artifact the executor wrote describing its own run."
+  ),
+  nextTaskBriefing: external_exports.string().describe(
+    "Advice carried forward to whoever picks up the next slice. This is advice only, never a selection of WHICH slice runs next \u2014 wave ordering and loop termination stay computed by `plan_waves` and wave exhaustion, not declared here (see the module-level note above)."
+  ),
+  filesChanged: external_exports.array(external_exports.string()).describe(
+    "Files changed across the whole slice \u2014 every worker's edits combined \u2014 as paths relative to the worktree root. An empty array means no file was changed."
+  ),
+  verification: sliceExecutorVerificationSchema.describe(
+    "Roll-up of the slice's capability-gate outcome, one optional result per capability."
+  ),
+  fallbackTaken: external_exports.boolean().describe(
+    "Whether the one-time Model fallback (the premium-lane retry) was taken during this slice."
+  )
+});
 var envelopeSchema = external_exports.discriminatedUnion("role", [
   implementerEnvelopeSchema,
   reviewerEnvelopeSchema,
   conflictResolverEnvelopeSchema,
-  investigatorEnvelopeSchema
+  investigatorEnvelopeSchema,
+  sliceExecutorEnvelopeSchema
 ]).superRefine((data, ctx) => {
   if (data.role === "implementer" && data.status === "incomplete" && (data.remainingWork === void 0 || data.remainingWork.trim() === "")) {
     ctx.addIssue({
@@ -23503,7 +23553,8 @@ var ENVELOPE_ROLES = [
   "implementer",
   "reviewer",
   "conflict-resolver",
-  "investigator"
+  "investigator",
+  "slice-executor"
 ];
 var validateEnvelopeInputSchema = external_exports.object({
   text: external_exports.string().describe(
@@ -26203,7 +26254,7 @@ registerTool(
   "validate_envelope",
   {
     title: "Validate Subagent Result Envelope",
-    description: "Validates a subagent's result envelope \u2014 the ```orchestrate-envelope fenced JSON block a subagent emits as its final message \u2014 against the defined schema for its role. Returns a discriminated `status`: 'valid' (a well-formed envelope matching the role, with the parsed `envelope`), 'invalid' (an envelope was attempted but is truncated, malformed, or off-schema \u2014 a truncated envelope is ALWAYS invalid, never silently accepted), or 'missing' (no envelope block was found). A failure outcome (implementer 'blocked', reviewer 'failed') must also carry a labelled `rootCause` (verified|hypothesis) or it is reported invalid. An implementer 'incomplete' envelope must carry a non-empty `remainingWork` handoff (the note the orchestrator forwards to the continuation in the same worktree) or it is reported invalid. The orchestrator uses this instead of parsing subagent prose for status or changed files.",
+    description: "Validates a subagent's result envelope \u2014 the ```orchestrate-envelope fenced JSON block a subagent emits as its final message \u2014 against the defined schema for its role. Returns a discriminated `status`: 'valid' (a well-formed envelope matching the role, with the parsed `envelope`), 'invalid' (an envelope was attempted but is truncated, malformed, or off-schema \u2014 a truncated envelope is ALWAYS invalid, never silently accepted), or 'missing' (no envelope block was found). A failure outcome (implementer 'blocked', reviewer 'failed') must also carry a labelled `rootCause` (verified|hypothesis) or it is reported invalid. An implementer 'incomplete' envelope must carry a non-empty `remainingWork` handoff (the note the orchestrator forwards to the continuation in the same worktree) or it is reported invalid. A `slice-executor` envelope (ADR-0017) describes a WHOLE SLICE's outcome rather than one worker's turn, with a `failureClass` drawn from a closed set \u2014 an unrecognized `failureClass` is reported invalid exactly like any other schema mismatch. The orchestrator uses this instead of parsing subagent prose for status or changed files.",
     inputSchema: validateEnvelopeInputSchema.shape,
     outputSchema: validateEnvelopeOutputSchema.shape
   },

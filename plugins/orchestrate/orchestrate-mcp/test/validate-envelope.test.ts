@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { validateEnvelope } from "../src/tools/validate-envelope.js";
+import {
+  SLICE_EXECUTOR_FAILURE_CLASSES,
+  validateEnvelope,
+} from "../src/tools/validate-envelope.js";
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
@@ -66,6 +69,30 @@ function investigatorEnvelope() {
   };
 }
 
+/**
+ * A complete, valid slice-executor envelope — the literal shape from issue
+ * #354, reproduced verbatim (placeholders filled) because that shape is the
+ * settled contract, not merely an illustration.
+ */
+function sliceExecutorEnvelope() {
+  return {
+    role: "slice-executor" as const,
+    status: "failed" as const,
+    failedStage: "implementer" as const,
+    failureClass: "incomplete-budget-exhausted" as const,
+    failureReason:
+      "The nested continuation loop exhausted its budget before the " +
+      "implementer reached a verified changeset.",
+    reportPath: "reports/slice-354.md",
+    nextTaskBriefing:
+      "Done: schema groundwork. Left: none for this slice. Resume by " +
+      "re-spawning the implementer in the same worktree.",
+    filesChanged: ["src/tools/foo.ts"],
+    verification: { tests: "passed" as const, build: "passed" as const },
+    fallbackTaken: true,
+  };
+}
+
 // ─── valid envelopes, one per role ────────────────────────────────────────────
 
 describe("validateEnvelope — valid envelopes", () => {
@@ -108,6 +135,17 @@ describe("validateEnvelope — valid envelopes", () => {
 
     expect(r.status).toBe("valid");
     expect(r.envelope).toEqual(investigatorEnvelope());
+  });
+
+  it("accepts a valid slice-executor envelope and returns the parsed object as the single source of the slice's outcome", () => {
+    const r = validateEnvelope({
+      text: fenced(sliceExecutorEnvelope()),
+      role: "slice-executor",
+    });
+
+    expect(r.status).toBe("valid");
+    expect(r.envelope).toEqual(sliceExecutorEnvelope());
+    expect(r.errorCode).toBeUndefined();
   });
 
   it("accepts an implementer envelope with an empty filesChanged list", () => {
@@ -374,6 +412,128 @@ describe("validateEnvelope — malformed and schema-invalid envelopes", () => {
 
     expect(r.status).toBe("invalid");
     expect(r.envelope).toBeUndefined();
+  });
+});
+
+// ─── slice-executor role (#354) ───────────────────────────────────────────────
+
+describe("validateEnvelope — slice-executor role", () => {
+  it("accepts a slice-executor envelope reporting a successful slice", () => {
+    // A 'completed' outcome carries none of the failure-only fields.
+    const env = {
+      role: "slice-executor" as const,
+      status: "completed" as const,
+      reportPath: "reports/slice-354.md",
+      nextTaskBriefing:
+        "Schema groundwork landed; the next slice can build the executor " +
+        "agent against it.",
+      filesChanged: ["src/tools/foo.ts", "test/foo.test.ts"],
+      verification: { tests: "passed", typecheck: "passed", build: "passed" },
+      fallbackTaken: false,
+    };
+    const r = validateEnvelope({ text: fenced(env), role: "slice-executor" });
+
+    expect(r.status).toBe("valid");
+    expect(r.envelope).toEqual(env);
+    expect(r.errorCode).toBeUndefined();
+  });
+
+  it("reports a truncated slice-executor envelope (unclosed fence) as invalid", () => {
+    const text = [
+      "Some prose.",
+      "",
+      "```orchestrate-envelope",
+      '{\n  "role": "slice-executor",\n  "status": "fail',
+    ].join("\n");
+
+    const r = validateEnvelope({ text, role: "slice-executor" });
+
+    expect(r.status).toBe("invalid");
+    expect(r.errorCode).toBeDefined();
+    expect(r.envelope).toBeUndefined();
+  });
+
+  it("reports an off-schema slice-executor envelope (missing reportPath) as invalid", () => {
+    const { reportPath: _reportPath, ...withoutReportPath } =
+      sliceExecutorEnvelope();
+    const r = validateEnvelope({
+      text: fenced(withoutReportPath),
+      role: "slice-executor",
+    });
+
+    expect(r.status).toBe("invalid");
+    expect(r.errorCode).toBe("SCHEMA_MISMATCH");
+    expect(r.envelope).toBeUndefined();
+  });
+
+  it("reports a slice-executor envelope whose failureClass falls outside the closed set as invalid", () => {
+    const env = { ...sliceExecutorEnvelope(), failureClass: "gave-up" };
+    const r = validateEnvelope({ text: fenced(env), role: "slice-executor" });
+
+    expect(r.status).toBe("invalid");
+    expect(r.errorCode).toBe("SCHEMA_MISMATCH");
+    expect(r.envelope).toBeUndefined();
+  });
+
+  it("reports a slice-executor envelope with an unknown status value as invalid", () => {
+    const env = { ...sliceExecutorEnvelope(), status: "loop-continue" };
+    const r = validateEnvelope({ text: fenced(env), role: "slice-executor" });
+
+    expect(r.status).toBe("invalid");
+    expect(r.envelope).toBeUndefined();
+  });
+
+  it("reports a slice-executor envelope validated against a mismatched role as invalid", () => {
+    const r = validateEnvelope({
+      text: fenced(sliceExecutorEnvelope()),
+      role: "implementer",
+    });
+
+    expect(r.status).toBe("invalid");
+    expect(r.envelope).toBeUndefined();
+  });
+
+  it("reports text with no envelope fence at all as missing for slice-executor", () => {
+    const text = "The executor wrote a prose summary and forgot the envelope.";
+    const r = validateEnvelope({ text, role: "slice-executor" });
+
+    expect(r.status).toBe("missing");
+    expect(r.envelope).toBeUndefined();
+  });
+
+  it("accepts every closed-set failureClass value paired with its natural failedStage", () => {
+    // Driven by the exported closed set rather than a restated literal list —
+    // the set is defined in exactly one place, and this test reads that one
+    // definition instead of duplicating it. `test/` is excluded from
+    // tsconfig, so the Record's exhaustiveness is NOT enforced at compile
+    // time; the assertion inside the loop enforces it at run time, so an
+    // added class with no stage mapped here fails loudly instead of silently
+    // dropping to an absent (optional) `failedStage`.
+    const naturalStage: Record<
+      (typeof SLICE_EXECUTOR_FAILURE_CLASSES)[number],
+      "investigator" | "implementer" | "capability-gate" | "reviewer"
+    > = {
+      "unrecoverable-obstacle": "capability-gate",
+      "incomplete-budget-exhausted": "implementer",
+      "no-progress-stall": "investigator",
+      "invalid-or-missing-worker-envelope": "implementer",
+      "changeset-mismatch": "implementer",
+      "empty-changeset": "implementer",
+      "model-refusal": "reviewer",
+    };
+
+    for (const failureClass of SLICE_EXECUTOR_FAILURE_CLASSES) {
+      expect(naturalStage[failureClass]).toBeDefined();
+
+      const env = {
+        ...sliceExecutorEnvelope(),
+        failureClass,
+        failedStage: naturalStage[failureClass],
+      };
+      const r = validateEnvelope({ text: fenced(env), role: "slice-executor" });
+
+      expect(r.status).toBe("valid");
+    }
   });
 });
 

@@ -7,8 +7,18 @@ import { z } from "zod";
 // the orchestrator's ONLY machine-checkable source of a subagent's status and
 // changed-file set — the orchestrator never parses the subagent's prose. The
 // worker roles (implementer, reviewer, conflict-resolver) carry a work summary;
-// the investigator carries a research brief. A discriminated union on `role`
-// keeps each role's existing status vocabulary intact.
+// the investigator carries a research brief; the slice-executor (ADR-0017)
+// carries a whole-slice outcome — investigation, implementation, review, and
+// the capability gate collapsed into one validated result. A discriminated
+// union on `role` keeps each role's existing status vocabulary intact.
+
+/** Shared outcome vocabulary for a single capability-tool run. */
+const capabilityResultSchema = z
+  .enum(["passed", "failed", "not-configured"])
+  .describe(
+    "Outcome of a capability-tool run. 'not-configured' means the verb has " +
+      "no command set."
+  );
 
 /**
  * One capability-tool run and its outcome. An array (not a map) so a re-run of
@@ -18,11 +28,7 @@ const verificationEntrySchema = z.object({
   capability: z
     .enum(["tests", "typecheck", "build", "lint"])
     .describe("Which capability tool was run."),
-  result: z
-    .enum(["passed", "failed", "not-configured"])
-    .describe(
-      "Outcome of that run. 'not-configured' means the verb has no command set."
-    ),
+  result: capabilityResultSchema,
 });
 
 /**
@@ -208,6 +214,148 @@ export const investigatorEnvelopeSchema = z.object({
 });
 
 /**
+ * The closed set of reasons a slice-executor did not reach a verified
+ * changeset (ADR-0017). Defined in exactly one place — both this schema and
+ * any downstream consumer (e.g. the orchestrator's failure-to-label mapping)
+ * import this same union, so the set cannot drift into a second, restated
+ * literal. Every value must name a real, distinguishable failure mode; a
+ * closed set that cannot express something the executor legitimately hits is
+ * the "schema that lies" this design explicitly rejects.
+ */
+export const SLICE_EXECUTOR_FAILURE_CLASSES = [
+  "unrecoverable-obstacle",
+  "incomplete-budget-exhausted",
+  "no-progress-stall",
+  "invalid-or-missing-worker-envelope",
+  "changeset-mismatch",
+  "empty-changeset",
+  "model-refusal",
+] as const;
+
+const sliceExecutorFailureClassSchema = z
+  .enum(SLICE_EXECUTOR_FAILURE_CLASSES)
+  .describe(
+    "Closed-set classification of why the slice did not reach a verified " +
+      "changeset: 'unrecoverable-obstacle' (a blocker with no safe workaround, " +
+      "including a capability-gate failure with no more specific class); " +
+      "'incomplete-budget-exhausted' (the executor's own nested continuation " +
+      "loop ran out of turns — the slice-level analogue of the implementer's " +
+      "graceful 'incomplete' self-report); 'no-progress-stall' (repeated " +
+      "attempts converged on nothing); 'invalid-or-missing-worker-envelope' " +
+      "(a worker the executor spawned returned a truncated, malformed, or " +
+      "missing envelope); 'changeset-mismatch' (the implementer's declared " +
+      "`filesChanged` did not match the worktree's actual changeset); " +
+      "'empty-changeset' (the slice produced no file changes at all); " +
+      "'model-refusal' (a spawned worker's model refused the task)."
+  );
+
+/**
+ * Roll-up of the slice's capability-gate outcome — the FINAL per-capability
+ * state at the end of the whole slice, not a run-by-run log. Deliberately an
+ * object (not the worker envelope's `verificationEntrySchema` array): a
+ * slice-executor reports one settled outcome per capability, never a
+ * re-run history. All four keys are optional — a capability the slice never
+ * reached (e.g. 'lint' when nothing configures it, or any verb skipped by an
+ * early failure) is simply absent.
+ */
+const sliceExecutorVerificationSchema = z.object({
+  tests: capabilityResultSchema.optional(),
+  typecheck: capabilityResultSchema.optional(),
+  build: capabilityResultSchema.optional(),
+  lint: capabilityResultSchema.optional(),
+});
+
+/**
+ * Result envelope for the slice-executor role (ADR-0017, #354). One envelope
+ * describes the outcome of a WHOLE SLICE — investigation, implementation,
+ * review, and the capability gate, collapsed behind the nested subagent
+ * spawns the executor owns internally — rather than a single worker's turn.
+ *
+ * There is deliberately NO loop-continue/loop-end status: wave termination is
+ * computed by the orchestrator from wave exhaustion (`plan_waves` /
+ * `run_wave`), never declared by a subagent. A status field naming the loop
+ * would hand the executor an authority it does not have.
+ */
+export const sliceExecutorEnvelopeSchema = z.object({
+  role: z
+    .literal("slice-executor")
+    .describe("Discriminant — the slice-executor role."),
+  status: z
+    .enum(["completed", "incomplete", "blocked", "failed"])
+    .describe(
+      "Outcome of the WHOLE SLICE, not a single worker — reuses the schema's " +
+        "existing status vocabulary rather than inventing a fifth. " +
+        "'completed' = a verified changeset was reached; 'incomplete' = the " +
+        "executor's own graceful continuation-budget self-report, mirroring " +
+        "the implementer's 'incomplete'; 'blocked' = an unrecoverable obstacle " +
+        "hit by the executor or one of the workers it spawned; 'failed' = the " +
+        "slice did not reach a trustworthy changeset (a worker or " +
+        "verification failure). There is no loop-continue/loop-end value — " +
+        "see the module-level note above."
+    ),
+  failedStage: z
+    .enum(["investigator", "implementer", "capability-gate", "reviewer"])
+    .optional()
+    .describe(
+      "Which inner stage of the slice pipeline was running when a non-" +
+        "'completed' outcome occurred. Absent for a 'completed' envelope. " +
+        "'implementer' also covers the changeset-verification check that " +
+        "immediately follows the implementer's turn (it gates trust in the " +
+        "implementer's own output, before the reviewer stage begins) — so " +
+        "'changeset-mismatch' and 'empty-changeset' are reported here, not " +
+        "under a separate stage."
+    ),
+  failureClass: sliceExecutorFailureClassSchema
+    .optional()
+    .describe(
+      "Closed-set classification of the failure. Absent for a 'completed' " +
+        "envelope. The orchestrator maps this class to a tracker triage " +
+        "label; it never re-derives the classification itself — that " +
+        "authority stays with the executor that observed the failure."
+    ),
+  failureReason: z
+    .string()
+    .optional()
+    .describe(
+      "Prose description of what happened, in the executor's own words. " +
+        "Complements `failureClass` (the closed-set machine label) with the " +
+        "specific detail a human or the next executor needs. Absent for a " +
+        "'completed' envelope."
+    ),
+  reportPath: z
+    .string()
+    .describe(
+      "Path, relative to the worktree root, of the slice's report — the " +
+        "human-readable artifact the executor wrote describing its own run."
+    ),
+  nextTaskBriefing: z
+    .string()
+    .describe(
+      "Advice carried forward to whoever picks up the next slice. This is " +
+        "advice only, never a selection of WHICH slice runs next — wave " +
+        "ordering and loop termination stay computed by `plan_waves` and " +
+        "wave exhaustion, not declared here (see the module-level note above)."
+    ),
+  filesChanged: z
+    .array(z.string())
+    .describe(
+      "Files changed across the whole slice — every worker's edits combined " +
+        "— as paths relative to the worktree root. An empty array means no " +
+        "file was changed."
+    ),
+  verification: sliceExecutorVerificationSchema.describe(
+    "Roll-up of the slice's capability-gate outcome, one optional result per " +
+      "capability."
+  ),
+  fallbackTaken: z
+    .boolean()
+    .describe(
+      "Whether the one-time Model fallback (the premium-lane retry) was " +
+        "taken during this slice."
+    ),
+});
+
+/**
  * The full set of envelope shapes, discriminated on `role`. Each subagent role
  * maps to exactly one member.
  */
@@ -217,6 +365,7 @@ export const envelopeSchema = z
     reviewerEnvelopeSchema,
     conflictResolverEnvelopeSchema,
     investigatorEnvelopeSchema,
+    sliceExecutorEnvelopeSchema,
   ])
   // An 'incomplete' implementer envelope MUST carry a non-empty `remainingWork`
   // handoff — it is the note the orchestrator forwards to the continuation
@@ -249,6 +398,7 @@ export const ENVELOPE_ROLES = [
   "reviewer",
   "conflict-resolver",
   "investigator",
+  "slice-executor",
 ] as const;
 
 export const validateEnvelopeInputSchema = z.object({
@@ -313,6 +463,7 @@ export type ConflictResolverEnvelope = z.infer<
   typeof conflictResolverEnvelopeSchema
 >;
 export type InvestigatorEnvelope = z.infer<typeof investigatorEnvelopeSchema>;
+export type SliceExecutorEnvelope = z.infer<typeof sliceExecutorEnvelopeSchema>;
 export type ValidateEnvelopeInput = z.infer<typeof validateEnvelopeInputSchema>;
 export type ValidateEnvelopeOutput = z.infer<
   typeof validateEnvelopeOutputSchema
