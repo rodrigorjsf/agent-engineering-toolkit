@@ -50,7 +50,7 @@ The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing 
 
 | Tool | Purpose |
 |------|---------|
-| `bootstrap_config` | Set up a repository's `.orchestrate/` config on a first-ever run — project-aware `commands.json`, model-derived `handoff.json`, default `routing.json`, the run directory, and the `.gitignore` entry |
+| `bootstrap_config` | Complete a repository's `.orchestrate/` config — project-aware `commands.json`, model-derived `handoff.json`, default `routing.json`, the run directory, and the `.gitignore` entry — writing only whichever files are missing, and reporting `capabilities`/`falseGreenRisk` for the config's final state |
 | `create_worktree` / `remove_worktree` | Git worktree lifecycle — isolated per-slice checkouts |
 | `push_and_verify` | Push a slice branch and verify it actually landed on the remote (SHA-match `git ls-remote` check + bounded backoff) — fails loud when an exit-0 push never lands; git-only, never shells `gh` |
 | `finalize_slice` | Land one reviewed slice's git + run-state mechanics in two phases: `commit-push` (stage exactly the named files, guard an empty changeset, commit with `Closes #<N>`, compose `push_and_verify`, checkpoint `subState: pushed`) and `post-merge` (checkpoint `subState: merged`, remove the worktree, reclaim the local branch). Forge ops and the `pr-open` checkpoint stay in the spine; git-only, never shells `gh` |
@@ -108,7 +108,7 @@ A manifest-less repository yields `{}` — never an npm fallback — so no capab
 
 ### Config bootstrapping
 
-The `bootstrap_config` MCP tool makes a first-ever run set up its own `.orchestrate/` configuration with no manual steps. On a fresh run — when the repository has no `.orchestrate/` directory — the orchestrator calls it before planning the backlog. It:
+The `bootstrap_config` MCP tool completes a repository's `.orchestrate/` configuration with no manual steps — writing whichever of its three files are missing. **The orchestrator calls it unconditionally at the start of every run, never gated on whether `.orchestrate/` already exists**: a directory that already has some files (e.g. `routing.json` and `handoff.json` from an earlier run, but no `commands.json`) is exactly the case a directory-existence gate would miss, since every write inside the tool is independently idempotent at the FILE level. It:
 
 - Composes the **capability detector** above and writes a project-appropriate `.orchestrate/commands.json`. The shipped `templates/commands.json` is an empty `{}` safe default — the bootstrapper is the canonical source of a project-aware config. For an npm project it also sets `install: ["npm", "install"]`; for cargo, Python, Maven, Gradle, Make, or an unrecognized project it omits `install` (a wrong install command is worse than none).
 - Writes `.orchestrate/handoff.json` with a context-window size **derived from the running model**, not a static 200k constant. The model id (or an explicit token count) is passed as a tool input — the MCP process cannot see the calling LLM's model. A small explicit table maps the model to its window; an unknown or absent model falls back to `200000`.
@@ -117,7 +117,9 @@ The `bootstrap_config` MCP tool makes a first-ever run set up its own `.orchestr
 
 Every step is individually idempotent: a committed config file is never overwritten, the run directory `mkdir` is recursive, and the `.gitignore` line is never duplicated. Running `bootstrap_config` against an already-configured repository is a safe no-op.
 
-**Usage example.** The orchestrate skill calls the tool on a fresh run:
+**Config-completeness reporting.** Every call also reports the FINAL `commands.json`'s completeness, whether it was written by this call or was already on disk: `capabilities` names which of `tests`/`typecheck`/`build`/`lint`/`install` resolve to a configured command, and `falseGreenRisk` is `true` exactly when **both** `tests` and `build` are unconfigured — the specific conjunction that lets a slice merge green with nothing ever executed. A single missing verb (`lint`, `typecheck`, `install`) is common and not itself flagged — many projects legitimately skip a linter or need no install step. When `falseGreenRisk` is `true`, the run should report it and stop rather than proceed silently; see `references/prerequisites.md`.
+
+**Usage example.** The orchestrate skill calls the tool at the start of every run:
 
 ```jsonc
 // bootstrap_config tool input
@@ -129,7 +131,10 @@ Every step is individually idempotent: a committed config file is never overwrit
 //     "contextWindowTokens": 1000000, "contextWindowSource": "model-table",
 //     "files": { "commandsJson": "written", "routingJson": "written",
 //                "handoffJson": "written" },
-//     "runsDir": "created", "gitignore": "created-with-line" }
+//     "runsDir": "created", "gitignore": "created-with-line",
+//     "capabilities": { "tests": true, "typecheck": true, "build": true,
+//                        "lint": true, "install": true },
+//     "falseGreenRisk": false, "warnings": [] }
 ```
 
 ### Context handoff
@@ -240,7 +245,7 @@ To run orchestrate against another repository, that repository needs:
 - **The `gh` CLI**, installed and authenticated (`gh auth status`) — the orchestrator uses it for every GitHub operation.
 - **An `origin/development` branch** — the integration base every umbrella branch is cut from.
 - **Branch protection that does not block** merges into `orchestrate/umbrella-*` and `orchestrate/slice-*` branches — the auto-merge needs them open.
-- **Capability configuration** — handled automatically on the first run. When the repository has no `.orchestrate/` directory, the orchestrator calls the `bootstrap_config` MCP tool, which detects the project type and writes a project-appropriate `.orchestrate/commands.json`, `.orchestrate/routing.json`, and `.orchestrate/handoff.json`. To configure ahead of time instead, copy this plugin's `templates/` files into the target repository's `.orchestrate/` directory and fill them in — `templates/commands.json` ships as an empty `{}` starting point. A committed config is never overwritten by the bootstrapper.
+- **Capability configuration** — handled automatically. The orchestrator calls the `bootstrap_config` MCP tool at the start of every run, regardless of whether `.orchestrate/` already exists, which detects the project type and writes whichever of `.orchestrate/commands.json`, `.orchestrate/routing.json`, and `.orchestrate/handoff.json` are missing. To configure ahead of time instead, copy this plugin's `templates/` files into the target repository's `.orchestrate/` directory and fill them in — `templates/commands.json` ships as an empty `{}` starting point. A committed config is never overwritten by the bootstrapper.
 - **A `ready-for-agent` backlog** — issues labelled `ready-for-agent`, each with a **Blocked by** section listing blocker issue numbers (`- #NNN`) and a **Parent** section naming the PRD issue.
 
 Optionally, install the **`ast-grep` CLI** to enable the investigator and reviewer subagents' structural code search; without it, they fall back to text search.
@@ -251,7 +256,7 @@ The run's generated, ephemeral files must be gitignored. Every run keeps its `ru
 .orchestrate/runs/
 ```
 
-`bootstrap_config` adds this line to the repository's `.gitignore` automatically — idempotently, never duplicating it — so a first-ever run needs no manual gitignore edit. The committed `.orchestrate/commands.json`, `.orchestrate/routing.json`, and `.orchestrate/handoff.json` stay flat at the `.orchestrate/` top level — they are configuration and stay tracked.
+`bootstrap_config` adds this line to the repository's `.gitignore` automatically — idempotently, never duplicating it, on every run it is called — so no run ever needs a manual gitignore edit. The committed `.orchestrate/commands.json`, `.orchestrate/routing.json`, and `.orchestrate/handoff.json` stay flat at the `.orchestrate/` top level — they are configuration and stay tracked.
 
 ## Configuration Reference
 
@@ -259,7 +264,7 @@ All configuration lives in the target repository's `.orchestrate/` directory.
 
 ### `.orchestrate/commands.json`
 
-Maps each capability verb to the **argv array** that runs it. The argv form is executed with no shell, so a command can never be word-split or glob-expanded. A missing verb is tolerated — that capability tool reports `not-configured`. On a first-ever run `bootstrap_config` writes this file project-aware; the example below shows the npm form.
+Maps each capability verb to the **argv array** that runs it. The argv form is executed with no shell, so a command can never be word-split or glob-expanded. A missing verb is tolerated — that capability tool reports `not-configured`. `bootstrap_config` writes this file project-aware the first time it is absent (it is called, and is a safe no-op, on every run); the example below shows the npm form.
 
 ```json
 {
@@ -331,7 +336,7 @@ Maps each complexity tier to the model and routing variant for each role, and co
 
 ### `.orchestrate/handoff.json`
 
-Optional. Tunes the context-watchdog threshold and the successor-session launcher. When absent, built-in defaults apply. On a first-ever run `bootstrap_config` writes this file with `watchdog.contextWindowTokens` derived from the running model — `1000000` for a 1M-context model, `200000` otherwise.
+Optional. Tunes the context-watchdog threshold and the successor-session launcher. When absent, built-in defaults apply. `bootstrap_config` writes this file the first time it is absent, with `watchdog.contextWindowTokens` derived from the running model — `1000000` for a 1M-context model, `200000` otherwise.
 
 ```json
 {

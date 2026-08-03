@@ -1102,19 +1102,32 @@ registerTool(
   {
     title: "Bootstrap Orchestrate Configuration",
     description:
-      "Sets up a repository's .orchestrate/ configuration for a first-ever " +
-      "orchestrate run. Detects the project type and writes a project-aware " +
-      "commands.json (with a PM-aware mutating `install` command for " +
-      "npm/cargo/python projects — keyed on the JS lockfile for the npm " +
-      "ecosystem — empty for an unrecognized project), writes routing.json " +
-      "from the shipped defaults, and writes " +
-      "handoff.json with a context-window size derived from the running model " +
-      "— pass the model id (or an explicit contextWindowTokens) as input; the " +
-      "MCP process cannot see the calling LLM's model. An unknown or absent " +
-      "model falls back to 200000. Creates .orchestrate/runs/ and idempotently " +
-      "adds it to the repository's .gitignore. Every step is idempotent: an " +
-      "existing config file is never overwritten and the .gitignore line is " +
-      "never duplicated. Returns a discriminated `status` of 'ok' or 'error'.",
+      "Completes a repository's .orchestrate/ configuration — writes " +
+      "whichever of its three files are missing. Call this unconditionally " +
+      "at the start of every run, never gated on whether .orchestrate/ " +
+      "already exists: a directory that already has some files (e.g. an " +
+      "earlier run's routing.json and handoff.json but no commands.json) is " +
+      "exactly the case this closes, and calling it on an already-complete " +
+      "repository is a safe no-op. Detects the project type and writes a " +
+      "project-aware commands.json (with a PM-aware mutating `install` " +
+      "command for npm/cargo/python projects — keyed on the JS lockfile for " +
+      "the npm ecosystem — empty for an unrecognized project), writes " +
+      "routing.json from the shipped defaults, and writes handoff.json with " +
+      "a context-window size derived from the running model — pass the " +
+      "model id (or an explicit contextWindowTokens) as input; the MCP " +
+      "process cannot see the calling LLM's model. An unknown or absent " +
+      "model falls back to 200000. Creates .orchestrate/runs/ and " +
+      "idempotently adds it to the repository's .gitignore. Every step is " +
+      "idempotent: an existing config file is never overwritten and the " +
+      ".gitignore line is never duplicated. Reports config completeness " +
+      "read from the FINAL commands.json regardless of whether this call " +
+      "wrote it: `capabilities` names which of tests/typecheck/build/lint/" +
+      "install resolve to a command, and `falseGreenRisk` is true exactly " +
+      "when both `tests` and `build` are unconfigured — the conjunction " +
+      "that lets a slice merge green with nothing executed. Treat a true " +
+      "`falseGreenRisk` as a loud, blocking finding: report it and stop " +
+      "before starting the run. Returns a discriminated `status` of 'ok' " +
+      "or 'error'.",
     inputSchema: bootstrapConfigInputSchema.shape,
     outputSchema: bootstrapConfigOutputSchema.shape,
   },

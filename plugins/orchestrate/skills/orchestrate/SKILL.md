@@ -79,9 +79,10 @@ tests pass; trust their result, never an editor's inline diagnostic.
 Check the prerequisites (`gh` authenticated, an `origin/development` integration
 base, the MCP server available, branch protection open on the orchestrate
 branches) before starting; if one is missing, report it and stop. The target
-project's `.orchestrate/` config may be bootstrapped on the first run by
-`bootstrap_config` or committed ahead of time. See
-`references/prerequisites.md`.
+project's `.orchestrate/` config is completed on every run by `bootstrap_config`
+(called unconditionally, never gated on whether the directory already exists)
+or may be committed ahead of time; a `falseGreenRisk` result is itself a
+"report it and stop" condition. See `references/prerequisites.md`.
 
 ## 0. Modes — run, clean, preflight
 

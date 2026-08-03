@@ -200,7 +200,7 @@ A plain object with the four auto-detected capability verb keys (`tests`, `typec
 _Avoid_: command config, verb table, command dictionary
 
 **Config bootstrapper** (`bootstrap_config` MCP tool):
-The integration module (`orchestrate-mcp/src/tools/bootstrap-config.ts`) that makes a first-ever orchestrate run set up its own `.orchestrate/` configuration. It composes the **Capability detector** to write a project-aware `commands.json`, derives `handoff.json`'s context-window size from the running model (passed as a tool input, since the MCP process cannot see the calling model — unknown or absent falls back to 200000), writes `routing.json` from shipped defaults, creates the **Run directory** parent `.orchestrate/runs/`, and idempotently appends `.orchestrate/runs/` to the target repository's `.gitignore`. Every step is individually idempotent — a committed config file is never overwritten.
+The integration module (`orchestrate-mcp/src/tools/bootstrap-config.ts`) that makes an orchestrate run set up its own `.orchestrate/` configuration. It composes the **Capability detector** to write a project-aware `commands.json`, derives `handoff.json`'s context-window size from the running model (passed as a tool input, since the MCP process cannot see the calling model — unknown or absent falls back to 200000), writes `routing.json` from shipped defaults, creates the **Run directory** parent `.orchestrate/runs/`, and idempotently appends `.orchestrate/runs/` to the target repository's `.gitignore`. Every step is individually idempotent — a committed config file is never overwritten.
 _Avoid_: config generator, init tool, setup wizard
 
 **Result envelope**:

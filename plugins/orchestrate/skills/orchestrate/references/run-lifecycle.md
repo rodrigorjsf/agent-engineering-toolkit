@@ -181,9 +181,10 @@ prefixes are the only match keys. Then act on the count of matches:
 
 1. Resolve the run context:
    - Repository root: `git rev-parse --show-toplevel`.
-   - **Bootstrap the configuration if this is a first-ever run** with the
-     `bootstrap_config` MCP tool — see `references/prerequisites.md` for the
-     full bootstrap detail.
+   - **Always bootstrap the configuration** with the `bootstrap_config` MCP
+     tool — never gate the call on whether `.orchestrate/` already exists;
+     see `references/prerequisites.md` for the full bootstrap detail and the
+     `falseGreenRisk` stop condition.
    - Fetch so branch operations use current refs: `git fetch origin`.
    - Confirm the integration base: `git rev-parse --verify origin/development`.
    - Generate a `runId` by joining the invocation prefix to the current
