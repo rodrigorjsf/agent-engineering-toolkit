@@ -797,7 +797,11 @@ registerTool(
       "`rootCause` (verified|hypothesis) or it is reported invalid. An " +
       "implementer 'incomplete' envelope must carry a non-empty `remainingWork` " +
       "handoff (the note the orchestrator forwards to the continuation in the " +
-      "same worktree) or it is reported invalid. The " +
+      "same worktree) or it is reported invalid. A `slice-executor` envelope " +
+      "(ADR-0017) describes a WHOLE SLICE's outcome rather than one worker's " +
+      "turn, with a `failureClass` drawn from a closed set — an unrecognized " +
+      "`failureClass` is reported invalid exactly like any other schema " +
+      "mismatch. The " +
       "orchestrator uses this instead of parsing subagent prose for status or " +
       "changed files.",
     inputSchema: validateEnvelopeInputSchema.shape,
