@@ -130,8 +130,9 @@ metadata, not source — the target project should gitignore
 - `subState` — fine-grained position **within** §3 processing of an
   `in-progress` slice. The schema accepts
   `implemented|verified|reviewed|pushed|pr-open|merged`, but a **delegating**
-  orchestrator (ADR-0017) only ever *writes* the last three: `implemented`,
-  `verified` and `reviewed` marked intra-slice stages it no longer performs or
+  orchestrator (ADR-0017) only ever *writes* the last three —
+  `pushed`, `pr-open` and `merged`. The first three, `implemented`,
+  `verified` and `reviewed`, marked intra-slice stages it no longer performs or
   observes, and are retained in the enum solely so a checkpoint written before
   the delegation layer still validates. The key is **absent for the whole span
   between spawning the slice executor and its envelope validating — omit it
