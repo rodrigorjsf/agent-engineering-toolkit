@@ -515,8 +515,7 @@ registerTool(
     description:
       "Resolves which model and subagent variant to spawn for each role — " +
       "investigator, implementer, reviewer, conflict-resolver, and " +
-      "slice-executor (ADR-0017, #356; schema groundwork only — no " +
-      "`slice-executor` subagent is spawned yet) — given an issue's assessed " +
+      "slice-executor (ADR-0017) — given an issue's assessed " +
       "complexity tier. Reads the tier-to-role mapping from " +
       ".orchestrate/routing.json (supports both v1 and v2 schemas; v1 files " +
       "are transparently upgraded in memory). A routing.json predating " +
