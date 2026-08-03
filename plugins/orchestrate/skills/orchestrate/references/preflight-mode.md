@@ -191,7 +191,7 @@ dirty — with `core.autocrlf` on, a regenerated file can surface as modified in
 
 Call `run_typecheck`, `run_build`, `run_tests`, and `run_lint` with the probe
 path as `repoPath`. **All four** — not the `run_build` + `run_tests` subset the
-pre-merge gate uses (`references/slice-pipeline.md` step 5a). That subset
+slice executor's own **Capability gate** uses. That subset
 deliberately narrows a gate on a worktree the reviewer has already seen; the
 probe is answering whether verification happens **at all**, so every verb the
 project relies on has to be exercised.

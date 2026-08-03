@@ -1,6 +1,6 @@
 ---
 name: orchestrate
-description: Implement a backlog of ready-for-agent GitHub issues end to end — order them into dependency waves, run implementer and reviewer subagents in isolated worktrees, merge slice pull requests into an umbrella branch, and checkpoint progress so an interrupted run resumes. Use when the user wants to autonomously orchestrate agent-driven implementation of tracked issues, or invokes /orchestrate in one of its three modes — a normal run (/orchestrate or /orchestrate <PRD#>); /orchestrate clean (including --force, or --failed <runId>) to remove the footprint of concluded or crashed runs; or /orchestrate preflight <PRD#>, the pre-flight pass that stages and inspects a run's setup before the wave loop.
+description: Implement a backlog of ready-for-agent GitHub issues end to end — order them into dependency waves, delegate each slice to a slice-executor subagent in an isolated worktree, merge slice pull requests into an umbrella branch, and checkpoint progress so an interrupted run resumes. Use when the user wants to autonomously orchestrate agent-driven implementation of tracked issues, or invokes /orchestrate in one of its three modes — a normal run (/orchestrate or /orchestrate <PRD#>); /orchestrate clean (including --force, or --failed <runId>) to remove the footprint of concluded or crashed runs; or /orchestrate preflight <PRD#>, the pre-flight pass that stages and inspects a run's setup before the wave loop.
 ---
 
 # Orchestrate
@@ -15,12 +15,20 @@ orchestration judgment that cannot be extracted to an `orchestrate-mcp` tool or 
 subagent. Deterministic procedure lives in the MCP tools; the step-by-step
 operational mechanics of each phase live in on-demand `references/*.md`, loaded
 only when that phase runs. Read the spine top-to-bottom for the decision
-narrative; follow each pointer into its reference for the mechanics. (The spine
-is the irreducible judgment residue; after the #275 procedural-prose relocation
-it lands near ~425 lines, **within** the project's 500-line `SKILL.md` cap. A
-documented over-cap exception for this spine remains on record — see `CONTEXT.md`
-and ADR-0013 — so the spine is never flagged as bloat should its judgment grow
-back over the cap; do **not** generalize that exception to any other skill.)
+narrative; follow each pointer into its reference for the mechanics.
+
+**On this file's length.** The spine is the irreducible judgment residue, and it
+is **over** the project's 500-line `SKILL.md` cap: **542 lines of body** (546
+total, less 4 lines of frontmatter — the cap is on the body, so that is the
+number being reported). It therefore **invokes the documented over-cap exception
+recorded in ADR-0013 and `CONTEXT.md`**, explicitly and at that measured figure.
+The ADR-0017 delegation is what put it here: handing the intra-slice procedure to
+the slice executor removed the mechanics from section 3, but the spine acquired
+three things it never carried before — the executor's briefing contract, the
+structured recovery path for an unusable envelope, and the read boundary that
+keeps slice-internal artifacts closed to the orchestrator. Those are judgment,
+not procedure, so they belong here rather than in a reference. Do **not**
+generalize this exception to any other skill.
 
 ## Roles and the safety boundary
 
@@ -28,37 +36,44 @@ back over the cap; do **not** generalize that exception to any other skill.)
   shell operation: branches, worktrees, commits, pushes, pull requests, merges,
   and the `run-state.json` checkpoint. You also assess each issue's complexity
   tier and route each role accordingly.
-- **Investigator** — the `investigator` subagent. For higher-complexity issues
-  only, it explores the codebase read-only and returns a research brief the
-  implementer builds on.
-- **Implementer** — the `implementer` subagent. It edits code in an isolated
-  worktree and verifies it through the orchestrate capability tools.
-- **Reviewer** — the `reviewer` subagent. It reviews the implemented slice in
-  the same worktree, fixes issues inline, re-runs the capability tools, and
-  gates the auto-merge.
-- **Conflict-resolver** — the `conflict-resolver` subagent. When a slice
-  conflicts with the umbrella branch, it edits the conflicted files to a
-  correct merged state. It is spawned once per conflicting slice.
+- **Slice executor** — the `slice-executor` subagent, and the only one you spawn
+  per slice. It owns one issue from investigation through to a verified
+  changeset, inside the worktree you created for it. Its operating procedure is
+  the `slice-pipeline` skill preloaded by its own definition, so none of that
+  procedure lives here.
+- **Investigator**, **Implementer**, **Reviewer** — the workers the *executor*
+  spawns, not you. The investigator explores read-only and returns a research
+  brief; the implementer edits code in the worktree; the reviewer reviews it
+  there, fixes issues inline, and re-runs the capability tools.
+- **Conflict-resolver** — the `conflict-resolver` subagent, spawned by **you**,
+  once per conflicting slice. When a slice conflicts with the umbrella branch it
+  edits the conflicted files to a correct merged state. It stays yours because a
+  conflict is between two branches, and branches are git.
 
 Every role except the orchestrator exists in two variants — `-standard`
 and `-deep`. The `resolve_routing` tool picks the variant and model per role
 from the issue's complexity tier **and its routing labels** (section 3, step 2).
 Each role is spawned by
-its **namespaced** subagent type — `orchestrate:investigator-<variant>`,
-`orchestrate:implementer-<variant>`, `orchestrate:reviewer-<variant>`, and
+its **namespaced** subagent type — `orchestrate:slice-executor-<variant>`,
+`orchestrate:investigator-<variant>`, `orchestrate:implementer-<variant>`,
+`orchestrate:reviewer-<variant>`, and
 `orchestrate:conflict-resolver-<variant>`, where `<variant>` is `standard` or
 `deep`. The `orchestrate:` prefix is required: the plugin registers its bundled
 subagents under that namespace, so a bare, un-namespaced name fails to resolve.
-All four subagents have **no Bash and no git access** — they are sandboxed to
+All five subagents have **no Bash and no git access** — they are sandboxed to
 one worktree (the investigator is read-only). Only the orchestrator touches
-branches, remotes, and the tracker.
+branches, remotes, and the tracker; the executor's own instructions bind it to
+the same boundary, and it never writes this run's checkpoint.
 
 **Routing labels — read once, frozen, suggested never applied.** A slice issue
 may carry a `route:*` label that patches its routing (e.g. `route:fable`, the
 label-gated implementer-only premium lane). `resolve_routing` reads those labels
 **exactly once**, at slice creation (section 3, step 2): the orchestrator passes
 the issue's labels to the tool and **freezes** the returned `{model, variant,
-optional fallback}` into the slice's `resolvedRouting` checkpoint field. A
+optional fallback}` into the slice's `resolvedRouting` checkpoint field. That
+frozen block is exactly what the executor's briefing carries (section 3, step 3):
+the executor never resolves routing itself, so freezing here is what keeps a
+slice's routing from drifting mid-run. A
 resumed run routes from that frozen checkpoint, **never** from live GitHub
 labels — relabelling an issue mid-run changes nothing. The orchestrator may
 **suggest** a `route:*` label for a slice in its report but **never applies one
@@ -176,52 +191,53 @@ time. Do **not** re-fetch the backlog, re-call `filter_to_one_parent_prd`, or
 re-call `partition_backlog`: a resumed run never widens or re-derives its own
 scope. Every slice in a terminal state (`passed`, `failed`, `skipped`) is left
 untouched — completed work is never redone. Every slice still `in-progress` was
-interrupted before finishing; resume it **from its recorded `subState`**
-(section 3 writes this at every per-slice transition) rather than re-processing
-from scratch: **preserve** its `worktreePath` and `sliceBranch`, reconstruct its
-changed-file set with `recover_changed_files`, **re-validate** the resume point
-per the matrix below, then resume section 3 at the next uncompleted step
-**without** re-spawning the subagents whose work the recorded `subState` already
-captures. An in-progress slice with **no `subState`** (a legacy checkpoint) uses
-the old discard path instead — discard its worktree+branch and coerce it back to
-`pending`. The full discard mechanics and the run-discovery scan live in
-`references/run-lifecycle.md`. Checkpoint the refreshed `run-state.json`, then
-skip to section 2.
+interrupted before finishing; resume it per the matrix below rather than
+re-processing from scratch: **preserve** its `worktreePath` and `sliceBranch`,
+and resume section 3 at the next uncompleted step. The full discard mechanics
+and the run-discovery scan live in `references/run-lifecycle.md`. Checkpoint the
+refreshed `run-state.json`, then skip to section 2.
 
-**Resume re-validate matrix** — per the recorded `subState`; the worktree is
-always preserved and the changed-file set always reconstructed via
-`recover_changed_files` (accurate under #236's `-uall` recovery):
+**Resume re-anchors on the slice's progress record, not on a fine-grained
+`subState`.** The three intra-slice subStates you used to write —
+`implemented`, `verified`, `reviewed` — mark stages you can no longer observe, so
+a slice interrupted mid-execution carries **no `subState` at all** and its resume
+point lives in the executor's own **slice progress record**. Ask for it through
+`recover_slice_progress` (`runId` + issue number; it derives the path, and you
+never open the file). The three that remain are the integration tail's, and they
+resume exactly as they always did.
 
-| Recorded `subState` | Skip these subagents | Re-validate (cheap) | Resume at |
-|---|---|---|---|
-| (absent / legacy) | — | — | discard worktree+branch, coerce to `pending`, reprocess |
-| `implemented` | investigator, implementer | run the capability gate (may have crashed mid-run) | step 5 (reviewer) after the `verified` gate |
-| `verified` | investigator, implementer | re-run the capability gate (confirms worktree intact) | step 5 (reviewer) |
-| `reviewed` | investigator, implementer, reviewer | re-run the capability gate | step 6 (commit + push) |
-| `pushed` | implementer, reviewer | `git ls-remote --heads origin orchestrate/slice-<N>` confirms the branch | step 7 (open PR) |
-| `pr-open` | implementer, reviewer | `gh pr view` confirms the PR; `git ls-remote` confirms the branch | step 8 (merge) |
-| `merged` | all subagents | — (merge already landed in umbrella) | step 9 only (label transition + `remove_worktree`) |
+| Recorded `subState` | Resume by |
+|---|---|
+| (absent) | Call `recover_slice_progress`. On `status: "ok"` a record exists, so the worktree holds real work — **preserve it** and re-spawn the slice executor with the same frozen `resolvedRouting`, the same progress-record path, and `executorContinuationIndex` incremented. The executor reads its own record and resumes from its `lastCompletedStage`; you do not tell it where to restart, and you do not re-run its capability gate. On `PROGRESS_NOT_FOUND` — no stage ever completed, or a legacy pre-delegation checkpoint — take the old discard path: discard worktree+branch, coerce to `pending`, reprocess. On `PROGRESS_INVALID` the record cannot be trusted: the slice has **FAILED**, with the tool's `errorMessage` in the `failureReason`. |
+| `pushed` | `git ls-remote --heads origin orchestrate/slice-<N>` confirms the branch → step 7 (open PR) |
+| `pr-open` | `gh pr view` confirms the PR; `git ls-remote` confirms the branch → step 8 (merge) |
+| `merged` | — (merge already landed in umbrella) → step 9 only (label transition + `remove_worktree`) |
+
+A **legacy intra-slice `subState`** — `implemented`, `verified`, `reviewed`, from
+a checkpoint written before the delegation layer — still validates, and is
+handled exactly as `(absent)`: those stages are no longer yours to resume into.
 
 **Resume routing is frozen, not re-derived (the fallback-aware dimension).**
 Orthogonal to the `subState` row above: when a resumed in-progress slice
-**re-spawns** any subagent (the rows that do not skip the implementer/reviewer),
-it routes **only** from the slice's frozen `resolvedRouting` checkpoint — its
+**re-spawns** the executor, it routes **only** from the slice's frozen
+`resolvedRouting` checkpoint — its
 recorded `model`, `variant`, and `fallback` — never from live GitHub labels and
 never by re-calling `resolve_routing`. A slice whose `resolvedRouting.fallbackTaken`
-is `true` (a premium-spawned implementer that already failed over to the fallback
-model in the prior session, section 3) resumes on that **frozen fallback model**
+is `true` (a premium lane that already failed over to the fallback
+model in a prior session) resumes on that **frozen fallback model**
 — the premium lane is **not** re-applied and the one-time fallback is **not**
 re-armed. This keeps routing deterministic across a handoff: the label was read
 once at slice creation, and the checkpoint — not the issue's current labels — is
-the source of truth for every re-spawn.
+the source of truth for every re-spawn. The executor's own record carries a
+second `fallbackTaken` copy, because an executor cannot write your checkpoint;
+the duplication is deliberate and the two are not to be unified.
 
-On resume the implementer's *declared* `filesChanged` is gone, so the
-reconstructed `recover_changed_files` set feeds the reviewer prompt and the
-step-6 commit staging exactly as the live path uses the declared set. Do
-**not** route reconstruction through `verify_changeset` (it needs a
-`declaredFiles` argument that no longer exists on resume). For pre-push
-subStates the capability gate is the re-validate; for `pushed`/`pr-open` it is
-`git ls-remote` / `gh pr view`.
+On a slice that failed without a usable envelope, the executor's declared
+`filesChanged` is unavailable, so reconstruct the changed-file set with
+`recover_changed_files` (accurate under #236's `-uall` recovery) — it is what
+the failure record reports and, where the slice still integrates, what step 6
+stages. Do **not** route reconstruction through `verify_changeset`: that tool is
+the executor's, and it needs a `declaredFiles` argument you do not have.
 
 ## 2. The wave loop
 
@@ -276,36 +292,81 @@ starting the next slice.
 
 ## 3. Processing one slice
 
-These are the per-slice steps the wave loop invokes. Update the slice's entry in
-`run-state.json` and write the file at every state change. The step-by-step
-procedure — create worktree, resolve routing, the investigator/implementer/
-reviewer spawn mechanics, the changeset scope check, the pre-merge capability
-gate, commit+push via `finalize_slice`, the slice PR, merge, conflict resolution
-via `resolve_merge_conflict`, and finishing via `finalize_slice` `post-merge` —
-is in `references/slice-pipeline.md`.
+A slice is **five steps**, because you no longer run one. You prepare the ground,
+delegate the whole slice to one executor, and act on the single envelope it
+returns. Update the slice's entry in `run-state.json` and write the file at every
+state change; the mechanics of steps 1, 2 and the integration tail are in
+`references/slice-pipeline.md`.
 
-**The result-envelope trust chain.** Every subagent ends its turn with a **result
-envelope** — a fenced ` ```orchestrate-envelope ` JSON block conforming to a
-defined schema. The orchestrator determines a subagent's status and
-changed-file set **only** from this validated envelope; it never reads the
-subagent's prose. After each subagent (investigator, implementer, reviewer,
-conflict-resolver) returns, call the `validate_envelope` MCP tool with the
-subagent's verbatim returned text and its `role`:
+1. **Create the worktree** — `create_worktree`, at step 1 of the reference.
+   An error, including a failed `install`, is a FAILED slice.
+2. **Resolve routing and freeze it** — `resolve_routing`, at step 2. Freeze the
+   per-role `{model, variant}` blocks (the `slice-executor` role among them),
+   the implementer's `fallback`, and `fallbackTaken: false` into
+   `resolvedRouting`, and keep the returned `continuationBudget`.
+3. **Spawn the slice executor** — subagent type
+   `orchestrate:slice-executor-<variant>`, with the Agent `model` override taken
+   from `resolvedRouting["slice-executor"]`. Its briefing is below.
+4. **Validate the returned envelope** — `validate_envelope` with the executor's
+   **verbatim** returned text and role `slice-executor`.
+5. **Act on the result** — integrate it, or classify and label the failure.
 
-- `status: "valid"` — use the parsed `envelope` as the single source of the
-  subagent's outcome and `filesChanged`.
+**Nothing happens between steps 3 and 4.** The executor returns exactly one
+envelope, and you have no visibility into the stages that produced it, so you
+write **no** `subState` while it runs — its own progress record holds that
+granularity now. Resist the urge to narrate its stages; you do not know them.
+(The one path that is not a return at all is a **spawn refusal**, which never
+produces an envelope: `run_wave` `classify-spawn-outcome` decides
+backpressure-versus-error, and that belongs to the wave loop.)
+
+**The briefing (step 3).** The executor starts with an empty context and is never
+invoked by a person, so everything it needs must arrive here: the **issue**
+number, title and body; the **acceptance criteria**, explicitly named as the hard
+scope boundary, which it forwards to every worker it spawns; the **worktree
+path**; the **run id** and issue number, which make its record self-identifying;
+the frozen **`resolvedRouting`** with its `fallback` (a null `investigator` entry
+means skip investigation); the **`continuationBudget`** from step 2; the **run
+directory** to write its report into; the **progress-record path**; and its
+**`executorContinuationIndex`** — 1-based, `1` on your first spawn for this
+slice, incremented on each re-spawn.
+
+Two carry a reason worth stating, because getting them wrong is silent.
+**Deriving the record's path is not reading it** — you compose
+`.orchestrate/runs/<runId>/slice-<issue>-progress.json` and pass the string.
+And the **index exists because neither party holds both factors of the
+continuation bound**: two loops nest — yours re-spawning the executor, its own
+re-spawning the implementer — and the bound is on their product. You know the
+outer index and cannot know the inner count; a freshly spawned executor knows its
+count and cannot know it is your second. Passing the index makes it the only
+party that can evaluate the bound, which is why the formula lives there and not
+here.
+
+**The result-envelope trust chain (step 4).** Every subagent ends its turn with a
+**result envelope** — a fenced ` ```orchestrate-envelope ` JSON block conforming
+to a defined schema. You determine its status and changed-file set **only** from
+that validated envelope; you never read its prose.
+
+- `status: "valid"` — the parsed `envelope` is the single source of the slice's
+  outcome and `filesChanged`.
 - `status: "invalid"` (truncated, malformed, or off-schema) or
-  `status: "missing"` (no envelope emitted) — the subagent's result cannot be
-  trusted. The slice has **FAILED** (see *Failure handling*). A truncated
-  envelope is never silently accepted.
+  `status: "missing"` — the result cannot be trusted, but this is **not** an
+  immediate discard: the worktree may hold a finished investigation and review.
+  Recover through `recover_slice_progress` and branch exactly as the resume
+  matrix's `(absent)` row does. A truncated envelope is never accepted as
+  success.
 
-This validated-envelope chain extends through the whole pipeline: the implementer
-envelope is cross-checked against the worktree by `verify_changeset` (step 4a),
-and after the reviewer returns `passed` the orchestrator runs its **own**
-deterministic pre-merge capability gate (step 5a) rather than trusting the
-reviewer's self-reported `verification` — the last link in the
-`implementer → reviewer → orchestrator` trust chain. Each link's mechanics are
-in `references/slice-pipeline.md`.
+The chain is now two links, not four — the executor gates its own workers and
+reports one settled outcome; validating that report is yours. Its
+`nextTaskBriefing` is **advice only**, never a selection of what runs next.
+
+**You never open a slice-internal artifact.** Not the executor's report, not its
+progress record. Use the envelope's fields for the outcome, pass `reportPath`
+forward without opening it, and go through `recover_slice_progress` when the
+envelope fails you — it derives the path from `(runId, issue)` and returns
+validated structured data. A `PreToolUse` read guard enforces this, but it is
+**defence in depth, not the rule itself**: enterprise policy can disable plugin
+hooks, so this paragraph stays load-bearing and must not be deleted on the
+grounds that the hook covers it.
 
 ## 4. Context handoff
 
@@ -363,68 +424,45 @@ To hand off:
 
 ## Failure handling
 
-A slice **FAILS** when `create_worktree` errors, a subagent's result envelope
-is invalid or missing (`validate_envelope` returns `invalid` or `missing`), a
-validated implementer envelope has `status: "blocked"` — or `status: "incomplete"`
-**after** the continue-in-place loop exhausts the continuation budget or trips
-the no-progress guard (a single `incomplete` no longer FAILs immediately; see
-§3 step 4) — a validated reviewer envelope has `status: "failed"`,
-`verify_changeset` reports
-the implementer's declared file set does not match the worktree
-(`empty-but-declared` or `suspiciously-empty`, or a `status: "error"`), the
-staged changeset is empty, or a merge conflict the `conflict-resolver` cannot
-fix. The orchestrator decides FAILURE **only** from the validated envelope and
-tool results — never from a subagent's prose. An invalid or missing envelope is
-always a FAILED slice; it is never treated as success.
+**Classification descends; policy stays.** You no longer diagnose *why* a slice
+failed — the executor does, because that is where the evidence was, and it
+reports the diagnosis as a **failure class** drawn from a closed set it owns. You
+map that class to a tracker label, because you are the single writer of tracker
+state. Neither half is duplicated: the class set is defined once in
+`validate_envelope`'s schema, and the class-to-label mapping once in
+`references/failure-handling.md`, beside the `gh` commands that apply it. Do not
+restate either here.
 
-**Model fallback — one premium-spawn interception before FAILED.** A
-**premium-spawned** implementer (one whose `resolvedRouting` carried a `fallback`
-because a `route:*` label patched it — e.g. `route:fable`) gets **one** rescue
-before the slice is declared FAILED. When such an implementer fails in a way the
-fallback covers — a model **refusal**, a retention/safety **400**, or an
-**invalid/missing envelope** — and the slice's `resolvedRouting.fallbackTaken` is
-not yet set, the orchestrator **re-spawns it exactly once on the fallback model**
-(`resolvedRouting.fallback.model`, e.g. `opus`) in the **same** worktree, sets
-`resolvedRouting.fallbackTaken: true`, and narrates the swap in the final report
-("fable declined → served by opus"). This swap is a **model exchange**, distinct
-from the same-model continue-in-place loop: it does **not** consume or increment
-`continuationBudget`, and `fallbackTaken` is a **persisted slice-level** once-only
-guard (set in the checkpoint, surviving a handoff) — so the fallback fires at most
-once across the initial spawn and every continuation. A fallback that is absent
-(no premium label), already spent (`fallbackTaken` already `true`), or that does
-not apply (a *valid* `blocked` envelope is a genuine obstacle the fallback model
-would not fix) leaves the ordinary FAILED taxonomy above unchanged. The mechanics
-— where the re-spawn runs and how the checkpoint is written — are in
-`references/slice-pipeline.md` (the model-fallback step adjacent to step 4).
+So a slice **FAILS** in exactly three ways now:
 
-The implementer envelope's `incomplete` status is the implementer's graceful
-turn-budget self-report — partial, resumable work, carrying a `remainingWork`
-handoff — as opposed to `blocked` (an unrecoverable obstacle) or an `invalid`
-envelope (a hard turn-limit cutoff that truncated the envelope). Unlike `blocked`
-and `invalid`, a single `incomplete` does **not** FAIL the slice: it drives the
-bounded continue-in-place loop (§3 step 4), where the orchestrator re-spawns the
-implementer in the same preserved worktree with the `remainingWork` until it
-returns `completed` or the loop terminates. An `incomplete` slice FAILs **only**
-when one of two terminal causes is reached:
+- **Before the executor** — `create_worktree` errors, or `resolve_routing`
+  returns `LABEL_CONFLICT` / `CONFIG_INVALID`.
+- **From the executor** — a validated envelope whose `status` is not
+  `completed`. Read its `failureClass` and apply the mapping. A validated
+  `incomplete` is already terminal by the time it reaches you: the executor
+  exhausted its own bounded continuation before reporting, so there is nothing
+  for you to re-spawn on its behalf.
+- **After the executor** — an envelope that will not validate and that
+  `recover_slice_progress` cannot rescue (the step-4 branch above), a staged
+  changeset that is empty, or a merge conflict the `conflict-resolver` cannot
+  fix.
 
-- **Budget exhausted** (resumable) — `continuationsUsed === continuationBudget`
-  and the last envelope is still `incomplete`. The `failureReason` names the
-  budget exhaustion ("implementer reported `incomplete` after exhausting the
-  continuation budget of N; partial work preserved in the worktree for
-  resumption"); label `needs-info`.
-- **No progress** — a continuation returned `incomplete` whose worktree
-  content-fingerprint equals the prior one (the re-spawn changed nothing). The
-  `failureReason` names the no-progress stall; label `needs-triage`.
+You decide FAILURE **only** from the validated envelope and tool results, never
+from a subagent's prose. Two cases fall outside a plain class-to-label lookup —
+a failure with no surviving `failureClass`, and the one class-plus-reason
+combination that is an environment fault rather than a slice fault (the executor
+reporting its own operating procedure was never preloaded). Both are rows of the
+same `references/failure-handling.md` mapping; do not re-derive either here.
 
-In both terminal cases the `failureReason` must name the cause precisely so a
-developer can tell a resumable budget exhaustion apart from a genuine stall. An
-`incomplete` slice's worktree holds usable partial work — preserve it (as every
-FAILED slice's worktree is preserved) so the slice can be resumed.
+**Model fallback surfaces, it does not run here.** The one-time premium swap now
+happens **inside** the executor, which reports it as `fallbackTaken`. Narrate the
+swap in the final report ("fable declined → served by opus") and carry the flag
+into `resolvedRouting.fallbackTaken` so a resumed slice does not re-arm a rescue
+already spent.
 
-Once the taxonomy above has classified a slice as FAILED, the orchestrator's
-mechanical actions on it — surfacing the envelope's `rootCause`, setting `state`
-to `failed` with a `failureReason` and the right `needs-info`/`needs-triage`
-label, preserving the worktree, recovering the changed-file set via
+Once a slice is classified FAILED, the mechanical actions on it — surfacing the
+envelope's `rootCause`, setting `state` to `failed` with a `failureReason` and
+the mapped label, preserving the worktree, recovering the changed-file set via
 `recover_changed_files` when the envelope was the failure cause, posting the
 triage comment, and continuing the wave — are in `references/failure-handling.md`.
 
@@ -494,12 +532,15 @@ the `gh`-op half — together they close #230.
 
 Write the run's `run-state.json` — at `.orchestrate/runs/<runId>/run-state.json`
 — after every slice state change and after every wave. In addition, write a
-slice's `subState` at **every** section-3 per-slice transition
-(`implemented` → `verified` → `reviewed` → `pushed` → `pr-open` → `merged`);
-that fine-grained checkpoint is the **resume anchor** an interrupted in-progress
-slice continues from (section 1), alongside the coarse-`state` and wave
-checkpoints. Every write refreshes the top-level `updatedAt`, and a slice's own
+slice's `subState` at every **integration-tail** transition
+(`pushed` → `pr-open` → `merged`) — and at no other point, because the stages
+between spawning the executor and validating its envelope are not yours to
+observe. The schema still accepts the three retired intra-slice values
+(`implemented`, `verified`, `reviewed`) so a checkpoint written before the
+delegation layer still loads; a delegating orchestrator never writes one.
+Every write refreshes the top-level `updatedAt`, and a slice's own
 `updatedAt` whenever its entry changes, so an artifact rendered from the file
 has accurate timestamps. The checkpoint is what makes a run resumable: an
 interrupted run, re-invoked, skips every terminal-state slice and resumes every
-in-progress slice from its recorded `subState`.
+in-progress slice per the resume matrix — from its recorded `subState` in the
+integration tail, and from its progress record before that.

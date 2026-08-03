@@ -128,14 +128,19 @@ metadata, not source — the target project should gitignore
 - `blockedBy` — issue-id strings this slice depends on (drives the graph view).
 - `state` — see *Slice states* below.
 - `subState` — fine-grained position **within** §3 processing of an
-  `in-progress` slice, one of
-  `implemented|verified|reviewed|pushed|pr-open|merged`, written at every §3
-  transition; the key is **absent before §3 step 4 completes — omit the key
+  `in-progress` slice. The schema accepts
+  `implemented|verified|reviewed|pushed|pr-open|merged`, but a **delegating**
+  orchestrator (ADR-0017) only ever *writes* the last three: `implemented`,
+  `verified` and `reviewed` marked intra-slice stages it no longer performs or
+  observes, and are retained in the enum solely so a checkpoint written before
+  the delegation layer still validates. The key is **absent for the whole span
+  between spawning the slice executor and its envelope validating — omit it
   entirely; an explicit `null` is rejected** (the schema
   `subState: subStateEnum.optional()` accepts an absent key but rejects a
-  literal `null`, so `"subState": null` fails `validate_run_state`). It is
-  the **resume anchor** for an interrupted in-progress slice
-  (see *Resume*). `pushed` is
+  literal `null`, so `"subState": null` fails `validate_run_state`). Across that
+  span the resume anchor is not this field but the slice's **progress record**
+  (below), reached through `recover_slice_progress`; from `pushed` onward
+  `subState` is the resume anchor again (see *Resume*). `pushed` is
   recorded **only after** `git ls-remote` confirms the branch landed; `merged`
   (slice PR squash-merged into the umbrella, step 8) precedes the slice reaching
   coarse `state: passed` (step 9).
@@ -149,6 +154,9 @@ metadata, not source — the target project should gitignore
   field was introduced (backward-compatible). When present, it captures the
   routing that was frozen at slice creation so a resumed run routes the slice
   from the checkpoint rather than from live GitHub labels. Shape:
+  - `slice-executor` — `{model, variant}` for the slice executor, the role the
+    orchestrator actually spawns per slice (ADR-0017). A resumed run re-spawns
+    the executor from this entry rather than re-resolving routing.
   - `investigator` — `{model, variant}` for the investigator role, or `null`
     when this tier skips the investigation pass.
   - `implementer` — `{model, variant}` for the implementer role.

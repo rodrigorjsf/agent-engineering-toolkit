@@ -344,8 +344,11 @@ export const sliceExecutorEnvelopeSchema = z.object({
   reportPath: z
     .string()
     .describe(
-      "Path, relative to the worktree root, of the slice's report — the " +
-        "human-readable artifact the executor wrote describing its own run."
+      "Path, relative to the run directory (`.orchestrate/runs/<runId>/`), of " +
+        "the slice's report — the human-readable artifact the executor wrote " +
+        "describing its own run. It is written beside the executor's progress " +
+        "record, NEVER into the worktree, where the Changeset scope check " +
+        "would see it as an undeclared change."
     ),
   nextTaskBriefing: z
     .string()

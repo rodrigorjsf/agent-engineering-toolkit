@@ -1,28 +1,52 @@
 # Failure handling — the FAILED-slice mechanical actions
 
-The spine retains the failure-cause taxonomy and narration — the FAILED
-definition, the `incomplete`-vs-`blocked`-vs-`invalid` distinction, the two
-terminal `incomplete` causes (budget-exhausted / no-progress), and the SKIPPED
-and other-stop-condition narration. This file holds the mechanical actions the
-orchestrator performs **on a FAILED slice**, once the spine's taxonomy has
-classified it. The continue-in-place loop mechanics that decide when an
-`incomplete` slice FAILs live in `references/slice-pipeline.md` (section 3,
-step 4).
+The spine retains the failure-cause narration — where a slice can fail, the rule
+that a verdict comes only from a validated envelope, and the SKIPPED and
+other-stop-condition narration. This file holds the mechanical actions the
+orchestrator performs **on a FAILED slice**: first the deterministic
+failure-class-to-label mapping, then the actions that apply it. The bounded
+continuation loop that decides when an `incomplete` slice fails is the slice
+executor's, and lives in its own operating procedure.
+
+## The failure-class to triage-label mapping
+
+A slice executor classifies its own failure — that is where the evidence is — and
+reports one **failure class** on its envelope. The orchestrator maps that class
+to a tracker label, because it is the single writer of tracker state. This table
+is that mapping's **only** home; the class set itself is defined once in
+`validate_envelope`'s schema and is not restated here.
+
+| `failureClass` | Label | Why |
+|---|---|---|
+| `incomplete-budget-exhausted` | `needs-info` | Resumable partial work is preserved in the worktree — "resume me", not "diagnose me". |
+| `no-progress-stall` | `needs-triage` | Repeated attempts converged on nothing; a human has to look. |
+| `unrecoverable-obstacle` | `needs-triage` | A blocker with no safe workaround. |
+| `invalid-or-missing-worker-envelope` | `needs-triage` | A worker's result could not be trusted. |
+| `changeset-mismatch` | `needs-triage` | Declared files did not match the worktree. |
+| `empty-changeset` | `needs-triage` | The slice produced no file changes. |
+| `model-refusal` | `needs-triage` | A spawned model refused the task. |
+
+When **no class exists at all** — the executor's envelope was itself invalid or
+missing and `recover_slice_progress` could not rescue the slice — use
+`needs-triage`. The one case that is **not** a slice failure and must not be
+labelled: an `unrecoverable-obstacle` whose `failureReason` names a missing
+operating procedure is an environment fault; report it to the operator instead.
+
+The label vocabulary is the project's, not this tool's — swap the label column if
+a project uses different triage labels.
+
+## The mechanical actions
 
 On a FAILED slice:
 
-- When the failure cause is a validated worker envelope with `status: "blocked"`
-  (implementer) or `status: "failed"` (reviewer), that envelope now carries a
-  validated `rootCause` (`verified` | `hypothesis` + `claim` + optional
-  `evidence`) — surface it in the failure artifact alongside the `failureReason`
-  so a developer reads the subagent's own labelled diagnosis.
+- When the failure cause is a validated envelope carrying a `rootCause`
+  (`verified` | `hypothesis` + `claim` + optional `evidence`) — surface it in the
+  failure artifact alongside the `failureReason` so a developer reads the
+  subagent's own labelled diagnosis.
 - Set its `state` to `failed` with a `failureReason`, checkpoint, and
-  transition the issue's tracker label. For a slice that failed because the
-  continue-in-place loop **exhausted the continuation budget** — partial,
-  resumable work — `needs-info` better signals "resume me" than `needs-triage`:
-  `gh issue edit <N> --remove-label ready-for-agent --add-label needs-info`.
-  For the **no-progress** terminal cause (a continuation that changed nothing)
-  and every other failure cause, use `needs-triage`:
+  transition the issue's tracker label to the one the mapping above yields:
+  `gh issue edit <N> --remove-label ready-for-agent --add-label needs-info`
+  or
   `gh issue edit <N> --remove-label ready-for-agent --add-label needs-triage`.
 - Do **not** merge it. **Preserve its worktree** — leave it on disk for a
   developer to inspect. Do not call `remove_worktree`.

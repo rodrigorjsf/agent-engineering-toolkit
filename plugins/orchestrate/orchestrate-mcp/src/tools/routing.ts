@@ -123,7 +123,7 @@ export const routingConfigSchema = z.object({
     .min(0)
     .default(2)
     .describe(
-      "How many times the orchestrator may re-spawn the implementer in the " +
+      "How many times the slice executor may re-spawn the implementer in the " +
         "same worktree after an 'incomplete' envelope (re-spawns BEYOND the " +
         "initial run). 0 disables continuation (incomplete FAILs immediately, " +
         "the legacy behavior). Defaults to 2."
@@ -384,7 +384,7 @@ export const runConfigSchema = z.object({
     .optional()
     .default(2)
     .describe(
-      "How many times the orchestrator may re-spawn the implementer in the " +
+      "How many times the slice executor may re-spawn the implementer in the " +
         "same worktree after an 'incomplete' envelope. 0 disables continuation. " +
         "Defaults to 2. Lifted from the v1 top-level key."
     ),

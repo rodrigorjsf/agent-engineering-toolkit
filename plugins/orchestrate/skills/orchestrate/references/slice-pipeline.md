@@ -1,16 +1,32 @@
-# Processing one slice — the per-slice pipeline
+# Processing one slice — worktree, routing, and integration
 
-These are the per-slice steps the wave loop invokes (section 3). The spine
-retains the Result-envelope trust-chain narration (how every subagent outcome is
-read **only** from its validated envelope); this file holds the step-by-step
-procedure. Update the slice's entry in `run-state.json` and write the file at
-every state change.
+These are the per-slice steps the **orchestrator** performs around the slice
+executor (section 3): the two that run **before** the executor is spawned —
+creating the worktree and freezing the slice's routing — and the integration tail
+that runs **after** its envelope validates.
 
-Every subagent ends its turn with a result envelope; after each subagent
-(investigator, implementer, reviewer, conflict-resolver) returns, call the
-`validate_envelope` MCP tool with the subagent's verbatim returned text and its
-`role`, then act on the validated `status`/`envelope` as the trust-chain
-narration in the spine describes.
+The intra-slice stages — investigation, implementation and its bounded
+continuation loop, the changeset scope check, review, and the capability gate —
+are **no longer here**. They belong to the slice executor, whose operating
+procedure is the `slice-pipeline` skill preloaded by its subagent definition. The
+orchestrator does not perform them and learns their outcome only from the
+executor's validated result envelope. The step numbers are therefore
+**deliberately non-contiguous**: steps 6–9 keep the numbers they have always had,
+because other references cite them by number, and the gap at 3–5a is where the
+executor's stages went.
+
+Update the slice's entry in `run-state.json` and write the file at every state
+change.
+
+## Contents
+
+- **Step 1 — Create the worktree** — `create_worktree`, the bundled install
+- **Step 2 — Resolve routing** — `resolve_routing`, and freezing the result
+- **Step 6 — Commit and push** — `finalize_slice` phase `commit-push`
+- **Step 7 — Open the slice pull request** — `gh pr create`
+- **Step 8 — Merge the slice** — the mergeability gate
+- **Step 8a — Resolve a merge conflict (once)** — `resolve_merge_conflict`
+- **Step 9 — Finish the slice** — `finalize_slice` phase `post-merge`, pass label
 
 1. **Create the worktree.** Set the slice `state` to `in-progress`, write its
    `sliceBranch` (`orchestrate/slice-<N>`) and the `worktreePath` you will use
@@ -30,16 +46,21 @@ narration in the spine describes.
    spawn, plus any label-resolved `fallbacks` and `warnings`:
    - `status: "ok"` — use the returned `routing`. **Freeze it into the slice's
      `resolvedRouting` checkpoint field** in `run-state.json` at slice creation:
-     the per-role `{model, variant}` blocks, and — because the Fable lane is
-     implementer-only — the implementer's entry from the returned `fallbacks`
-     array mapped into the single `resolvedRouting.fallback` `{model, maxRetries}`
-     (with `fallbackTaken: false`). Every later spawn and every resume routes
-     from this frozen checkpoint, never by re-reading labels (the resume-routing
-     principle in the spine's resume matrix).
+     the per-role `{model, variant}` blocks — **including the `slice-executor`
+     role**, which is what step 3 spawns and what a resumed run must re-spawn
+     without re-resolving — and, because the Fable lane is implementer-only, the
+     implementer's entry from the returned `fallbacks` array mapped into the
+     single `resolvedRouting.fallback` `{model, maxRetries}` (with
+     `fallbackTaken: false`). Every later spawn and every resume routes from this
+     frozen checkpoint, never by re-reading labels (the resume-routing principle
+     in the spine's resume matrix). Capture the result's `continuationBudget`
+     too — the executor's briefing carries it.
    - **`warnings[]`** (present on `ok`) — surface each in the run report. An
      unconfigured `route:*` label present on the slice (in the config's `labels`
      block) yields a loud **WARNING** here: the label had no effect, so the
-     operator can fix `routing.json` or drop the label.
+     operator can fix `routing.json` or drop the label. A routing config written
+     before the `slice-executor` role existed also warns here, having had that
+     role defaulted from the tier's own `implementer` entry.
    - `errorCode: "LABEL_CONFLICT"` — **two applied labels patch the same role**
      (there is no precedence rule). This is a loud **ERROR**: the slice has
      **FAILED**; report the conflicting labels so the operator resolves it in
@@ -50,217 +71,11 @@ narration in the spine describes.
      no `fallback` (an unrouted slice has no premium lane).
    - `errorCode: "CONFIG_INVALID"` — the routing config is broken; the slice
      has **FAILED**.
-3. **Run the investigator (higher tiers only).** If `routing.investigator` is
-   non-null, spawn the `orchestrate:investigator-<variant>` subagent — `<variant>`
-   and the Agent `model` override both come from `routing.investigator`. Its
-   prompt must carry the issue number/title/body **and the slice's acceptance
-   criteria explicitly named as the hard scope boundary** — the canonical per-
-   slice scope established by the backlog partitioner. The investigator must
-   not propose work that falls outside those acceptance criteria. Validate its
-   returned text with `validate_envelope` (role `investigator`); on `valid`,
-   **diff the returned brief against the acceptance criteria before forwarding
-   it to the implementer**: inspect the brief's `relevantFiles`, `approach`,
-   and `notes` for any work that does not trace to at least one acceptance
-   criterion. If the brief includes work from a sibling or downstream slice —
-   files, approaches, or recommendations that the acceptance criteria do not
-   require — the brief is over-scoped: treat it as a failed investigation pass
-   (the slice has **FAILED**). A brief that is correctly scoped to the
-   acceptance criteria is forwarded to the implementer as the research brief.
-   An `invalid` or `missing` envelope is a failed investigation pass — the
-   slice has **FAILED** (the investigator is read-only, so no worktree fallback
-   applies). If `routing.investigator` is null, skip this step.
-4. **Run the implementer.** Spawn the `orchestrate:implementer-<variant>`
-   subagent — `<variant>` and the `model` override from `routing.implementer`. Its
-   prompt must carry the issue number/title/body, the worktree path (every
-   change goes there), the investigator's brief if one was produced, an
-   instruction to verify with the capability tools using the worktree path as
-   `repoPath`, a note that it MAY call `run_install` (worktree path as
-   `repoPath`) to fetch a newly-added dependency before re-verifying — and that
-   any lockfile that install mutates MUST be reported in `filesChanged` so it
-   lands in the slice diff — and a reminder not to commit, push, or run git.
-   Validate its returned text with `validate_envelope` (role `implementer`). On
-   a `valid` envelope, classify the envelope `status`:
-   - `completed` — proceed to the worktree scope check in step 4a.
-   - `incomplete` — the implementer's graceful turn-budget self-report: it
-     foresaw it could not finish within its remaining turns and stopped cleanly
-     with partial work recorded **and a `remainingWork` handoff**. Do **not**
-     fail the slice immediately. Instead run the **bounded continue-in-place
-     loop** below: re-spawn the implementer in the *same* worktree carrying the
-     `remainingWork`, until it returns `completed` or the continuation budget is
-     exhausted. The slice FAILs from `incomplete` only when the budget runs out
-     or the no-progress guard trips — see the loop and *Failure handling*.
-   - `blocked` — the implementer hit an unrecoverable obstacle: the slice has
-     **FAILED**.
 
-   **Continue-in-place loop (on a `valid` `incomplete` envelope):**
-   - Read `budget = continuationBudget` from the step-2 `resolve_routing` result
-     (the resolved run-wide budget, default `2`; `0` disables continuation —
-     legacy immediate-FAIL). When `resolve_routing` returned `CONFIG_NOT_FOUND`
-     (no routing configured), there is no budget — use **0**.
-   - Initialize an in-session `continuationsUsed = 0` and capture a
-     **content-level fingerprint** of the worktree's uncommitted state: a hash
-     of `git -C <worktreePath> diff HEAD` concatenated with the contents of the
-     untracked files listed by
-     `git -C <worktreePath> ls-files --others --exclude-standard`. A filename-set
-     comparison is insufficient — the same file may be rewritten with real
-     progress or returned byte-identical.
-   - While `continuationsUsed < budget`: re-spawn `orchestrate:implementer-<variant>`
-     in the **same** worktree (same routing/model/variant) with a continuation
-     prompt = the issue, the worktree path, the PRIOR envelope's `remainingWork`,
-     the standard verify/no-git reminders, and an explicit "partial work is
-     already in the worktree — continue it, do not restart." Validate the
-     returned text with `validate_envelope` (role `implementer`).
-     - `completed` — proceed to the worktree scope check in step 4a. Loop done.
-     - `blocked`, or an `invalid`/`missing` envelope — the slice has **FAILED**
-       (record the precise cause). Loop done.
-     - `incomplete` again — recompute the fingerprint. If it **equals** the
-       prior fingerprint, the **no-progress guard trips**: the slice FAILs, its
-       `failureReason` names the no-progress stall, label `needs-triage`.
-       Otherwise increment `continuationsUsed`, update the stored fingerprint and
-       `remainingWork`, and loop.
-   - When `continuationsUsed === budget` and the last envelope is still
-     `incomplete`: the slice FAILs with a budget-exhausted `failureReason`
-     ("implementer reported `incomplete` after exhausting the continuation budget
-     of N; partial work preserved in the worktree for resumption"), label
-     `needs-info` (resumable).
-   - The counter and fingerprint are **loop-local** — nothing is persisted to
-     `run-state.json`. A mid-continuation context handoff/resume discards the
-     in-progress slice and rebuilds its worktree (§1), restarting the slice
-     clean; this is intentional.
+*Steps 3 through 5a are the slice executor's. See section 3 of the spine for
+what the orchestrator does between step 2 and step 6: it spawns the executor,
+validates one envelope, and acts on it.*
 
-   An `invalid` or `missing` envelope also means the slice has **FAILED** — a
-   hard turn-limit cutoff that truncates the envelope mid-emission lands here as
-   `invalid`, distinct from the graceful `incomplete` self-report above.
-
-   **Model fallback (premium spawns only — runs BEFORE the FAILED verdict).**
-   This interception is **separate from** the continue-in-place loop above: the
-   loop re-spawns the *same* model on `incomplete` and counts against
-   `continuationBudget`; this step **swaps** the model exactly once on a *model
-   failure* and does **not** touch `continuationBudget`. It applies only to a
-   **premium-spawned** implementer — one whose frozen `resolvedRouting.fallback`
-   is set because a `route:*` label (e.g. `route:fable`) patched the implementer
-   in step 2. Before declaring such a slice FAILED from a step-4 or loop failure,
-   check whether the failure is one the fallback covers and whether the rescue is
-   still available:
-   - **Trigger set** — the implementer **refused**, returned a retention/safety
-     **400**, or emitted an **invalid/missing envelope**. A *valid* `blocked`
-     envelope is **excluded**: it is a genuine obstacle (e.g. a missing
-     dependency) the fallback model would not fix — keep it on the immediate
-     FAILED path.
-   - **Guard** — proceed only when `resolvedRouting.fallback` is set **and**
-     `resolvedRouting.fallbackTaken` is still `false`. If there is no fallback
-     (an ordinary, non-premium spawn) or it is already spent
-     (`fallbackTaken: true`), skip this step and apply the ordinary FAILED
-     taxonomy.
-   - **Re-spawn** — spawn `orchestrate:implementer-<variant>` **once** in the
-     **same** worktree, overriding the Agent `model` to
-     `resolvedRouting.fallback.model` (e.g. `opus`), with the standard prompt
-     (issue, worktree path, the investigator brief if any, verify/no-git
-     reminders; carry the prior `remainingWork` if the failure came from the
-     continuation loop). Set `resolvedRouting.fallbackTaken: true` in the slice
-     checkpoint and write `run-state.json` **before** the re-spawn, so the
-     once-only guard survives a mid-spawn handoff — `fallbackTaken` is a
-     **persisted slice-level** flag, not a loop-local counter, and the fallback
-     fires at most once across the initial spawn and every continuation.
-   - **Classify the fallback envelope** with `validate_envelope` (role
-     `implementer`) exactly as the initial spawn: `completed` → step 4a;
-     `incomplete` → re-enter the continue-in-place loop (the fallback model now
-     drives it, still bounded by `continuationBudget`); `blocked`, or an
-     `invalid`/`missing` envelope → the slice has **FAILED** (the one rescue is
-     spent). Record the swap for the final-report narration ("fable declined →
-     served by opus"; see `references/wave-loop.md`).
-4a. **Verify the changeset against the worktree.** After a `completed`
-   implementer envelope — and before trusting it — call the `verify_changeset`
-   MCP tool with the slice's `worktreePath` and the implementer envelope's
-   `filesChanged` as `declaredFiles`. It inspects the worktree directly with
-   `git status` and compares the declared file set against what actually
-   changed on disk:
-   - `match: "matched"` or `"clean"` — the declared set agrees with the
-     worktree; proceed to step 5.
-   - `match: "empty-but-declared"` — the implementer declared files but the
-     worktree is clean: its edits never landed. The slice has **FAILED**.
-   - `match: "suspiciously-empty"` — the implementer declared nothing but the
-     worktree HAS changes: the work was under-reported. The slice has
-     **FAILED**; record the `presentButUndeclared` paths in the `failureReason`.
-   - `match: "mismatch"` — the declared set and the worktree changeset diverge.
-     Trust the worktree: use the **union** of the implementer's declared
-     `filesChanged` and the tool's `actualFiles` as the changed-file set for the
-     reviewer and the commit (step 6), and note the divergence
-     (`declaredButAbsent` / `presentButUndeclared`) so the reviewer sees it.
-   - `status: "error"` — the worktree could not be inspected; the slice has
-     **FAILED**.
-
-   Once the changed-file set is established (a `matched`/`clean`/`mismatch`
-   verdict), set the slice's `subState` to `implemented` and checkpoint
-   `run-state.json`; the completed implementer envelope also satisfies the
-   pre-review gate, so set `subState` to `verified` and checkpoint again before
-   spawning the reviewer. (These two adjacent checkpoints differ only in
-   resume granularity — the resume matrix in section 1 re-runs the capability
-   gate for both.)
-5. **Run the reviewer.** Spawn the `orchestrate:reviewer-<variant>` subagent —
-   `<variant>` and the `model` override from `routing.reviewer` — in the same
-   worktree. Its prompt must carry the issue, the worktree path, the
-   changed-file set agreed on by step 4a — the implementer envelope's
-   `filesChanged` when `verify_changeset` matched, the union of declared and
-   `actualFiles` on a `mismatch` — the implementer envelope's `notes`, and the
-   investigator's brief if one was produced. Validate its returned text with
-   `validate_envelope` (role `reviewer`). On a `valid` envelope, an envelope
-   `status` of `failed` means the slice has **FAILED**; `passed` proceeds. An
-   `invalid` or `missing` envelope also means the slice has **FAILED**. On a
-   `passed` envelope, set the slice's `subState` to `reviewed` and checkpoint
-   `run-state.json` before proceeding to step 6.
-5a. **Pre-merge capability gate.** After the reviewer returns `passed` (step 5),
-   and **before any commit, push, or GitHub state exists**, the orchestrator
-   independently runs the correctness capability tools on the slice worktree —
-   this is the pre-merge capability gate. It does **not** trust the reviewer's
-   envelope `verification`: the reviewer's re-run is a subagent self-report;
-   this step is the orchestrator's own deterministic check, the last link in the
-   `implementer → reviewer → orchestrator` trust chain.
-
-   Call the `run_build` and `run_tests` MCP tools with the slice's
-   `<worktree-path>` as `repoPath` (the same pattern step 8a's `clean`-verdict
-   re-verify uses). Each tool
-   returns a `status` enum (`passed | failed | not-configured | error`); handle
-   all four:
-   - `passed` on **both** verbs → proceed to step 6.
-   - `not-configured` (either verb) → **tolerated**, treated as a pass for that
-     verb (consistent with the prerequisites note that a missing-command
-     `not-configured` is tolerated). The gate must not fail a project that has
-     not configured `build`/`tests`.
-   - `failed` or `error` (either verb) → the slice has **FAILED** (the existing
-     FAILED semantics defined throughout section 3 — no new failure handling).
-
-   **Known-baseline-failure hint (`knownFailureMatches`).** When a capability
-   tool returns `status: "failed"` and the project's `commands.json` configures a
-   `knownFailures` pattern list, the result carries
-   `knownFailureMatches.matched` (configured patterns that appeared in the
-   failing output) and `.unmatched` (configured patterns that did not). Use it
-   only as a **hint**, never as a verdict — it is a best-effort L1 annotation,
-   not a deterministic "zero new failures" assertion (`run_tests` returns capped
-   exit-code output, not a structured test-result list). When every failure
-   indicator in the output is explained by a `matched` pattern and `unmatched`
-   holds only not-present baseline cases, treat the failure as a **likely known
-   baseline** and proceed per this gate's baseline handling. When the failing
-   output contains indicators NOT covered by any `matched` pattern,
-   **spot-check** before treating it as baseline — L1 cannot deterministically
-   assert "0 new failures." A `knownFailures` entry in `commands.json` looks
-   like, e.g.:
-
-   ```json
-   { "tests": ["npm", "test"], "knownFailures": ["flaky-network timeout", "ECONNRESET"] }
-   ```
-
-   The verb set is exactly `run_build` + `run_tests` — a deliberate subset:
-   build+test is the correctness trust boundary, while `typecheck`/`lint` remain
-   the reviewer's quality remit and are intentionally **not** re-run here. The
-   step 8a `clean`-verdict (post-`prepare`) re-verify running all four
-   `run_tests`/`run_typecheck`/`run_build`/`run_lint` verbs is a **known,
-   intentional asymmetry** — and is left unchanged: this pre-merge gate is
-   focused correctness on a worktree the reviewer already saw, whereas the
-   conflict re-verify is max-confidence on a never-before-tested merged
-   combination. "Pre-merge" names what the gate controls (whether the merge
-   proceeds); mechanically it runs pre-commit, on the same worktree state the
-   reviewer validated.
 6. **Commit and push.** Run the slice's commit + verified-push mechanics with
    the **`finalize_slice` MCP tool** in phase `commit-push` — not raw `git`. It
    stages the file set, guards an empty changeset, commits, composes
@@ -270,19 +85,19 @@ narration in the spine describes.
    worktree), `runId`, `sliceId` = the slice's issue-id-string key, `branch` =
    `orchestrate/slice-<N>`, `remote` = `origin`, `setUpstream: true`,
    `commitSubject` = `<type>(<scope>): <issue title>`, `issueNumber` = `<N>`, and
-   `files` = the union of the `filesChanged` arrays from the validated
-   implementer and reviewer envelopes.
+   `files` = the slice executor envelope's `filesChanged` — every worker's edits
+   combined, as the executor reported them.
 
    `finalize_slice` stages **exactly** that `files` set (`git add -- ...files`,
    never `git add -A` — the capability tools leave untracked build artifacts in
-   the worktree). When the implementer fetched a new dependency with
+   the worktree). When an implementer fetched a new dependency with
    `run_install`, install ran **in its turn before this commit** and mutated the
-   lockfile (`pnpm-lock.yaml` / `package-lock.json` / `Cargo.lock`); because the
-   implementer declared that lockfile in `filesChanged`, it is in this staged
-   union and the commit captures it — so the new dependency lands in the slice
-   diff. The commit preserves the two-`-m` form (subject + `Closes #<N>`
-   trailer), and the push goes through `push_and_verify`'s SHA-matched
-   `git ls-remote` landing check.
+   lockfile (`pnpm-lock.yaml` / `package-lock.json` / `Cargo.lock`); because that
+   lockfile was declared in `filesChanged` and carried into the executor's
+   envelope, it is in this staged set and the commit captures it — so the new
+   dependency lands in the slice diff. The commit preserves the two-`-m` form
+   (subject + `Closes #<N>` trailer), and the push goes through
+   `push_and_verify`'s SHA-matched `git ls-remote` landing check.
 
    On `status: "ok"` (`verdict: "committed-pushed"`) the slice's `subState` was
    set to `pushed` and `run-state.json` checkpointed by the tool — and **only**
@@ -337,7 +152,9 @@ narration in the spine describes.
      slice on a conflict without attempting resolution.
 
 8a. **Resolve a merge conflict (once).** Attempt resolution exactly once — a
-   conflict the resolver cannot fix is a FAILED slice.
+   conflict the resolver cannot fix is a FAILED slice. This is the
+   orchestrator's own work, never the executor's: a conflict is between the
+   slice branch and the umbrella branch, so it is git.
 
    1. Prepare the worktree for resolution with the **`resolve_merge_conflict`
       MCP tool** in operation `prepare`. Call it with `operation: "prepare"`,
@@ -407,8 +224,8 @@ narration in the spine describes.
    then removes the worktree (force — it may hold untracked build artifacts), then
    force-reclaims the **local** slice branch (`git branch -D`, ordered after the
    removal because a checked-out branch refuses the delete). `merged` is the
-   integration-boundary anchor: a run resumed at `subState: merged` skips every
-   subagent and re-enters here at step 9 only, never re-merging.
+   integration-boundary anchor: a run resumed at `subState: merged` re-enters
+   here at step 9 only, never re-merging and never re-spawning the executor.
 
    On `status: "ok"` (`verdict: "committed-pushed"`) the merged checkpoint,
    worktree removal, and local-branch reclaim are all done. The tool is
