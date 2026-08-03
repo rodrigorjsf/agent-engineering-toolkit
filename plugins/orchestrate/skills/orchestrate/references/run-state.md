@@ -247,7 +247,30 @@ the run's own directory — and returns validated, structured data. It reports a
 a **malformed** one (`PROGRESS_INVALID`: bad JSON, a schema mismatch, or a record
 naming a different run or slice), and never throws. This is the same
 structured-recovery posture as `recover_changed_files`, where the worktree is
-ground truth recovered through a tool rather than by reading prose.
+ground truth recovered through a tool rather than by reading prose. The slice
+**report** the executor writes beside this record falls under the same boundary:
+the orchestrator passes its path forward and never opens it.
+
+**A hook enforces this too — as defence in depth, not as a replacement.** The
+plugin ships a `PreToolUse` read guard that denies the orchestrator a `Read` (or
+an obvious shell read) of `slice-<issue>-progress.json` and
+`slice-<issue>-report.md`, and returns a reason naming this behaviour instead.
+**The rule above stays load-bearing regardless**, for four reasons, and a later
+refactor must not delete it on the grounds that the hook covers it:
+
+- An enterprise administrator can set `allowManagedHooksOnly`, which blocks
+  user, project, and plugin hooks alike — only plugins force-enabled in managed
+  settings are exempt.
+- Any user can set `disableAllHooks: true`. There is **no way to disable one
+  hook while keeping the others**, so opting out of this guard also gives up the
+  `context-watchdog` hook, and with it automatic context handoff.
+- The plugin itself can simply be disabled.
+- Even fully enabled, the hook **cannot see every read**. A file referenced with
+  `@` in a prompt is inserted while the prompt is built, with no tool call, so no
+  `PreToolUse` hook fires for it — including hooks matching `Read`. The
+  documented closure is a permission deny rule, which ADR-0017 rejected: it
+  would apply to the whole session and restrict the executor too, and it carries
+  no corrective message back to the model.
 
 ## Resume
 

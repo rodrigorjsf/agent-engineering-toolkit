@@ -4,7 +4,7 @@
   "description": "MCP server providing worktree lifecycle and orchestration tools for parallel Claude Code agents.",
   "main": "dist/index.js",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.js && esbuild src/hooks/context-watchdog-cli.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/context-watchdog.js && esbuild src/hooks/session-start-cli.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/session-start.js",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.js && esbuild src/hooks/context-watchdog-cli.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/context-watchdog.js && esbuild src/hooks/session-start-cli.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/session-start.js && esbuild src/hooks/read-guard-cli.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/read-guard.js",
     "typecheck": "node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
