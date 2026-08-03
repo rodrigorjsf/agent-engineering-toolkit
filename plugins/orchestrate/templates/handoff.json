@@ -1,6 +1,8 @@
 {
   "watchdog": {
-    "thresholdPercent": 40
+    "thresholdPercent": 40,
+    "spawnThresholdPercent": 40,
+    "sessionSpawnBudget": 200
   },
   "successor": {
     "claudeArgs": [

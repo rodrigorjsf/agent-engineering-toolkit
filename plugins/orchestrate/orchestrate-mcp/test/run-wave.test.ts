@@ -459,3 +459,167 @@ describe("runWave — operation 'integration-gate'", () => {
     expect(r.verdict).toBe("tolerate");
   });
 });
+
+// ─── plan-wave-width ──────────────────────────────────────────────────────────
+//
+// A parallel wave holds roughly twice as many live agents as it has slices —
+// the slice executor plus the one worker it currently has running — so the
+// wave's width is computed against the platform's concurrent-subagent limit
+// instead of assumed to be "every processable slice".
+
+describe("runWave — operation 'plan-wave-width'", () => {
+  it("caps the wave at half the concurrency limit (two agent slots per slice)", async () => {
+    const r = await runWave({
+      operation: "plan-wave-width",
+      processableCount: 30,
+      concurrencyLimit: 20,
+    });
+
+    expect(r.status).toBe("ok");
+    expect(r.verdict).toBe("width-planned");
+    expect(r.waveWidth).toBe(10);
+    expect(r.deferredCount).toBe(20);
+  });
+
+  it("defaults to the platform's own default limit of 20 (width 10)", async () => {
+    const r = await runWave({
+      operation: "plan-wave-width",
+      processableCount: 12,
+    });
+
+    expect(r.waveWidth).toBe(10);
+    expect(r.deferredCount).toBe(2);
+  });
+
+  it("defers nothing when the processable slices already fit", async () => {
+    const r = await runWave({
+      operation: "plan-wave-width",
+      processableCount: 4,
+      concurrencyLimit: 20,
+    });
+
+    expect(r.waveWidth).toBe(4);
+    expect(r.deferredCount).toBe(0);
+  });
+
+  it("floors the width at 1 so a limit of 1 cannot deadlock the wave", async () => {
+    const r = await runWave({
+      operation: "plan-wave-width",
+      processableCount: 5,
+      concurrencyLimit: 1,
+    });
+
+    expect(r.waveWidth).toBe(1);
+    expect(r.deferredCount).toBe(4);
+  });
+
+  it("scales with a raised concurrency limit", async () => {
+    const r = await runWave({
+      operation: "plan-wave-width",
+      processableCount: 50,
+      concurrencyLimit: 40,
+    });
+
+    expect(r.waveWidth).toBe(20);
+    expect(r.deferredCount).toBe(30);
+  });
+
+  it("returns verdict error when processableCount is missing", async () => {
+    const r = await runWave({ operation: "plan-wave-width" });
+
+    expect(r.status).toBe("failed");
+    expect(r.verdict).toBe("error");
+    expect(r.errorCode).toBe("INVALID_INPUT");
+  });
+
+  it("returns verdict error for a non-positive processableCount", async () => {
+    const r = await runWave({
+      operation: "plan-wave-width",
+      processableCount: 0,
+    });
+
+    expect(r.verdict).toBe("error");
+    expect(r.errorCode).toBe("INVALID_INPUT");
+  });
+});
+
+// ─── classify-spawn-outcome ───────────────────────────────────────────────────
+//
+// A concurrency-limit refusal is BACKPRESSURE, never a slice failure: nothing
+// is wrong with the slice, so it returns to the queue with its state unchanged.
+// The session spawn budget is a different animal — it is spent, not busy — and
+// the two must never be conflated.
+
+describe("runWave — operation 'classify-spawn-outcome'", () => {
+  it("classifies a concurrent-subagent-limit refusal as backpressure", async () => {
+    const r = await runWave({
+      operation: "classify-spawn-outcome",
+      spawnFailureText:
+        "Concurrent subagent limit reached (20). Do not retry this spawn.",
+    });
+
+    expect(r.verdict).toBe("backpressure");
+    expect(r.limitSignal).toBe("concurrent-subagent-limit");
+  });
+
+  it("never reports a failed status for backpressure", async () => {
+    const r = await runWave({
+      operation: "classify-spawn-outcome",
+      spawnFailureText: "Concurrent subagent limit reached",
+    });
+
+    // A backpressure classification must not read as a slice failure anywhere
+    // in the structured result — no failed status, no error code, no message.
+    expect(r.status).toBe("ok");
+    expect(r.errorCode).toBeUndefined();
+    expect(r.errorMessage).toBeUndefined();
+  });
+
+  it("matches the refusal literal case-insensitively", async () => {
+    const r = await runWave({
+      operation: "classify-spawn-outcome",
+      spawnFailureText: "Error: CONCURRENT SUBAGENT LIMIT REACHED",
+    });
+
+    expect(r.verdict).toBe("backpressure");
+  });
+
+  it("keeps the session spawn budget distinguishable from backpressure", async () => {
+    const r = await runWave({
+      operation: "classify-spawn-outcome",
+      spawnFailureText: "Subagent spawn limit reached (200 per session).",
+    });
+
+    expect(r.status).toBe("failed");
+    expect(r.verdict).toBe("spawn-error");
+    expect(r.limitSignal).toBe("session-spawn-limit");
+  });
+
+  it("defaults an unrecognized failure to spawn-error, never to backpressure", async () => {
+    const r = await runWave({
+      operation: "classify-spawn-outcome",
+      spawnFailureText: "ECONNRESET while starting the subagent",
+    });
+
+    expect(r.status).toBe("failed");
+    expect(r.verdict).toBe("spawn-error");
+    expect(r.limitSignal).toBe("unrecognized");
+  });
+
+  it("returns verdict error when spawnFailureText is missing", async () => {
+    const r = await runWave({ operation: "classify-spawn-outcome" });
+
+    expect(r.verdict).toBe("error");
+    expect(r.errorCode).toBe("INVALID_INPUT");
+  });
+
+  it("is pure — it needs no repoPath and touches no git state", async () => {
+    const r = await runWave({
+      operation: "classify-spawn-outcome",
+      spawnFailureText: "Concurrent subagent limit reached",
+    });
+
+    expect(r.verdict).toBe("backpressure");
+    expect(r.sha).toBeUndefined();
+  });
+});

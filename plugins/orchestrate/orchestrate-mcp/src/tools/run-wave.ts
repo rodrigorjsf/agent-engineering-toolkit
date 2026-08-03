@@ -40,6 +40,20 @@ import { runTests, runBuild, runIntegration } from "./run-command.js";
 //     against the umbrella tip and map the result: 'proceed' (passed),
 //     'halt' (failed/error), 'tolerate' (no integration command configured).
 //
+//   'plan-wave-width' — how many of a wave's processable slices may be in
+//     flight at once, given the platform's concurrent-subagent limit. Each
+//     in-flight slice occupies TWO live agent slots (its executor plus the one
+//     worker that executor currently has running), so the width is half the
+//     limit, floored at 1. PURE.
+//
+//   'classify-spawn-outcome' — is a spawn failure BACKPRESSURE (the platform's
+//     concurrent-subagent limit, transient — the slice is fine and returns to
+//     the queue) or a real spawn error (anything else, including a spent
+//     session spawn budget)? PURE, and text-based by necessity: the Agent tool
+//     reports prose, not a structured code. Same ADR-0008 posture as
+//     'select-processable' — it CLASSIFIES text the orchestrator observed and
+//     passed in; the MCP server spawns nothing and observes nothing itself.
+//
 // All loop state — the umbrella ref, the remote, whether this is the first
 // merged slice of the wave, the deferred worktree path — is PASSED IN by the
 // orchestrator, never inferred here. run_wave is run-scoped: it mutates nothing
@@ -100,6 +114,8 @@ export const runWaveInputSchema = z.object({
       "select-processable",
       "reverify-slice",
       "integration-gate",
+      "plan-wave-width",
+      "classify-spawn-outcome",
     ])
     .describe(
       "Which bracketed wave operation to run. 'refresh-base' (§2 step 1): " +
@@ -111,7 +127,13 @@ export const runWaveInputSchema = z.object({
         "the slice worktree and run the two correctness verbs, returning " +
         "`passed`/`failed`/`conflict` (or `skipped-first-merge` for the first " +
         "merged slice). 'integration-gate' (§2 step 4a): run the per-wave " +
-        "integration suite, returning `proceed`/`halt`/`tolerate`."
+        "integration suite, returning `proceed`/`halt`/`tolerate`. " +
+        "'plan-wave-width' (§2 step 3): cap how many processable slices may be " +
+        "in flight at once against the concurrent-subagent limit, returning " +
+        "`width-planned` with `waveWidth` + `deferredCount`. " +
+        "'classify-spawn-outcome' (§2 step 3): classify an observed spawn " +
+        "failure as `backpressure` (retry-later, the slice is fine) or " +
+        "`spawn-error`."
     ),
   repoPath: z
     .string()
@@ -169,6 +191,38 @@ export const runWaveInputSchema = z.object({
         "processable only when every one is `CLOSED`. Pass [] when the slice " +
         "has no out-of-partition blockers."
     ),
+  processableCount: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      "'plan-wave-width' only: how many slices in this wave passed the " +
+        "'select-processable' gate. Required for that operation."
+    ),
+  concurrencyLimit: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .default(20)
+    .describe(
+      "'plan-wave-width' only: how many subagents may run CONCURRENTLY in " +
+        "this session. Defaults to 20 — the platform's own default, which " +
+        "`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` changes. Pass the raised value " +
+        "when that variable is set; the plugin cannot read it (it works within " +
+        "the limit, it never sets it)."
+    ),
+  spawnFailureText: z
+    .string()
+    .optional()
+    .describe(
+      "'classify-spawn-outcome' only: the verbatim failure text the " +
+        "orchestrator got back when a spawn was refused. This tool never " +
+        "observes a spawn itself — the orchestrator makes every Agent call, so " +
+        "it passes in what it saw (the same ADR-0008 posture as " +
+        "'select-processable'). Required for that operation."
+    ),
 });
 
 export const runWaveOutputSchema = z.object({
@@ -177,9 +231,11 @@ export const runWaveOutputSchema = z.object({
     .describe(
       "Outcome discriminant. 'ok' = the operation reached a non-failure " +
         "verdict (refreshed | processable | skip | skipped-first-merge | " +
-        "passed | proceed | tolerate); 'failed' = a blocking verdict or error " +
-        "(diverged | failed | conflict | halt | error). The `verdict` field " +
-        "carries the specific outcome."
+        "passed | proceed | tolerate | width-planned | backpressure); " +
+        "'failed' = a blocking verdict or error (diverged | failed | conflict " +
+        "| halt | spawn-error | error). `backpressure` is deliberately on the " +
+        "'ok' side: a slice refused for a platform limit has nothing wrong " +
+        "with it. The `verdict` field carries the specific outcome."
     ),
   verdict: z
     .enum([
@@ -194,6 +250,9 @@ export const runWaveOutputSchema = z.object({
       "proceed",
       "halt",
       "tolerate",
+      "width-planned",
+      "backpressure",
+      "spawn-error",
       "error",
     ])
     .describe(
@@ -203,8 +262,12 @@ export const runWaveOutputSchema = z.object({
         "`blockerId`). 'reverify-slice' → `skipped-first-merge` | `passed` | " +
         "`failed` (see `which`) | `conflict` (the merge left an unmerged " +
         "index, flagged not resolved). 'integration-gate' → `proceed` | `halt` " +
-        "| `tolerate` (no integration command configured). `error` = a git or " +
-        "input failure (see `errorCode`)."
+        "| `tolerate` (no integration command configured). 'plan-wave-width' → " +
+        "`width-planned` (see `waveWidth` + `deferredCount`). " +
+        "'classify-spawn-outcome' → `backpressure` (the concurrent-subagent " +
+        "limit — requeue the slice unchanged, never fail it) | `spawn-error` " +
+        "(anything else, including a spent session spawn budget; see " +
+        "`limitSignal`). `error` = a git or input failure (see `errorCode`)."
     ),
   sha: z
     .string()
@@ -228,6 +291,41 @@ export const runWaveOutputSchema = z.object({
       "'reverify-slice' `failed`: which correctness verb failed after the " +
         "umbrella was merged into the worktree."
     ),
+  waveWidth: z
+    .number()
+    .int()
+    .optional()
+    .describe(
+      "'plan-wave-width' `width-planned`: how many of this wave's processable " +
+        "slices may be in flight at once — `min(processableCount, " +
+        "floor(concurrencyLimit / 2))`, floored at 1."
+    ),
+  deferredCount: z
+    .number()
+    .int()
+    .optional()
+    .describe(
+      "'plan-wave-width' `width-planned`: how many processable slices the cap " +
+        "defers to a later turn of the wave — `processableCount - waveWidth`. " +
+        "A deferred slice stays `pending` in the wave's queue; it is NOT " +
+        "skipped and NOT failed."
+    ),
+  limitSignal: z
+    .enum([
+      "concurrent-subagent-limit",
+      "session-spawn-limit",
+      "unrecognized",
+    ])
+    .optional()
+    .describe(
+      "'classify-spawn-outcome': which documented platform signal the failure " +
+        "text matched. 'concurrent-subagent-limit' = transient backpressure, a " +
+        "slot frees and the slice is re-attempted. 'session-spawn-limit' = the " +
+        "session's total spawn budget is SPENT — unrecoverable in-session, and " +
+        "the reason the two limits must never be conflated (requeueing on this " +
+        "one would loop forever). 'unrecognized' = no documented literal " +
+        "matched, classified conservatively as a spawn error."
+    ),
   errorCode: z
     .enum(["INVALID_INPUT", "GIT_ERROR"])
     .optional()
@@ -243,7 +341,8 @@ export const runWaveOutputSchema = z.object({
     .optional()
     .describe(
       "Cleaned, human-readable failure description. Present for `diverged`, " +
-        "`conflict`, `failed`, `halt`, and `error`."
+        "`conflict`, `failed`, `halt`, `spawn-error`, and `error` — and " +
+        "deliberately ABSENT for `backpressure`, which is not a failure."
     ),
 });
 
@@ -270,6 +369,35 @@ export interface RunWaveOptions {
   maxDelayMs?: number;
   sleep?: (ms: number) => Promise<void>;
 }
+
+/**
+ * How many subagents may run concurrently in one session by default — the
+ * platform's own default, which `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` changes.
+ * At the limit the Agent tool refuses with the literal below; spawning succeeds
+ * again once the running count drops.
+ */
+const DEFAULT_CONCURRENCY_LIMIT = 20;
+
+/**
+ * Live agent slots one in-flight slice occupies: its slice executor plus the
+ * one worker (investigator, implementer, or reviewer) that executor currently
+ * has running. A parallel wave therefore holds roughly TWICE as many live
+ * agents as it has slices, which is the whole reason wave width is computed
+ * rather than assumed.
+ */
+const AGENT_SLOTS_PER_SLICE = 2;
+
+/**
+ * The documented refusal when the session is at its CONCURRENT subagent limit.
+ * Transient: a slot frees and the spawn succeeds. Matched case-insensitively.
+ */
+const CONCURRENT_LIMIT_LITERAL = "concurrent subagent limit reached";
+
+/**
+ * The documented refusal when the session's TOTAL spawn budget is spent.
+ * Unrecoverable in-session — a different animal from the concurrent limit.
+ */
+const SESSION_LIMIT_LITERAL = "subagent spawn limit reached";
 
 /** Max umbrella-fetch attempts before reporting a git error (transient retry). */
 const FETCH_ATTEMPTS = 3;
@@ -304,6 +432,10 @@ export async function runWave(
       return reverifySlice(input, opts);
     case "integration-gate":
       return integrationGate(input);
+    case "plan-wave-width":
+      return planWaveWidth(input);
+    case "classify-spawn-outcome":
+      return classifySpawnOutcome(input);
   }
 }
 
@@ -587,6 +719,125 @@ async function integrationGate(input: RunWaveInput): Promise<RunWaveOutput> {
           `broken umbrella.`,
       };
   }
+}
+
+/**
+ * 'plan-wave-width' (§2 step 3): how many of this wave's processable slices may
+ * be in flight at once, given the session's concurrent-subagent limit.
+ *
+ * Each in-flight slice occupies {@link AGENT_SLOTS_PER_SLICE} live agent slots —
+ * its executor plus the one worker that executor currently has running — so the
+ * cap is `floor(limit / 2)`, and the wave takes the smaller of that and however
+ * many slices are actually processable. The remainder is DEFERRED, not skipped:
+ * a deferred slice keeps its state and is picked up when a slot frees.
+ *
+ * The `Math.max(1, …)` floor is load-bearing, not cosmetic: a configured limit
+ * of 1 would otherwise plan a width of 0 and deadlock the wave — it would defer
+ * every slice forever, with nothing running to free a slot. A width of 1
+ * exceeds a limit of 1 only if the second slot is ever actually occupied, and
+ * running one slice slightly over budget is strictly better than running none.
+ *
+ * Pure — no I/O, no config read. The limit is passed in because the MCP process
+ * cannot see the orchestrator session's environment.
+ */
+function planWaveWidth(input: RunWaveInput): RunWaveOutput {
+  const processableCount = input.processableCount;
+  const concurrencyLimit = input.concurrencyLimit ?? DEFAULT_CONCURRENCY_LIMIT;
+
+  if (
+    processableCount === undefined ||
+    !Number.isInteger(processableCount) ||
+    processableCount < 1
+  ) {
+    return failed(
+      "INVALID_INPUT",
+      "operation 'plan-wave-width' requires a positive integer `processableCount`."
+    );
+  }
+  if (!Number.isInteger(concurrencyLimit) || concurrencyLimit < 1) {
+    return failed(
+      "INVALID_INPUT",
+      "operation 'plan-wave-width' requires a positive integer `concurrencyLimit`."
+    );
+  }
+
+  const maxWidth = Math.max(
+    1,
+    Math.floor(concurrencyLimit / AGENT_SLOTS_PER_SLICE)
+  );
+  const waveWidth = Math.min(processableCount, maxWidth);
+
+  return {
+    status: "ok",
+    verdict: "width-planned",
+    waveWidth,
+    deferredCount: processableCount - waveWidth,
+  };
+}
+
+/**
+ * 'classify-spawn-outcome' (§2 step 3): was an observed spawn failure the
+ * platform's CONCURRENT-subagent limit — backpressure, which says nothing at
+ * all about the slice — or a real spawn error?
+ *
+ * `backpressure` carries `status: 'ok'` and no `errorMessage` deliberately: a
+ * slice refused for a platform limit has nothing wrong with it, so it returns
+ * to the wave's queue with its state unchanged and is never marked failed,
+ * never given a failure reason, and never labelled. Getting this wrong produces
+ * a structural false negative that would be blamed on the slice's own work.
+ *
+ * The two documented limits are kept DISTINGUISHABLE through `limitSignal`,
+ * because conflating them is the expensive mistake in both directions: a spent
+ * SESSION budget is unrecoverable in-session, so requeueing on it would loop
+ * forever. An unmatched failure defaults to `spawn-error`/`unrecognized` — the
+ * conservative class, so an unknown failure is never silently swallowed as
+ * retryable.
+ *
+ * The match is TEXT-BASED and therefore version-fragile: the Agent tool reports
+ * prose, not a structured error code, so there is no structural signal to
+ * classify on. It is case-insensitive substring matching against the literals
+ * the vendor documents, and it degrades to `unrecognized` — not to a wrong
+ * class — if those literals ever change. Pure.
+ */
+function classifySpawnOutcome(input: RunWaveInput): RunWaveOutput {
+  const text = input.spawnFailureText;
+  if (text === undefined) {
+    return failed(
+      "INVALID_INPUT",
+      "operation 'classify-spawn-outcome' requires `spawnFailureText`."
+    );
+  }
+
+  const haystack = text.toLowerCase();
+
+  if (haystack.includes(CONCURRENT_LIMIT_LITERAL)) {
+    return {
+      status: "ok",
+      verdict: "backpressure",
+      limitSignal: "concurrent-subagent-limit",
+    };
+  }
+
+  if (haystack.includes(SESSION_LIMIT_LITERAL)) {
+    return {
+      status: "failed",
+      verdict: "spawn-error",
+      limitSignal: "session-spawn-limit",
+      errorMessage:
+        "The session's total subagent spawn budget is spent — this is NOT " +
+        "backpressure and re-attempting the slice in this session cannot " +
+        "succeed. Hand the run off to a successor session.",
+    };
+  }
+
+  return {
+    status: "failed",
+    verdict: "spawn-error",
+    limitSignal: "unrecognized",
+    errorMessage:
+      "The spawn failure matched no documented platform limit, so it is " +
+      `classified conservatively as a spawn error: ${text}`,
+  };
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────

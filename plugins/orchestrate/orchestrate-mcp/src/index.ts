@@ -1369,6 +1369,20 @@ const handleRunWave: ToolHandler<RunWaveInput, RunWaveOutput> = async (
     case "tolerate":
       text = `Integration gate tolerated — no integration suite configured.`;
       break;
+    case "width-planned":
+      text =
+        `Wave width planned — run ${result.waveWidth} slice(s) concurrently, ` +
+        `deferring ${result.deferredCount} to a later turn of this wave.`;
+      break;
+    case "backpressure":
+      text =
+        `Spawn refused by the concurrent-subagent limit — BACKPRESSURE, not a ` +
+        `slice failure. Return the slice to the wave's processable queue with ` +
+        `its state unchanged and re-attempt it when a slot frees.`;
+      break;
+    case "spawn-error":
+      text = `Spawn failed [${result.limitSignal}]: ${result.errorMessage}`;
+      break;
     case "error":
       text = `run_wave failed [${result.errorCode}]: ${result.errorMessage}`;
       break;
@@ -1402,7 +1416,18 @@ registerTool(
       "or `conflict` (the unmerged index is left IN PLACE and only flagged — " +
       "resolution is a downstream concern). 'integration-gate' (§2 step 4a): " +
       "run the per-wave integration suite, mapping `proceed` (passed), `halt` " +
-      "(failed/error), or `tolerate` (not configured). All loop state (umbrella " +
+      "(failed/error), or `tolerate` (not configured). 'plan-wave-width' (§2 " +
+      "step 3): cap how many processable slices may be in flight at once " +
+      "against the session's concurrent-subagent limit (default 20) — each " +
+      "in-flight slice occupies TWO live agent slots (its executor plus one " +
+      "worker), so the width is half the limit floored at 1, and the remainder " +
+      "is `deferredCount`, DEFERRED (state unchanged) rather than skipped. " +
+      "'classify-spawn-outcome' (§2 step 3): classify an observed spawn " +
+      "failure as `backpressure` (the concurrent-subagent limit — `status: " +
+      "'ok'`, no error message, the slice is fine and returns to the queue) or " +
+      "`spawn-error`, keeping a SPENT session spawn budget distinguishable via " +
+      "`limitSignal` and defaulting an unrecognized failure to the " +
+      "conservative class. All loop state (umbrella " +
       "ref, remote, first-merged flag) is PASSED IN, never inferred. Git-only " +
       "via the hardened exec seam, run-scoped (mutates nothing outside the " +
       "passed worktree), and never throws — every failure mode is a structured " +

@@ -11,7 +11,11 @@ Every run keeps its ephemeral state in a **per-run directory**,
 `prd<N>-<timestamp>` for a **partitioned run** scoped to one parent PRD's
 children (`/orchestrate <PRD#>`), and `backlog-<timestamp>` for a **whole-backlog
 run** (`/orchestrate` with no argument). That directory holds the run's
-`run-state.json`, its `context-flag.json` (the context-handoff signal), the
+`run-state.json`, its `context-flag.json` (the context-handoff signal), its
+`spawn-log.jsonl` (the watchdog's append-only spawn record, one line per
+observed subagent spawn, each tagged with the session that made it — stored per
+run but counted per session, since the platform's spawn cap resets in a new
+session while the log survives a handoff), the
 rendered HTML artifacts (`dashboard.html`, `graph.html`, `report.html`), and one
 **slice progress record** per slice — `slice-<issue>-progress.json` (see *Slice
 progress record* below). Two distinct runs never share a directory, so their
@@ -37,6 +41,7 @@ metadata, not source — the target project should gitignore
     ├── prd195-20260521-015143/         # a partitioned run (PRD #195's children)
     │   ├── run-state.json              # the run checkpoint
     │   ├── context-flag.json           # the context-handoff signal (when raised)
+    │   ├── spawn-log.jsonl             # one line per subagent spawn (spawn budget)
     │   ├── slice-157-progress.json     # one slice progress record PER SLICE
     │   ├── slice-158-progress.json     # siblings of one wave never collide
     │   └── dashboard.html, graph.html, report.html   # rendered artifacts

@@ -3,10 +3,14 @@ import * as path from "path";
 // ─── Per-run directory resolver ───────────────────────────────────────────────
 //
 // Every orchestration run keeps its ephemeral state — the run-state checkpoint,
-// the context-flag, and the rendered HTML artifacts — under a per-run directory,
-// `.orchestrate/runs/<runId>/`. The committed config files (`commands.json`,
-// `routing.json`, `handoff.json`) stay flat at the `.orchestrate/` top level and
-// are NOT resolved here.
+// the context-flag, the spawn log, and the rendered HTML artifacts — under a
+// per-run directory, `.orchestrate/runs/<runId>/`. The committed config files
+// (`commands.json`, `routing.json`, `handoff.json`) stay flat at the
+// `.orchestrate/` top level and are NOT resolved here.
+//
+// Everything resolved here is REMOVED WHOLESALE with the run directory —
+// `clean-runs.ts` deletes it with a recursive `rmSync`, so a new per-run file
+// added to {@link RunPaths} needs no matching cleanup change.
 //
 // The run directory ALSO holds one **slice progress record per slice**
 // (ADR-0017) — `slice-<issue>-progress.json`, resolved by
@@ -45,6 +49,12 @@ export interface RunPaths {
   runStatePath: string;
   /** The context-handoff flag file inside the run directory. */
   contextFlagPath: string;
+  /**
+   * The run's append-only spawn log inside the run directory — one line per
+   * subagent spawn observed while the run is in progress. It is what the
+   * context-watchdog's SECOND threshold (the session spawn budget) counts.
+   */
+  spawnLogPath: string;
   /** The rendered dashboard HTML artifact inside the run directory. */
   dashboardPath: string;
   /** The rendered dependency-graph HTML artifact inside the run directory. */
@@ -113,6 +123,7 @@ export function resolveRunDir(
       runDir,
       runStatePath: path.join(runDir, "run-state.json"),
       contextFlagPath: path.join(runDir, "context-flag.json"),
+      spawnLogPath: path.join(runDir, "spawn-log.jsonl"),
       dashboardPath: path.join(runDir, "dashboard.html"),
       graphPath: path.join(runDir, "graph.html"),
       reportPath: path.join(runDir, "report.html"),
