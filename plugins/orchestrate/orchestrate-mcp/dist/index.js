@@ -6873,12 +6873,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs14, exportName) {
+    function addFormats(ajv, list, fs15, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs14[f]);
+        ajv.addFormat(f, fs15[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -21176,14 +21176,14 @@ function optionInjectionError(field, value) {
 }
 function cleanGitError(err) {
   if (err instanceof GitExecError && err.stderr.trim().length > 0) {
-    const firstLine10 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-    if (firstLine10) {
-      return firstLine10;
+    const firstLine11 = err.stderr.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+    if (firstLine11) {
+      return firstLine11;
     }
   }
   const message = err instanceof Error ? err.message : String(err);
-  const firstLine9 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
-  return firstLine9 ?? "Unknown git error";
+  const firstLine10 = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return firstLine10 ?? "Unknown git error";
 }
 
 // src/tools/run-command.ts
@@ -21957,7 +21957,8 @@ var ROUTING_ROLES = [
   "investigator",
   "implementer",
   "reviewer",
-  "conflict-resolver"
+  "conflict-resolver",
+  "slice-executor"
 ];
 var roleConfigSchema = external_exports.object({
   model: external_exports.string().min(1).describe("Model id to spawn the role's subagent with (e.g. 'sonnet', 'opus')."),
@@ -21979,7 +21980,7 @@ var routingConfigSchema = external_exports.object({
     "Run-wide policy: how to process the independent slices within one wave. 'parallel' (default) spawns all processable slices at once and integrates them sequentially. 'sequential' processes slices one at a time in issue-id ascending order, refreshing the umbrella base between each so slice N branches from base+slice1..N-1 \u2014 guaranteed conflict-free, at the cost of serializing the wave. Optional; the three tier blocks remain required."
   ),
   continuationBudget: external_exports.number().int().min(0).default(2).describe(
-    "How many times the orchestrator may re-spawn the implementer in the same worktree after an 'incomplete' envelope (re-spawns BEYOND the initial run). 0 disables continuation (incomplete FAILs immediately, the legacy behavior). Defaults to 2."
+    "How many times the slice executor may re-spawn the implementer in the same worktree after an 'incomplete' envelope (re-spawns BEYOND the initial run). 0 disables continuation (incomplete FAILs immediately, the legacy behavior). Defaults to 2."
   )
 });
 var routingConfigSchemaV1 = routingConfigSchema;
@@ -22023,7 +22024,8 @@ var tierRoutingSchemaV2 = external_exports.object({
   investigator: roleConfigSchemaV2.nullable(),
   implementer: roleConfigSchemaV2,
   reviewer: roleConfigSchemaV2,
-  "conflict-resolver": roleConfigSchemaV2
+  "conflict-resolver": roleConfigSchemaV2,
+  "slice-executor": roleConfigSchemaV2.optional()
 });
 var labelFallbackSchema = external_exports.object({
   model: external_exports.string().min(1).describe("Model id to re-spawn with when the label's primary model fails."),
@@ -22046,7 +22048,7 @@ var runConfigSchema = external_exports.object({
     "Run-wide policy: how to process the independent slices within one wave. 'parallel' (default) or 'sequential'. Lifted from the v1 top-level key."
   ),
   continuationBudget: external_exports.number().int().min(0).optional().default(2).describe(
-    "How many times the orchestrator may re-spawn the implementer in the same worktree after an 'incomplete' envelope. 0 disables continuation. Defaults to 2. Lifted from the v1 top-level key."
+    "How many times the slice executor may re-spawn the implementer in the same worktree after an 'incomplete' envelope. 0 disables continuation. Defaults to 2. Lifted from the v1 top-level key."
   )
 });
 var routingConfigSchemaV2 = external_exports.object({
@@ -22132,6 +22134,16 @@ function loadRoutingConfig(parsed) {
     )}. Supported versions: 1 (no \`version\` field) and 2.`
   };
 }
+function ensureSliceExecutorDefault(tier, tierName) {
+  if (tier["slice-executor"]) {
+    return { routing: tier };
+  }
+  const fallback = { ...tier.implementer };
+  return {
+    routing: { ...tier, "slice-executor": fallback },
+    warning: `routing.json has no \`slice-executor\` entry for the '${tierName}' tier \u2014 defaulting to the implementer routing (${fallback.model}/${fallback.variant}). Add a \`slice-executor\` entry to each tier to silence this warning.`
+  };
+}
 var resolveRoutingV2InputSchema = external_exports.object({
   tier: external_exports.enum(COMPLEXITY_TIERS).describe(
     "The complexity tier the orchestrator assessed the issue into. 'trivial' = a small, localized change; 'standard' = an ordinary feature or fix; 'complex' = broad, cross-cutting, or high-risk work."
@@ -22156,7 +22168,7 @@ var resolveRoutingV2OutputSchema = external_exports.object({
   ),
   tier: external_exports.enum(COMPLEXITY_TIERS).optional().describe("The tier that was resolved. Present when status='ok'."),
   routing: tierRoutingSchemaV2.optional().describe(
-    "The resolved per-role routing for the tier (v2: uses `variant`, not `effort`). `investigator` is null when this tier skips the investigation pass. Present when status='ok'."
+    "The resolved per-role routing for the tier (v2: uses `variant`, not `effort`). `investigator` is null when this tier skips the investigation pass. `slice-executor` (ADR-0017, #356) is typed optional here only for input back-compat \u2014 in a RESOLVED result it is ALWAYS populated: a routing.json predating the role has it defaulted to the tier's own `implementer` entry, flagged in `warnings`. Present when status='ok'."
   ),
   continuationBudget: external_exports.number().int().min(0).optional().describe(
     "The resolved continuation budget for this run \u2014 how many implementer re-spawns are allowed after an 'incomplete' envelope. Present when status='ok'."
@@ -22208,8 +22220,8 @@ function resolveRoutingV2FromConfig(input) {
     };
   }
   const { config: config2, warnings: loaderWarnings } = loadResult;
-  const tierRouting = config2.tiers[input.tier];
   const labelsConfig = config2.labels ?? {};
+  const { routing: tierRouting, warning: sliceExecutorWarning } = ensureSliceExecutorDefault(config2.tiers[input.tier], input.tier);
   const relevantLabels = (input.labels ?? []).filter(
     (name) => name.startsWith("route:") || name in labelsConfig
   );
@@ -22227,7 +22239,11 @@ function resolveRoutingV2FromConfig(input) {
     routing: labelResult.routing,
     continuationBudget: config2.run.continuationBudget,
     fallbacks: labelResult.fallbacks,
-    warnings: [...loaderWarnings, ...labelResult.warnings]
+    warnings: [
+      ...loaderWarnings,
+      ...sliceExecutorWarning ? [sliceExecutorWarning] : [],
+      ...labelResult.warnings
+    ]
   };
 }
 function applyLabels(tierRouting, labelNames, labelsConfig) {
@@ -22237,7 +22253,8 @@ function applyLabels(tierRouting, labelNames, labelsConfig) {
     investigator: tierRouting.investigator ? { ...tierRouting.investigator } : null,
     implementer: { ...tierRouting.implementer },
     reviewer: { ...tierRouting.reviewer },
-    "conflict-resolver": { ...tierRouting["conflict-resolver"] }
+    "conflict-resolver": { ...tierRouting["conflict-resolver"] },
+    "slice-executor": tierRouting["slice-executor"] ? { ...tierRouting["slice-executor"] } : void 0
   };
   const patchedBy = /* @__PURE__ */ new Map();
   for (const labelName of labelNames) {
@@ -22293,10 +22310,35 @@ function resolveRunDir(repoPath, runId) {
       runDir,
       runStatePath: path4.join(runDir, "run-state.json"),
       contextFlagPath: path4.join(runDir, "context-flag.json"),
+      spawnLogPath: path4.join(runDir, "spawn-log.jsonl"),
       dashboardPath: path4.join(runDir, "dashboard.html"),
       graphPath: path4.join(runDir, "graph.html"),
       reportPath: path4.join(runDir, "report.html")
     }
+  };
+}
+function isValidIssueId(issue2) {
+  return typeof issue2 === "number" && Number.isSafeInteger(issue2) && issue2 > 0;
+}
+function resolveSliceProgressPath(repoPath, runId, issue2) {
+  const resolved = resolveRunDir(repoPath, runId);
+  if (!resolved.ok) {
+    return {
+      ok: false,
+      errorCode: resolved.errorCode,
+      errorMessage: resolved.errorMessage
+    };
+  }
+  if (!isValidIssueId(issue2)) {
+    return {
+      ok: false,
+      errorCode: "ISSUE_INVALID",
+      errorMessage: `Invalid issue '${String(issue2)}': an issue must be a positive integer (e.g. 355). The id becomes part of the record's filename, so anything else is rejected before it can escape the run directory.`
+    };
+  }
+  return {
+    ok: true,
+    path: path4.join(resolved.paths.runDir, `slice-${issue2}-progress.json`)
   };
 }
 
@@ -22968,6 +23010,12 @@ var watchdogConfigSchema = external_exports.object({
   ),
   contextWindowTokens: external_exports.number().int().positive().default(2e5).describe(
     "Total context window the percentage is measured against. Default 200000 \u2014 raise to 1000000 for a 1M-context session."
+  ),
+  spawnThresholdPercent: external_exports.number().min(1).max(100).default(40).describe(
+    "Raise the handoff flag once the run's recorded subagent spawns reach this percentage of `sessionSpawnBudget`. Default 40, matching `thresholdPercent` \u2014 at roughly five spawns per slice a long run can spend its spawn budget well before it fills its context window, so this threshold must be as conservative as the token one."
+  ),
+  sessionSpawnBudget: external_exports.number().int().positive().default(200).describe(
+    "Total subagent spawns the session may make, the figure `spawnThresholdPercent` is measured against. Default 200 \u2014 the platform's own per-session default, which `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` changes. Nested and background subagents count toward it, and a finished subagent still counts, so the budget is cumulative and never decreases."
   )
 });
 var terminalEntrySchema = external_exports.object({
@@ -23408,11 +23456,12 @@ function filterToOneParentPrd(issues, prdNumber) {
 }
 
 // src/tools/validate-envelope.ts
+var capabilityResultSchema = external_exports.enum(["passed", "failed", "not-configured"]).describe(
+  "Outcome of a capability-tool run. 'not-configured' means the verb has no command set."
+);
 var verificationEntrySchema = external_exports.object({
   capability: external_exports.enum(["tests", "typecheck", "build", "lint"]).describe("Which capability tool was run."),
-  result: external_exports.enum(["passed", "failed", "not-configured"]).describe(
-    "Outcome of that run. 'not-configured' means the verb has no command set."
-  )
+  result: capabilityResultSchema
 });
 var rootCauseSchema = external_exports.object({
   status: external_exports.enum(["verified", "hypothesis"]).describe(
@@ -23485,11 +23534,66 @@ var investigatorEnvelopeSchema = external_exports.object({
   approach: external_exports.string().describe("A suggested implementation approach \u2014 what to change and why."),
   notes: external_exports.string().describe("Anything else that does not fit the fields above.")
 });
+var SLICE_EXECUTOR_FAILURE_CLASSES = [
+  "unrecoverable-obstacle",
+  "incomplete-budget-exhausted",
+  "no-progress-stall",
+  "invalid-or-missing-worker-envelope",
+  "changeset-mismatch",
+  "empty-changeset",
+  "model-refusal"
+];
+var SLICE_EXECUTOR_STAGES = [
+  "investigator",
+  "implementer",
+  "capability-gate",
+  "reviewer"
+];
+var sliceExecutorFailureClassSchema = external_exports.enum(SLICE_EXECUTOR_FAILURE_CLASSES).describe(
+  "Closed-set classification of why the slice did not reach a verified changeset: 'unrecoverable-obstacle' (a blocker with no safe workaround, including a capability-gate failure with no more specific class); 'incomplete-budget-exhausted' (the executor's own nested continuation loop ran out of turns \u2014 the slice-level analogue of the implementer's graceful 'incomplete' self-report); 'no-progress-stall' (repeated attempts converged on nothing); 'invalid-or-missing-worker-envelope' (a worker the executor spawned returned a truncated, malformed, or missing envelope); 'changeset-mismatch' (the implementer's declared `filesChanged` did not match the worktree's actual changeset); 'empty-changeset' (the slice produced no file changes at all); 'model-refusal' (a spawned worker's model refused the task)."
+);
+var sliceExecutorVerificationSchema = external_exports.object({
+  tests: capabilityResultSchema.optional(),
+  typecheck: capabilityResultSchema.optional(),
+  build: capabilityResultSchema.optional(),
+  lint: capabilityResultSchema.optional()
+});
+var sliceExecutorEnvelopeSchema = external_exports.object({
+  role: external_exports.literal("slice-executor").describe("Discriminant \u2014 the slice-executor role."),
+  status: external_exports.enum(["completed", "incomplete", "blocked", "failed"]).describe(
+    "Outcome of the WHOLE SLICE, not a single worker \u2014 reuses the schema's existing status vocabulary rather than inventing a fifth. 'completed' = a verified changeset was reached; 'incomplete' = the executor's own graceful continuation-budget self-report, mirroring the implementer's 'incomplete'; 'blocked' = an unrecoverable obstacle hit by the executor or one of the workers it spawned; 'failed' = the slice did not reach a trustworthy changeset (a worker or verification failure). There is no loop-continue/loop-end value \u2014 see the module-level note above."
+  ),
+  failedStage: external_exports.enum(SLICE_EXECUTOR_STAGES).optional().describe(
+    "Which inner stage of the slice pipeline was running when a non-'completed' outcome occurred. Absent for a 'completed' envelope. 'implementer' also covers the changeset-verification check that immediately follows the implementer's turn (it gates trust in the implementer's own output, before the reviewer stage begins) \u2014 so 'changeset-mismatch' and 'empty-changeset' are reported here, not under a separate stage."
+  ),
+  failureClass: sliceExecutorFailureClassSchema.optional().describe(
+    "Closed-set classification of the failure. Absent for a 'completed' envelope. The orchestrator maps this class to a tracker triage label; it never re-derives the classification itself \u2014 that authority stays with the executor that observed the failure."
+  ),
+  failureReason: external_exports.string().optional().describe(
+    "Prose description of what happened, in the executor's own words. Complements `failureClass` (the closed-set machine label) with the specific detail a human or the next executor needs. Absent for a 'completed' envelope."
+  ),
+  reportPath: external_exports.string().describe(
+    "Path, relative to the run directory (`.orchestrate/runs/<runId>/`), of the slice's report \u2014 the human-readable artifact the executor wrote describing its own run. It is written beside the executor's progress record, NEVER into the worktree, where the Changeset scope check would see it as an undeclared change."
+  ),
+  nextTaskBriefing: external_exports.string().describe(
+    "Advice carried forward to whoever picks up the next slice. This is advice only, never a selection of WHICH slice runs next \u2014 wave ordering and loop termination stay computed by `plan_waves` and wave exhaustion, not declared here (see the module-level note above)."
+  ),
+  filesChanged: external_exports.array(external_exports.string()).describe(
+    "Files changed across the whole slice \u2014 every worker's edits combined \u2014 as paths relative to the worktree root. An empty array means no file was changed."
+  ),
+  verification: sliceExecutorVerificationSchema.describe(
+    "Roll-up of the slice's capability-gate outcome, one optional result per capability."
+  ),
+  fallbackTaken: external_exports.boolean().describe(
+    "Whether the one-time Model fallback (the premium-lane retry) was taken during this slice."
+  )
+});
 var envelopeSchema = external_exports.discriminatedUnion("role", [
   implementerEnvelopeSchema,
   reviewerEnvelopeSchema,
   conflictResolverEnvelopeSchema,
-  investigatorEnvelopeSchema
+  investigatorEnvelopeSchema,
+  sliceExecutorEnvelopeSchema
 ]).superRefine((data, ctx) => {
   if (data.role === "implementer" && data.status === "incomplete" && (data.remainingWork === void 0 || data.remainingWork.trim() === "")) {
     ctx.addIssue({
@@ -23503,7 +23607,8 @@ var ENVELOPE_ROLES = [
   "implementer",
   "reviewer",
   "conflict-resolver",
-  "investigator"
+  "investigator",
+  "slice-executor"
 ];
 var validateEnvelopeInputSchema = external_exports.object({
   text: external_exports.string().describe(
@@ -23693,19 +23798,131 @@ async function recoverChangedFiles(input) {
   };
 }
 
+// src/tools/recover-slice-progress.ts
+var fs7 = __toESM(require("fs"));
+var sliceProgressRecordSchema = external_exports.object({
+  runId: external_exports.string().describe(
+    "The run this record belongs to. Must equal the runId whose directory the record was read from \u2014 a mismatch means the record was mis-filed and is rejected rather than trusted."
+  ),
+  issue: external_exports.number().int().describe(
+    "The issue number of the slice this record tracks. Must equal the issue the record's filename encodes; a mismatch is rejected."
+  ),
+  lastCompletedStage: external_exports.enum(SLICE_EXECUTOR_STAGES).optional().describe(
+    "The last inner stage that FINISHED. Note this is NOT the envelope's `failedStage`, which names the stage that was RUNNING when a failure occurred \u2014 the value set is deliberately shared, the meaning is not. The enum is a set of stage NAMES, not an order: which stages run, in what sequence, and which are skipped are the executor's decisions, never implied by this field's member order. ABSENT means no stage has completed yet \u2014 omit the key entirely; an explicit null is rejected."
+  ),
+  investigatorBrief: investigatorEnvelopeSchema.omit({ role: true }).optional().describe(
+    "The investigator's research brief, carried forward so a resumed executor does not re-run a finished investigation. Reuses the investigator envelope's own fields rather than a free-form blob, so the brief stays validated end to end. Absent when the slice's tier skips investigation entirely (`resolvedRouting.investigator` is null)."
+  ),
+  continuationsUsed: external_exports.number().int().nonnegative().describe(
+    "How many continuations the executor's continue-in-place loop has spent on this slice. Persisted because two continuation loops now nest, and ADR-0017 caps the PRODUCT of their budgets at 6 \u2014 a counter that reset on every handoff could not enforce that bound across sessions."
+  ),
+  worktreeFingerprint: external_exports.string().optional().describe(
+    "Opaque content-level fingerprint of the worktree's uncommitted state at the last completed stage, used by the no-progress guard to tell a real continuation from a stalled one. Stored as an opaque string: COMPUTING it is the executor's job, so this record fixes only how it is carried, never how it is derived. Absent before the first fingerprint is taken."
+  ),
+  fallbackTaken: external_exports.boolean().describe(
+    "The once-only Model fallback guard: true when the premium-lane retry has already been spent on this slice. REQUIRED, with no default \u2014 an absent key must never silently read as `false`, which would re-arm a fallback that was already used. This deliberately DUPLICATES the orchestrator's `resolvedRouting.fallbackTaken` in run-state.json, and the duplication is ADR-0017-sanctioned, not an oversight: the run-state field is orchestrator-owned and drives the legacy non-executor path, while this copy is executor-owned, because the executor cannot write the orchestrator's checkpoint. Do not unify them."
+  ),
+  updatedAt: external_exports.string().describe(
+    "ISO-8601 UTC timestamp of the last write, matching run-state.json's timestamp convention (documented in prose, not enforced by the schema)."
+  )
+});
+var recoverSliceProgressInputSchema = external_exports.object({
+  runId: external_exports.string().describe(
+    "The orchestration run's id (its YYYYMMDD-HHMMSS timestamp, optionally prefixed `prd<N>-` or `backlog-`). It selects the per-run directory .orchestrate/runs/<runId>/ the record is read from."
+  ),
+  issue: external_exports.number().int().positive().describe(
+    "The issue number of the slice whose record to read. Together with `runId` it derives the record's path \u2014 the tool deliberately accepts no file path, so it can never read outside this run's directory."
+  ),
+  repoPath: external_exports.string().optional().describe(
+    "Path to the project root that holds the .orchestrate/ directory. Defaults to the MCP server process's current working directory \u2014 callers should pass this explicitly rather than rely on the default."
+  )
+});
+var recoverSliceProgressOutputSchema = external_exports.object({
+  status: external_exports.enum(["ok", "error"]).describe(
+    "Outcome discriminant. 'ok' = the record was found, parsed, and validated; 'error' = it could not be resolved, read, parsed, or it failed schema validation."
+  ),
+  record: sliceProgressRecordSchema.optional().describe(
+    "The validated slice progress record. Present ONLY when status='ok'."
+  ),
+  errorCode: external_exports.enum([
+    "RUN_ID_INVALID",
+    "ISSUE_INVALID",
+    "PROGRESS_NOT_FOUND",
+    "PROGRESS_INVALID"
+  ]).optional().describe(
+    "Machine-readable failure category. Present when status='error'. 'RUN_ID_INVALID' = the runId is malformed and cannot resolve a run directory; 'ISSUE_INVALID' = the issue is not a positive integer and cannot form a record filename; 'PROGRESS_NOT_FOUND' = no slice-<issue>-progress.json under .orchestrate/runs/<runId>/ (the slice has not recorded a completed stage yet) \u2014 distinct from 'PROGRESS_INVALID', which means the file EXISTS but is malformed JSON, fails the record schema, or self-identifies as a different run/slice than the one requested."
+  ),
+  errorMessage: external_exports.string().optional().describe("Human-readable failure description. Present when status='error'.")
+});
+function firstLine7(message) {
+  const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  return line ?? message.trim();
+}
+async function recoverSliceProgress(input) {
+  const repoPath = input.repoPath ?? process.cwd();
+  const resolved = resolveSliceProgressPath(repoPath, input.runId, input.issue);
+  if (!resolved.ok) {
+    return {
+      status: "error",
+      errorCode: resolved.errorCode,
+      errorMessage: resolved.errorMessage
+    };
+  }
+  let raw;
+  try {
+    raw = fs7.readFileSync(resolved.path, "utf8");
+  } catch {
+    return {
+      status: "error",
+      errorCode: "PROGRESS_NOT_FOUND",
+      errorMessage: `No slice progress record found at ${resolved.path}.`
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      status: "error",
+      errorCode: "PROGRESS_INVALID",
+      errorMessage: `The slice progress record is not valid JSON: ${firstLine7(
+        err instanceof Error ? err.message : String(err)
+      )}`
+    };
+  }
+  const result = sliceProgressRecordSchema.safeParse(parsed);
+  if (!result.success) {
+    const detail = result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+    return {
+      status: "error",
+      errorCode: "PROGRESS_INVALID",
+      errorMessage: `The slice progress record does not match the expected shape: ${detail}`
+    };
+  }
+  const record2 = result.data;
+  if (record2.runId !== input.runId || record2.issue !== input.issue) {
+    return {
+      status: "error",
+      errorCode: "PROGRESS_INVALID",
+      errorMessage: `The slice progress record self-identifies as runId '${record2.runId}' / issue ${record2.issue}, but was read from the record of runId '${input.runId}' / issue ${input.issue}.`
+    };
+  }
+  return { status: "ok", record: record2 };
+}
+
 // src/tools/clean-runs.ts
 var path7 = __toESM(require("path"));
-var fs8 = __toESM(require("fs"));
+var fs9 = __toESM(require("fs"));
 
 // src/run-state-guard.ts
-var fs7 = __toESM(require("fs"));
+var fs8 = __toESM(require("fs"));
 function readRunState(runStatePath) {
-  if (!fs7.existsSync(runStatePath)) {
+  if (!fs8.existsSync(runStatePath)) {
     return { ok: false, reason: "missing-run-state" };
   }
   let raw;
   try {
-    raw = fs7.readFileSync(runStatePath, "utf8");
+    raw = fs8.readFileSync(runStatePath, "utf8");
   } catch {
     return { ok: false, reason: "malformed-run-state" };
   }
@@ -23996,7 +24213,7 @@ async function removeRunFootprint(runId, runDir, state, repoPath, opts) {
     report.runDirRemoved = false;
   } else {
     try {
-      fs8.rmSync(runDir, { recursive: true, force: true });
+      fs9.rmSync(runDir, { recursive: true, force: true });
       report.runDirRemoved = true;
     } catch {
       report.runDirRemoved = false;
@@ -24025,12 +24242,12 @@ async function cleanRuns(input) {
     };
   }
   const runsRoot = path7.join(repoPath, ".orchestrate", "runs");
-  if (!fs8.existsSync(runsRoot)) {
+  if (!fs9.existsSync(runsRoot)) {
     return { status: "ok", runs: [] };
   }
   let entries;
   try {
-    entries = fs8.readdirSync(runsRoot, { withFileTypes: true });
+    entries = fs9.readdirSync(runsRoot, { withFileTypes: true });
   } catch (err) {
     return {
       status: "error",
@@ -24108,7 +24325,7 @@ async function reclaimRun(input) {
     };
   }
   const runDir = path7.join(repoPath, ".orchestrate", "runs", input.runId);
-  if (!fs8.existsSync(runDir)) {
+  if (!fs9.existsSync(runDir)) {
     return {
       status: "ok",
       report: skippedReport(input.runId, "run-not-found")
@@ -24134,7 +24351,7 @@ async function reclaimRun(input) {
 }
 
 // src/tools/verify-changeset.ts
-var fs9 = __toESM(require("fs"));
+var fs10 = __toESM(require("fs"));
 var verifyChangesetInputSchema = external_exports.object({
   worktreePath: external_exports.string().describe(
     "Absolute path to the slice worktree to inspect. The verification treats this worktree as the source of truth for what was actually changed."
@@ -24182,7 +24399,7 @@ async function verifyChangeset(input) {
       errorMessage: guardErr
     };
   }
-  if (!fs9.existsSync(worktreePath)) {
+  if (!fs10.existsSync(worktreePath)) {
     return {
       status: "error",
       errorCode: "PATH_NOT_FOUND",
@@ -24240,10 +24457,10 @@ function classifyMatch(declaredCount, actualCount, absentCount, undeclaredCount)
 
 // src/tools/bootstrap-config.ts
 var path8 = __toESM(require("path"));
-var fs11 = __toESM(require("fs"));
+var fs12 = __toESM(require("fs"));
 
 // src/tools/detect-project.ts
-var fs10 = __toESM(require("fs"));
+var fs11 = __toESM(require("fs"));
 function detectJsPackageManager(filesPresent) {
   const present = new Set(filesPresent);
   if (present.has("pnpm-lock.yaml")) {
@@ -24332,7 +24549,7 @@ function buildCommandMap(type, jsPackageManager) {
 function detectCommandMap(repoRoot) {
   let entries;
   try {
-    entries = fs10.readdirSync(repoRoot);
+    entries = fs11.readdirSync(repoRoot);
   } catch {
     return {};
   }
@@ -24367,19 +24584,22 @@ var DEFAULT_ROUTING_CONFIG = {
       investigator: null,
       implementer: { model: "haiku", variant: "standard" },
       reviewer: { model: "sonnet", variant: "standard" },
-      "conflict-resolver": { model: "sonnet", variant: "standard" }
+      "conflict-resolver": { model: "sonnet", variant: "standard" },
+      "slice-executor": { model: "haiku", variant: "standard" }
     },
     standard: {
       investigator: { model: "haiku", variant: "standard" },
       implementer: { model: "sonnet", variant: "standard" },
       reviewer: { model: "opus", variant: "standard" },
-      "conflict-resolver": { model: "opus", variant: "standard" }
+      "conflict-resolver": { model: "opus", variant: "standard" },
+      "slice-executor": { model: "sonnet", variant: "standard" }
     },
     complex: {
       investigator: { model: "opus", variant: "deep" },
       implementer: { model: "opus", variant: "deep" },
       reviewer: { model: "opus", variant: "deep" },
-      "conflict-resolver": { model: "opus", variant: "deep" }
+      "conflict-resolver": { model: "opus", variant: "deep" },
+      "slice-executor": { model: "opus", variant: "deep" }
     }
   },
   labels: {
@@ -24439,10 +24659,22 @@ var bootstrapConfigOutputSchema = external_exports.object({
     "Cleaned, human-readable failure description. Present when status='error'."
   ),
   warnings: external_exports.array(external_exports.string()).optional().describe(
-    "Advisory warnings about the bootstrapped configuration. Non-empty only when status='ok' and the freshly-written commands.json is empty ({}) \u2014 meaning no recognized project type was detected and the capability gates (run_tests, run_build, etc.) will report 'not-configured', allowing a slice to merge green with no verification. Empty array when the written commands map is non-empty. Present when status='ok'."
+    "Advisory warnings about the bootstrapped configuration. Non-empty exactly when `falseGreenRisk` is true \u2014 see that field. Present when status='ok'."
+  ),
+  capabilities: external_exports.object({
+    tests: external_exports.boolean(),
+    typecheck: external_exports.boolean(),
+    build: external_exports.boolean(),
+    lint: external_exports.boolean(),
+    install: external_exports.boolean()
+  }).optional().describe(
+    "Which capability verbs resolve to a configured command in the FINAL commands.json \u2014 read after this call, whether it just wrote the file or the file was already present. `true` = a command is configured for that verb, so the matching capability tool (run_tests, run_typecheck, run_build, run_lint) will execute it; `false` = that tool reports 'not-configured' \u2014 either the verb is absent or its argv array is empty, which the capability tools treat identically. `install` is the setup verb (run_install), not a capability gate. Present when status='ok'."
+  ),
+  falseGreenRisk: external_exports.boolean().optional().describe(
+    "True exactly when BOTH `capabilities.tests` and `capabilities.build` are false \u2014 the specific conjunction that lets a slice merge green with nothing ever executed. An individual missing verb (`lint`, `typecheck`, `install`) is common and NOT flagged here: many projects legitimately skip a linter or need no install step. This reflects the FINAL commands.json regardless of whether it was freshly written this call or was already on disk \u2014 a stale or hand-authored partial file is exactly as risky as a fresh empty one. Present when status='ok'."
   )
 });
-function firstLine7(message) {
+function firstLine8(message) {
   const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
   return line ?? message.trim();
 }
@@ -24473,7 +24705,7 @@ function resolveContextWindow(input) {
 function buildCommandsConfig(repoRoot) {
   let entries;
   try {
-    entries = fs11.readdirSync(repoRoot);
+    entries = fs12.readdirSync(repoRoot);
   } catch {
     entries = [];
   }
@@ -24483,36 +24715,52 @@ function buildCommandsConfig(repoRoot) {
   return { config: config2, projectType };
 }
 function writeIfAbsent(filePath, content) {
-  if (fs11.existsSync(filePath)) {
+  if (fs12.existsSync(filePath)) {
     return { kind: "already-present" };
   }
   try {
-    fs11.writeFileSync(filePath, content);
+    fs12.writeFileSync(filePath, content);
     return { kind: "written" };
   } catch (err) {
     return {
       kind: "error",
-      message: firstLine7(err instanceof Error ? err.message : String(err))
+      message: firstLine8(err instanceof Error ? err.message : String(err))
     };
   }
+}
+function readExistingCommandsConfig(filePath) {
+  let raw;
+  try {
+    raw = fs12.readFileSync(filePath, "utf8");
+  } catch {
+    return {};
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  const validated = commandsConfigSchema.safeParse(parsed);
+  return validated.success ? validated.data : {};
 }
 function ensureGitignoreEntry(repoRoot) {
   const gitignorePath = path8.join(repoRoot, ".gitignore");
   let existing;
   try {
-    existing = fs11.readFileSync(gitignorePath, "utf8");
+    existing = fs12.readFileSync(gitignorePath, "utf8");
   } catch {
     existing = null;
   }
   if (existing === null) {
     try {
-      fs11.writeFileSync(gitignorePath, `${RUNS_GITIGNORE_LINE}
+      fs12.writeFileSync(gitignorePath, `${RUNS_GITIGNORE_LINE}
 `);
       return { kind: "created-with-line" };
     } catch (err) {
       return {
         kind: "error",
-        message: firstLine7(err instanceof Error ? err.message : String(err))
+        message: firstLine8(err instanceof Error ? err.message : String(err))
       };
     }
   }
@@ -24522,7 +24770,7 @@ function ensureGitignoreEntry(repoRoot) {
   }
   const separator = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
   try {
-    fs11.appendFileSync(
+    fs12.appendFileSync(
       gitignorePath,
       `${separator}${RUNS_GITIGNORE_LINE}
 `
@@ -24531,7 +24779,7 @@ function ensureGitignoreEntry(repoRoot) {
   } catch (err) {
     return {
       kind: "error",
-      message: firstLine7(err instanceof Error ? err.message : String(err))
+      message: firstLine8(err instanceof Error ? err.message : String(err))
     };
   }
 }
@@ -24539,14 +24787,14 @@ function bootstrapConfig(input) {
   const repoRoot = input.repoPath ?? process.cwd();
   const orchestrateDir = path8.join(repoRoot, ".orchestrate");
   const runsDir = path8.join(orchestrateDir, "runs");
-  const runsDirExisted = fs11.existsSync(runsDir);
+  const runsDirExisted = fs12.existsSync(runsDir);
   try {
-    fs11.mkdirSync(runsDir, { recursive: true });
+    fs12.mkdirSync(runsDir, { recursive: true });
   } catch (err) {
     return {
       status: "error",
       errorCode: "WRITE_FAILED",
-      errorMessage: `Failed to create ${runsDir}: ${firstLine7(
+      errorMessage: `Failed to create ${runsDir}: ${firstLine8(
         err instanceof Error ? err.message : String(err)
       )}`
     };
@@ -24638,9 +24886,19 @@ function bootstrapConfig(input) {
       errorMessage: `Failed to update .gitignore: ${gitignoreResult.message}`
     };
   }
-  const commandsMapEmpty = Object.keys(validatedCommands.data).length === 0;
-  const warnings = commandsResult.kind === "written" && commandsMapEmpty ? [
-    "commands.json was written empty ({}): no recognized project type detected. The capability gates run_tests and run_build will report 'not-configured' \u2014 a slice can merge green with no verification. Edit .orchestrate/commands.json to add your project's test and build commands."
+  const finalCommands = commandsResult.kind === "written" ? validatedCommands.data : readExistingCommandsConfig(path8.join(orchestrateDir, "commands.json"));
+  const configured = (argv) => argv !== void 0 && argv.length > 0;
+  const capabilities = {
+    tests: configured(finalCommands.tests),
+    typecheck: configured(finalCommands.typecheck),
+    build: configured(finalCommands.build),
+    lint: configured(finalCommands.lint),
+    install: configured(finalCommands.install)
+  };
+  const falseGreenRisk = !capabilities.tests && !capabilities.build;
+  const commandsMapEmpty = Object.keys(finalCommands).length === 0;
+  const warnings = falseGreenRisk ? [
+    commandsResult.kind === "written" && commandsMapEmpty ? "commands.json was written empty ({}): no recognized project type detected. The capability gates run_tests and run_build will report 'not-configured' \u2014 a slice can merge green with no verification. Edit .orchestrate/commands.json to add your project's test and build commands." : `commands.json has neither \`tests\` nor \`build\` configured (commandsJson: ${commandsResult.kind}). The capability gates run_tests and run_build will report 'not-configured' \u2014 a slice can merge green with no verification. Edit .orchestrate/commands.json to add your project's test and build commands.`
   ] : [];
   return {
     status: "ok",
@@ -24654,6 +24912,8 @@ function bootstrapConfig(input) {
     },
     runsDir: runsDirExisted ? "already-present" : "created",
     gitignore: gitignoreResult.kind,
+    capabilities,
+    falseGreenRisk,
     warnings
   };
 }
@@ -24833,7 +25093,7 @@ async function pushAndVerify(input, opts) {
 }
 
 // src/tools/validate-run-state.ts
-var fs12 = __toESM(require("fs"));
+var fs13 = __toESM(require("fs"));
 var validateRunStateInputSchema = external_exports.object({
   runId: external_exports.string().describe(
     "The orchestration run's id (its YYYYMMDD-HHMMSS timestamp, optionally prefixed `prd<N>-` or `backlog-`). It selects the per-run directory .orchestrate/runs/<runId>/, which holds that run's run-state.json. Required \u2014 every validate call happens after the run has a runId."
@@ -24851,7 +25111,7 @@ var validateRunStateOutputSchema = external_exports.object({
   ),
   errorMessage: external_exports.string().optional().describe("Human-readable failure description. Present when status='invalid'.")
 });
-function firstLine8(message) {
+function firstLine9(message) {
   const line = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
   return line ?? message.trim();
 }
@@ -24867,7 +25127,7 @@ async function validateRunState(input) {
   }
   let raw;
   try {
-    raw = fs12.readFileSync(resolved.paths.runStatePath, "utf8");
+    raw = fs13.readFileSync(resolved.paths.runStatePath, "utf8");
   } catch {
     return {
       status: "invalid",
@@ -24882,7 +25142,7 @@ async function validateRunState(input) {
     return {
       status: "invalid",
       errorCode: "RUN_STATE_INVALID",
-      errorMessage: `run-state.json is not valid JSON: ${firstLine8(
+      errorMessage: `run-state.json is not valid JSON: ${firstLine9(
         err instanceof Error ? err.message : String(err)
       )}`
     };
@@ -24900,7 +25160,7 @@ async function validateRunState(input) {
 }
 
 // src/tools/finalize-slice.ts
-var fs13 = __toESM(require("fs"));
+var fs14 = __toESM(require("fs"));
 var finalizeSliceInputSchema = external_exports.object({
   phase: external_exports.enum(["commit-push", "post-merge"]).describe(
     "Which finalization phase to run. 'commit-push' = \xA73 step 6: stage the named file set, guard an empty changeset, commit (subject + `Closes #<N>`), push-and-verify, and write `subState:'pushed'` on a confirmed landing. 'post-merge' = \xA73 step 9 (the thin tail): write `subState:'merged'`, remove the worktree, then force-reclaim the local slice branch (idempotent). Forge ops and the `pr-open` checkpoint stay in the spine."
@@ -24990,7 +25250,7 @@ function writeSubState(repoPath, runId, sliceId, subState) {
   const statePath = resolved.paths.runStatePath;
   let raw;
   try {
-    raw = fs13.readFileSync(statePath, "utf8");
+    raw = fs14.readFileSync(statePath, "utf8");
   } catch {
     return {
       ok: false,
@@ -25038,7 +25298,7 @@ function writeSubState(repoPath, runId, sliceId, subState) {
   slice.updatedAt = nowIso;
   obj.updatedAt = nowIso;
   try {
-    fs13.writeFileSync(statePath, JSON.stringify(obj, null, 2), "utf8");
+    fs14.writeFileSync(statePath, JSON.stringify(obj, null, 2), "utf8");
     return { ok: true };
   } catch (err) {
     return {
@@ -25363,9 +25623,11 @@ var runWaveInputSchema = external_exports.object({
     "refresh-base",
     "select-processable",
     "reverify-slice",
-    "integration-gate"
+    "integration-gate",
+    "plan-wave-width",
+    "classify-spawn-outcome"
   ]).describe(
-    "Which bracketed wave operation to run. 'refresh-base' (\xA72 step 1): fast-forward the local umbrella ref to its remote tip, or report `diverged` when that is not a fast-forward. 'select-processable' (\xA72 step 2): gate one slice on its in-partition + out-of-partition blocker states (passed in), returning `processable` or `skip`. 'reverify-slice' (\xA72 step 4 inner re-verify): merge the umbrella into the slice worktree and run the two correctness verbs, returning `passed`/`failed`/`conflict` (or `skipped-first-merge` for the first merged slice). 'integration-gate' (\xA72 step 4a): run the per-wave integration suite, returning `proceed`/`halt`/`tolerate`."
+    "Which bracketed wave operation to run. 'refresh-base' (\xA72 step 1): fast-forward the local umbrella ref to its remote tip, or report `diverged` when that is not a fast-forward. 'select-processable' (\xA72 step 2): gate one slice on its in-partition + out-of-partition blocker states (passed in), returning `processable` or `skip`. 'reverify-slice' (\xA72 step 4 inner re-verify): merge the umbrella into the slice worktree and run the two correctness verbs, returning `passed`/`failed`/`conflict` (or `skipped-first-merge` for the first merged slice). 'integration-gate' (\xA72 step 4a): run the per-wave integration suite, returning `proceed`/`halt`/`tolerate`. 'plan-wave-width' (\xA72 step 3): cap how many processable slices may be in flight at once against the concurrent-subagent limit, returning `width-planned` with `waveWidth` + `deferredCount`. 'classify-spawn-outcome' (\xA72 step 3): classify an observed spawn failure as `backpressure` (retry-later, the slice is fine) or `spawn-error`."
   ),
   repoPath: external_exports.string().optional().describe(
     "The directory the operation runs in. For 'refresh-base' it is the main repo root holding the local umbrella ref. For 'reverify-slice' and 'integration-gate' it is the slice/deferred WORKTREE the merge and the capability commands run against \u2014 the same `repoPath` the run_* capability tools take (config is resolved from the main root, the command execs here). Unused by 'select-processable' (pure)."
@@ -25384,11 +25646,20 @@ var runWaveInputSchema = external_exports.object({
   ),
   outOfPartitionBlockers: external_exports.array(outOfPartitionBlockerSchema).optional().describe(
     "'select-processable' only: the dependent slice's blockers that are NOT slices in this run's partition, each with the tracker state the orchestrator resolved and passed in (ADR-0008). The slice is processable only when every one is `CLOSED`. Pass [] when the slice has no out-of-partition blockers."
+  ),
+  processableCount: external_exports.number().int().positive().optional().describe(
+    "'plan-wave-width' only: how many slices in this wave passed the 'select-processable' gate. Required for that operation."
+  ),
+  concurrencyLimit: external_exports.number().int().positive().optional().default(20).describe(
+    "'plan-wave-width' only: how many subagents may run CONCURRENTLY in this session. Defaults to 20 \u2014 the platform's own default, which `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` changes. Pass the raised value when that variable is set; the plugin cannot read it (it works within the limit, it never sets it)."
+  ),
+  spawnFailureText: external_exports.string().optional().describe(
+    "'classify-spawn-outcome' only: the verbatim failure text the orchestrator got back when a spawn was refused. This tool never observes a spawn itself \u2014 the orchestrator makes every Agent call, so it passes in what it saw (the same ADR-0008 posture as 'select-processable'). Required for that operation."
   )
 });
 var runWaveOutputSchema = external_exports.object({
   status: external_exports.enum(["ok", "failed"]).describe(
-    "Outcome discriminant. 'ok' = the operation reached a non-failure verdict (refreshed | processable | skip | skipped-first-merge | passed | proceed | tolerate); 'failed' = a blocking verdict or error (diverged | failed | conflict | halt | error). The `verdict` field carries the specific outcome."
+    "Outcome discriminant. 'ok' = the operation reached a non-failure verdict (refreshed | processable | skip | skipped-first-merge | passed | proceed | tolerate | width-planned | backpressure); 'failed' = a blocking verdict or error (diverged | failed | conflict | halt | spawn-error | error). `backpressure` is deliberately on the 'ok' side: a slice refused for a platform limit has nothing wrong with it. The `verdict` field carries the specific outcome."
   ),
   verdict: external_exports.enum([
     "refreshed",
@@ -25402,9 +25673,12 @@ var runWaveOutputSchema = external_exports.object({
     "proceed",
     "halt",
     "tolerate",
+    "width-planned",
+    "backpressure",
+    "spawn-error",
     "error"
   ]).describe(
-    "The operation's specific outcome. 'refresh-base' \u2192 `refreshed` (fast-forwarded) | `diverged` (not a fast-forward \u2014 the ref is left untouched). 'select-processable' \u2192 `processable` | `skip` (see `blockerId`). 'reverify-slice' \u2192 `skipped-first-merge` | `passed` | `failed` (see `which`) | `conflict` (the merge left an unmerged index, flagged not resolved). 'integration-gate' \u2192 `proceed` | `halt` | `tolerate` (no integration command configured). `error` = a git or input failure (see `errorCode`)."
+    "The operation's specific outcome. 'refresh-base' \u2192 `refreshed` (fast-forwarded) | `diverged` (not a fast-forward \u2014 the ref is left untouched). 'select-processable' \u2192 `processable` | `skip` (see `blockerId`). 'reverify-slice' \u2192 `skipped-first-merge` | `passed` | `failed` (see `which`) | `conflict` (the merge left an unmerged index, flagged not resolved). 'integration-gate' \u2192 `proceed` | `halt` | `tolerate` (no integration command configured). 'plan-wave-width' \u2192 `width-planned` (see `waveWidth` + `deferredCount`). 'classify-spawn-outcome' \u2192 `backpressure` (the concurrent-subagent limit \u2014 requeue the slice unchanged, never fail it) | `spawn-error` (anything else, including a spent session spawn budget; see `limitSignal`). `error` = a git or input failure (see `errorCode`)."
   ),
   sha: external_exports.string().optional().describe(
     "'refresh-base' `refreshed`: the umbrella SHA the local ref now points at (the fetched remote tip)."
@@ -25415,13 +25689,30 @@ var runWaveOutputSchema = external_exports.object({
   which: external_exports.enum(["tests", "build"]).optional().describe(
     "'reverify-slice' `failed`: which correctness verb failed after the umbrella was merged into the worktree."
   ),
+  waveWidth: external_exports.number().int().optional().describe(
+    "'plan-wave-width' `width-planned`: how many of this wave's processable slices may be in flight at once \u2014 `min(processableCount, floor(concurrencyLimit / 2))`, floored at 1."
+  ),
+  deferredCount: external_exports.number().int().optional().describe(
+    "'plan-wave-width' `width-planned`: how many processable slices the cap defers to a later turn of the wave \u2014 `processableCount - waveWidth`. A deferred slice stays `pending` in the wave's queue; it is NOT skipped and NOT failed."
+  ),
+  limitSignal: external_exports.enum([
+    "concurrent-subagent-limit",
+    "session-spawn-limit",
+    "unrecognized"
+  ]).optional().describe(
+    "'classify-spawn-outcome': which documented platform signal the failure text matched. 'concurrent-subagent-limit' = transient backpressure, a slot frees and the slice is re-attempted. 'session-spawn-limit' = the session's total spawn budget is SPENT \u2014 unrecoverable in-session, and the reason the two limits must never be conflated (requeueing on this one would loop forever). 'unrecognized' = no documented literal matched, classified conservatively as a spawn error."
+  ),
   errorCode: external_exports.enum(["INVALID_INPUT", "GIT_ERROR"]).optional().describe(
     "Machine-readable failure category for `verdict: 'error'`. 'INVALID_INPUT' = a ref/remote would be parsed by git as an option flag, or a required field for the operation is missing; 'GIT_ERROR' = a git command failed for a reason other than divergence or a merge conflict (e.g. an unreachable remote, a missing local umbrella ref)."
   ),
   errorMessage: external_exports.string().optional().describe(
-    "Cleaned, human-readable failure description. Present for `diverged`, `conflict`, `failed`, `halt`, and `error`."
+    "Cleaned, human-readable failure description. Present for `diverged`, `conflict`, `failed`, `halt`, `spawn-error`, and `error` \u2014 and deliberately ABSENT for `backpressure`, which is not a failure."
   )
 });
+var DEFAULT_CONCURRENCY_LIMIT = 20;
+var AGENT_SLOTS_PER_SLICE = 2;
+var CONCURRENT_LIMIT_LITERAL = "concurrent subagent limit reached";
+var SESSION_LIMIT_LITERAL = "subagent spawn limit reached";
 var FETCH_ATTEMPTS = 3;
 var FETCH_BASE_DELAY_MS = 500;
 var FETCH_BACKOFF_FACTOR = 2;
@@ -25437,6 +25728,10 @@ async function runWave(input, opts) {
       return reverifySlice(input, opts);
     case "integration-gate":
       return integrationGate(input);
+    case "plan-wave-width":
+      return planWaveWidth(input);
+    case "classify-spawn-outcome":
+      return classifySpawnOutcome(input);
   }
 }
 async function refreshBase(input, opts) {
@@ -25601,6 +25896,64 @@ async function integrationGate(input) {
         errorMessage: `The per-wave integration suite did not pass (status: ${result.status}) \u2014 halting rather than building the next wave on a broken umbrella.`
       };
   }
+}
+function planWaveWidth(input) {
+  const processableCount = input.processableCount;
+  const concurrencyLimit = input.concurrencyLimit ?? DEFAULT_CONCURRENCY_LIMIT;
+  if (processableCount === void 0 || !Number.isInteger(processableCount) || processableCount < 1) {
+    return failed2(
+      "INVALID_INPUT",
+      "operation 'plan-wave-width' requires a positive integer `processableCount`."
+    );
+  }
+  if (!Number.isInteger(concurrencyLimit) || concurrencyLimit < 1) {
+    return failed2(
+      "INVALID_INPUT",
+      "operation 'plan-wave-width' requires a positive integer `concurrencyLimit`."
+    );
+  }
+  const maxWidth = Math.max(
+    1,
+    Math.floor(concurrencyLimit / AGENT_SLOTS_PER_SLICE)
+  );
+  const waveWidth = Math.min(processableCount, maxWidth);
+  return {
+    status: "ok",
+    verdict: "width-planned",
+    waveWidth,
+    deferredCount: processableCount - waveWidth
+  };
+}
+function classifySpawnOutcome(input) {
+  const text = input.spawnFailureText;
+  if (text === void 0) {
+    return failed2(
+      "INVALID_INPUT",
+      "operation 'classify-spawn-outcome' requires `spawnFailureText`."
+    );
+  }
+  const haystack = text.toLowerCase();
+  if (haystack.includes(CONCURRENT_LIMIT_LITERAL)) {
+    return {
+      status: "ok",
+      verdict: "backpressure",
+      limitSignal: "concurrent-subagent-limit"
+    };
+  }
+  if (haystack.includes(SESSION_LIMIT_LITERAL)) {
+    return {
+      status: "failed",
+      verdict: "spawn-error",
+      limitSignal: "session-spawn-limit",
+      errorMessage: "The session's total subagent spawn budget is spent \u2014 this is NOT backpressure and re-attempting the slice in this session cannot succeed. Hand the run off to a successor session."
+    };
+  }
+  return {
+    status: "failed",
+    verdict: "spawn-error",
+    limitSignal: "unrecognized",
+    errorMessage: `The spawn failure matched no documented platform limit, so it is classified conservatively as a spawn error: ${text}`
+  };
 }
 async function fetchWithRetry(fetchArgs, repoPath, opts) {
   const attempts = opts?.fetchAttempts ?? FETCH_ATTEMPTS;
@@ -26037,7 +26390,7 @@ registerTool(
   "resolve_routing",
   {
     title: "Resolve Complexity Routing",
-    description: "Resolves which model and subagent variant to spawn for each role \u2014 investigator, implementer, reviewer, conflict-resolver \u2014 given an issue's assessed complexity tier. Reads the tier-to-role mapping from .orchestrate/routing.json (supports both v1 and v2 schemas; v1 files are transparently upgraded in memory). Accepts optional `labels` \u2014 the slice issue's GitHub labels \u2014 and applies any configured `route:*` label overrides deterministically. A null investigator means that tier skips the investigation pass. Returns per-role `variant` (not `effort`), the resolved run-wide `continuationBudget`, resolved label fallback specs, and structured label warnings. A same-role label conflict surfaces as a structured `LABEL_CONFLICT` error, never a silent pick. Returns a discriminated `status` of 'ok' or 'error'.",
+    description: "Resolves which model and subagent variant to spawn for each role \u2014 investigator, implementer, reviewer, conflict-resolver, and slice-executor (ADR-0017) \u2014 given an issue's assessed complexity tier. Reads the tier-to-role mapping from .orchestrate/routing.json (supports both v1 and v2 schemas; v1 files are transparently upgraded in memory). A routing.json predating `slice-executor` still resolves: the role defaults to the tier's own `implementer` entry, flagged with a structured warning. Accepts optional `labels` \u2014 the slice issue's GitHub labels \u2014 and applies any configured `route:*` label overrides deterministically. A null investigator means that tier skips the investigation pass. Returns per-role `variant` (not `effort`), the resolved run-wide `continuationBudget`, resolved label fallback specs, and structured label warnings. A same-role label conflict surfaces as a structured `LABEL_CONFLICT` error, never a silent pick. Returns a discriminated `status` of 'ok' or 'error'.",
     inputSchema: resolveRoutingV2InputSchema.shape,
     outputSchema: resolveRoutingV2OutputSchema.shape
   },
@@ -26203,7 +26556,7 @@ registerTool(
   "validate_envelope",
   {
     title: "Validate Subagent Result Envelope",
-    description: "Validates a subagent's result envelope \u2014 the ```orchestrate-envelope fenced JSON block a subagent emits as its final message \u2014 against the defined schema for its role. Returns a discriminated `status`: 'valid' (a well-formed envelope matching the role, with the parsed `envelope`), 'invalid' (an envelope was attempted but is truncated, malformed, or off-schema \u2014 a truncated envelope is ALWAYS invalid, never silently accepted), or 'missing' (no envelope block was found). A failure outcome (implementer 'blocked', reviewer 'failed') must also carry a labelled `rootCause` (verified|hypothesis) or it is reported invalid. An implementer 'incomplete' envelope must carry a non-empty `remainingWork` handoff (the note the orchestrator forwards to the continuation in the same worktree) or it is reported invalid. The orchestrator uses this instead of parsing subagent prose for status or changed files.",
+    description: "Validates a subagent's result envelope \u2014 the ```orchestrate-envelope fenced JSON block a subagent emits as its final message \u2014 against the defined schema for its role. Returns a discriminated `status`: 'valid' (a well-formed envelope matching the role, with the parsed `envelope`), 'invalid' (an envelope was attempted but is truncated, malformed, or off-schema \u2014 a truncated envelope is ALWAYS invalid, never silently accepted), or 'missing' (no envelope block was found). A failure outcome (implementer 'blocked', reviewer 'failed') must also carry a labelled `rootCause` (verified|hypothesis) or it is reported invalid. An implementer 'incomplete' envelope must carry a non-empty `remainingWork` handoff (the note the orchestrator forwards to the continuation in the same worktree) or it is reported invalid. A `slice-executor` envelope (ADR-0017) describes a WHOLE SLICE's outcome rather than one worker's turn, with a `failureClass` drawn from a closed set \u2014 an unrecognized `failureClass` is reported invalid exactly like any other schema mismatch. The orchestrator uses this instead of parsing subagent prose for status or changed files.",
     inputSchema: validateEnvelopeInputSchema.shape,
     outputSchema: validateEnvelopeOutputSchema.shape
   },
@@ -26235,6 +26588,32 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleRecoverChangedFiles
+);
+var handleRecoverSliceProgress = async (input) => {
+  const result = await recoverSliceProgress(input);
+  let text;
+  if (result.status === "ok") {
+    const stage = result.record.lastCompletedStage ?? "none";
+    text = `Recovered the progress record for slice #${input.issue} (last completed stage: ${stage}).`;
+  } else {
+    text = `Slice progress recovery failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text", text }]
+  };
+};
+registerTool(
+  "recover_slice_progress",
+  {
+    title: "Recover a Slice's Progress Record",
+    description: "Reads and validates one slice's progress record at `.orchestrate/runs/<runId>/slice-<issue>-progress.json` \u2014 the resume anchor a slice-executor writes at each completed stage (ADR-0017), carrying the last completed stage, the investigator brief, the continuation count, the worktree fingerprint, and the once-only model-fallback guard. Call it when a slice-executor's result envelope is missing or invalid: the orchestrator recovers the record's contents through this tool INSTEAD of opening the file, so the recovered data is validated and the executor's read boundary stays intact \u2014 the same structured-recovery posture as `recover_changed_files`. The path is derived from `runId` and `issue`; no file path is accepted, so the read can never leave this run's own directory. Reads only; writes nothing. Returns a discriminated `status` of 'ok' (with `record`) or 'error' (with `RUN_ID_INVALID`, `ISSUE_INVALID`, `PROGRESS_NOT_FOUND` \u2014 no record written yet \u2014 or `PROGRESS_INVALID` \u2014 the file exists but is malformed JSON, fails the schema, or names a different run or slice).",
+    inputSchema: recoverSliceProgressInputSchema.shape,
+    outputSchema: recoverSliceProgressOutputSchema.shape
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRecoverSliceProgress
 );
 var handleCleanRuns = async (input) => {
   const result = await cleanRuns(input);
@@ -26349,7 +26728,7 @@ registerTool(
   "bootstrap_config",
   {
     title: "Bootstrap Orchestrate Configuration",
-    description: "Sets up a repository's .orchestrate/ configuration for a first-ever orchestrate run. Detects the project type and writes a project-aware commands.json (with a PM-aware mutating `install` command for npm/cargo/python projects \u2014 keyed on the JS lockfile for the npm ecosystem \u2014 empty for an unrecognized project), writes routing.json from the shipped defaults, and writes handoff.json with a context-window size derived from the running model \u2014 pass the model id (or an explicit contextWindowTokens) as input; the MCP process cannot see the calling LLM's model. An unknown or absent model falls back to 200000. Creates .orchestrate/runs/ and idempotently adds it to the repository's .gitignore. Every step is idempotent: an existing config file is never overwritten and the .gitignore line is never duplicated. Returns a discriminated `status` of 'ok' or 'error'.",
+    description: "Completes a repository's .orchestrate/ configuration \u2014 writes whichever of its three files are missing. Call this unconditionally at the start of every run, never gated on whether .orchestrate/ already exists: a directory that already has some files (e.g. an earlier run's routing.json and handoff.json but no commands.json) is exactly the case this closes, and calling it on an already-complete repository is a safe no-op. Detects the project type and writes a project-aware commands.json (with a PM-aware mutating `install` command for npm/cargo/python projects \u2014 keyed on the JS lockfile for the npm ecosystem \u2014 empty for an unrecognized project), writes routing.json from the shipped defaults, and writes handoff.json with a context-window size derived from the running model \u2014 pass the model id (or an explicit contextWindowTokens) as input; the MCP process cannot see the calling LLM's model. An unknown or absent model falls back to 200000. Creates .orchestrate/runs/ and idempotently adds it to the repository's .gitignore. Every step is idempotent: an existing config file is never overwritten and the .gitignore line is never duplicated. Reports config completeness read from the FINAL commands.json regardless of whether this call wrote it: `capabilities` names which of tests/typecheck/build/lint/install resolve to a command, and `falseGreenRisk` is true exactly when both `tests` and `build` are unconfigured \u2014 the conjunction that lets a slice merge green with nothing executed. Treat a true `falseGreenRisk` as a loud, blocking finding: report it and stop before starting the run. Returns a discriminated `status` of 'ok' or 'error'.",
     inputSchema: bootstrapConfigInputSchema.shape,
     outputSchema: bootstrapConfigOutputSchema.shape
   },
@@ -26499,6 +26878,15 @@ var handleRunWave = async (input) => {
     case "tolerate":
       text = `Integration gate tolerated \u2014 no integration suite configured.`;
       break;
+    case "width-planned":
+      text = `Wave width planned \u2014 run ${result.waveWidth} slice(s) concurrently, deferring ${result.deferredCount} to a later turn of this wave.`;
+      break;
+    case "backpressure":
+      text = `Spawn refused by the concurrent-subagent limit \u2014 BACKPRESSURE, not a slice failure. Return the slice to the wave's processable queue with its state unchanged and re-attempt it when a slot frees.`;
+      break;
+    case "spawn-error":
+      text = `Spawn failed [${result.limitSignal}]: ${result.errorMessage}`;
+      break;
     case "error":
       text = `run_wave failed [${result.errorCode}]: ${result.errorMessage}`;
       break;
@@ -26512,7 +26900,7 @@ registerTool(
   "run_wave",
   {
     title: "Run a Bracketed Deterministic Wave Operation",
-    description: "A family of bracketed deterministic wave-loop operations behind one tool, selected by the `operation` discriminant, so only the higher-level policy that decides how a wave processes its slices stays the orchestrator's concern. 'refresh-base' (\xA72 step 1): fetch the remote umbrella and fast-forward the local umbrella ref to it (FETCH_HEAD + a `git merge-base` ancestor proof before the ref moves), or report `diverged` \u2014 distinct from a generic git error \u2014 when that is not a fast-forward, leaving the ref untouched. 'select-processable' (\xA72 step 2): gate one slice on its in-partition (must be `passed`) and out-of-partition (must be `CLOSED`) blocker states \u2014 consumed from STATE PASSED IN, never read with `gh` (ADR-0008) \u2014 returning `processable` or `skip{blockerId}`. 'reverify-slice' (\xA72 step 4 inner re-verify): a no-op (`skipped-first-merge`) for the first merged slice of a wave; otherwise fetch + merge the umbrella into the slice worktree, then run the two correctness verbs (tests + build), returning `passed`, `failed{which}`, or `conflict` (the unmerged index is left IN PLACE and only flagged \u2014 resolution is a downstream concern). 'integration-gate' (\xA72 step 4a): run the per-wave integration suite, mapping `proceed` (passed), `halt` (failed/error), or `tolerate` (not configured). All loop state (umbrella ref, remote, first-merged flag) is PASSED IN, never inferred. Git-only via the hardened exec seam, run-scoped (mutates nothing outside the passed worktree), and never throws \u2014 every failure mode is a structured `verdict`.",
+    description: "A family of bracketed deterministic wave-loop operations behind one tool, selected by the `operation` discriminant, so only the higher-level policy that decides how a wave processes its slices stays the orchestrator's concern. 'refresh-base' (\xA72 step 1): fetch the remote umbrella and fast-forward the local umbrella ref to it (FETCH_HEAD + a `git merge-base` ancestor proof before the ref moves), or report `diverged` \u2014 distinct from a generic git error \u2014 when that is not a fast-forward, leaving the ref untouched. 'select-processable' (\xA72 step 2): gate one slice on its in-partition (must be `passed`) and out-of-partition (must be `CLOSED`) blocker states \u2014 consumed from STATE PASSED IN, never read with `gh` (ADR-0008) \u2014 returning `processable` or `skip{blockerId}`. 'reverify-slice' (\xA72 step 4 inner re-verify): a no-op (`skipped-first-merge`) for the first merged slice of a wave; otherwise fetch + merge the umbrella into the slice worktree, then run the two correctness verbs (tests + build), returning `passed`, `failed{which}`, or `conflict` (the unmerged index is left IN PLACE and only flagged \u2014 resolution is a downstream concern). 'integration-gate' (\xA72 step 4a): run the per-wave integration suite, mapping `proceed` (passed), `halt` (failed/error), or `tolerate` (not configured). 'plan-wave-width' (\xA72 step 3): cap how many processable slices may be in flight at once against the session's concurrent-subagent limit (default 20) \u2014 each in-flight slice occupies TWO live agent slots (its executor plus one worker), so the width is half the limit floored at 1, and the remainder is `deferredCount`, DEFERRED (state unchanged) rather than skipped. 'classify-spawn-outcome' (\xA72 step 3): classify an observed spawn failure as `backpressure` (the concurrent-subagent limit \u2014 `status: 'ok'`, no error message, the slice is fine and returns to the queue) or `spawn-error`, keeping a SPENT session spawn budget distinguishable via `limitSignal` and defaulting an unrecognized failure to the conservative class. All loop state (umbrella ref, remote, first-merged flag) is PASSED IN, never inferred. Git-only via the hardened exec seam, run-scoped (mutates nothing outside the passed worktree), and never throws \u2014 every failure mode is a structured `verdict`.",
     inputSchema: runWaveInputSchema.shape,
     outputSchema: runWaveOutputSchema.shape
   },

@@ -513,8 +513,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path4, errorMaps, issueData } = params;
-  const fullPath = [...path4, ...issueData.path || []];
+  const { data, path: path5, errorMaps, issueData } = params;
+  const fullPath = [...path5, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -630,11 +630,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path4, key) {
+  constructor(parent, value, path5, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path4;
+    this._path = path5;
     this._key = key;
   }
   get path() {
@@ -4083,6 +4083,12 @@ var watchdogConfigSchema = external_exports.object({
   ),
   contextWindowTokens: external_exports.number().int().positive().default(2e5).describe(
     "Total context window the percentage is measured against. Default 200000 \u2014 raise to 1000000 for a 1M-context session."
+  ),
+  spawnThresholdPercent: external_exports.number().min(1).max(100).default(40).describe(
+    "Raise the handoff flag once the run's recorded subagent spawns reach this percentage of `sessionSpawnBudget`. Default 40, matching `thresholdPercent` \u2014 at roughly five spawns per slice a long run can spend its spawn budget well before it fills its context window, so this threshold must be as conservative as the token one."
+  ),
+  sessionSpawnBudget: external_exports.number().int().positive().default(200).describe(
+    "Total subagent spawns the session may make, the figure `spawnThresholdPercent` is measured against. Default 200 \u2014 the platform's own per-session default, which `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` changes. Nested and background subagents count toward it, and a finished subagent still counts, so the budget is cumulative and never decreases."
   )
 });
 var terminalEntrySchema = external_exports.object({
@@ -4181,6 +4187,7 @@ function resolveRunDir(repoPath, runId) {
       runDir,
       runStatePath: path2.join(runDir, "run-state.json"),
       contextFlagPath: path2.join(runDir, "context-flag.json"),
+      spawnLogPath: path2.join(runDir, "spawn-log.jsonl"),
       dashboardPath: path2.join(runDir, "dashboard.html"),
       graphPath: path2.join(runDir, "graph.html"),
       reportPath: path2.join(runDir, "report.html")
@@ -4220,14 +4227,44 @@ function parseLatestUsage(transcriptText) {
 function contextTokens(usage) {
   return usage.inputTokens + usage.cacheCreationInputTokens + usage.cacheReadInputTokens;
 }
+function lineSessionId(line) {
+  try {
+    const entry = JSON.parse(line);
+    if (typeof entry !== "object" || entry === null) return null;
+    const session = entry.session;
+    return typeof session === "string" && session.length > 0 ? session : null;
+  } catch {
+    return null;
+  }
+}
+function countSpawns(logText, sessionId) {
+  const asking = sessionId !== void 0 && sessionId.length > 0 ? sessionId : null;
+  let count = 0;
+  for (const line of logText.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    const tag = lineSessionId(trimmed);
+    if (asking !== null && tag !== null && tag !== asking) continue;
+    count++;
+  }
+  return count;
+}
 function evaluateWatchdog(args) {
-  const ratio = args.usedTokens / args.contextWindowTokens * 100;
+  const tokenRatio = args.usedTokens === null ? null : args.usedTokens / args.contextWindowTokens * 100;
+  const spawnRatio = args.spawnCount / args.sessionSpawnBudget * 100;
+  const tokensOver = tokenRatio !== null && tokenRatio >= args.thresholdPercent;
+  const spawnsOver = spawnRatio >= args.spawnThresholdPercent;
   return {
     usedTokens: args.usedTokens,
     contextWindowTokens: args.contextWindowTokens,
     thresholdPercent: args.thresholdPercent,
-    usagePercent: Math.round(ratio * 10) / 10,
-    overThreshold: ratio >= args.thresholdPercent
+    usagePercent: tokenRatio === null ? null : Math.round(tokenRatio * 10) / 10,
+    spawnCount: args.spawnCount,
+    sessionSpawnBudget: args.sessionSpawnBudget,
+    spawnThresholdPercent: args.spawnThresholdPercent,
+    spawnPercent: Math.round(spawnRatio * 10) / 10,
+    overThreshold: tokensOver || spawnsOver,
+    trigger: tokensOver ? "tokens" : spawnsOver ? "spawns" : null
   };
 }
 var TRANSCRIPT_TAIL_BYTES = 1024 * 1024;
@@ -4251,21 +4288,110 @@ function readTranscriptText(transcriptPath) {
     fs2.closeSync(fd);
   }
 }
+var SPAWN_TOOL_NAME = "Agent";
+function recordSpawn(spawnLogPath, sessionId) {
+  try {
+    fs2.mkdirSync(path3.dirname(spawnLogPath), { recursive: true });
+    fs2.appendFileSync(
+      spawnLogPath,
+      JSON.stringify({
+        at: (/* @__PURE__ */ new Date()).toISOString(),
+        tool: SPAWN_TOOL_NAME,
+        session: sessionId ?? null
+      }) + "\n"
+    );
+  } catch {
+  }
+}
+function readSpawnCount(spawnLogPath, sessionId) {
+  try {
+    return countSpawns(fs2.readFileSync(spawnLogPath, "utf8"), sessionId);
+  } catch {
+    return 0;
+  }
+}
+function runWatchdog(input) {
+  const resolved = resolveRunDir(input.cwd, input.runId);
+  if (!resolved.ok) {
+    return { acted: false, flagRaised: false };
+  }
+  const {
+    runStatePath,
+    contextFlagPath: flagPath,
+    spawnLogPath
+  } = resolved.paths;
+  let runState;
+  try {
+    runState = JSON.parse(fs2.readFileSync(runStatePath, "utf8"));
+  } catch {
+    return { acted: false, flagRaised: false };
+  }
+  if (typeof runState !== "object" || runState === null || runState.status !== "in-progress") {
+    return { acted: false, flagRaised: false };
+  }
+  if (input.toolName === SPAWN_TOOL_NAME) {
+    recordSpawn(spawnLogPath, input.sessionId);
+  }
+  let usedTokens = null;
+  if (input.transcriptPath) {
+    try {
+      const usage = parseLatestUsage(readTranscriptText(input.transcriptPath));
+      if (usage) usedTokens = contextTokens(usage);
+    } catch {
+      usedTokens = null;
+    }
+  }
+  const { config } = loadHandoffConfig(input.cwd);
+  const evaluation = evaluateWatchdog({
+    usedTokens,
+    contextWindowTokens: config.watchdog.contextWindowTokens,
+    thresholdPercent: config.watchdog.thresholdPercent,
+    spawnCount: readSpawnCount(spawnLogPath, input.sessionId),
+    sessionSpawnBudget: config.watchdog.sessionSpawnBudget,
+    spawnThresholdPercent: config.watchdog.spawnThresholdPercent
+  });
+  if (!evaluation.overThreshold || evaluation.trigger === null || fs2.existsSync(flagPath)) {
+    return { acted: true, flagRaised: false, flagPath, evaluation };
+  }
+  const flag = {
+    raisedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    trigger: evaluation.trigger,
+    usedTokens: evaluation.usedTokens,
+    contextWindowTokens: evaluation.contextWindowTokens,
+    thresholdPercent: evaluation.thresholdPercent,
+    usagePercent: evaluation.usagePercent,
+    spawnCount: evaluation.spawnCount,
+    sessionSpawnBudget: evaluation.sessionSpawnBudget,
+    spawnThresholdPercent: evaluation.spawnThresholdPercent,
+    spawnPercent: evaluation.spawnPercent
+  };
+  try {
+    fs2.mkdirSync(path3.dirname(flagPath), { recursive: true });
+    fs2.writeFileSync(flagPath, JSON.stringify(flag, null, 2));
+  } catch {
+    return { acted: true, flagRaised: false, flagPath, evaluation };
+  }
+  return { acted: true, flagRaised: true, flagPath, evaluation };
+}
+
+// src/hooks/run-discovery.ts
+var path4 = __toESM(require("path"));
+var fs3 = __toESM(require("fs"));
 function scanInProgressRuns(cwd) {
-  const runsDir = path3.join(cwd, ".orchestrate", "runs");
+  const runsDir = path4.join(cwd, ".orchestrate", "runs");
   let entries;
   try {
-    entries = fs2.readdirSync(runsDir, { withFileTypes: true });
+    entries = fs3.readdirSync(runsDir, { withFileTypes: true });
   } catch {
     return [];
   }
   const runs = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const statePath = path3.join(runsDir, entry.name, "run-state.json");
+    const statePath = path4.join(runsDir, entry.name, "run-state.json");
     let runState;
     try {
-      runState = JSON.parse(fs2.readFileSync(statePath, "utf8"));
+      runState = JSON.parse(fs3.readFileSync(statePath, "utf8"));
     } catch {
       continue;
     }
@@ -4290,54 +4416,6 @@ function findActiveRunForSession(cwd, sessionId) {
   if (runs.length === 1) return runs[0].runId;
   return null;
 }
-function runWatchdog(input) {
-  const resolved = resolveRunDir(input.cwd, input.runId);
-  if (!resolved.ok) {
-    return { acted: false, flagRaised: false };
-  }
-  const { runStatePath, contextFlagPath: flagPath } = resolved.paths;
-  let runState;
-  try {
-    runState = JSON.parse(fs2.readFileSync(runStatePath, "utf8"));
-  } catch {
-    return { acted: false, flagRaised: false };
-  }
-  if (typeof runState !== "object" || runState === null || runState.status !== "in-progress") {
-    return { acted: false, flagRaised: false };
-  }
-  if (!input.transcriptPath) return { acted: true, flagRaised: false, flagPath };
-  let transcriptText;
-  try {
-    transcriptText = readTranscriptText(input.transcriptPath);
-  } catch {
-    return { acted: true, flagRaised: false, flagPath };
-  }
-  const usage = parseLatestUsage(transcriptText);
-  if (!usage) return { acted: true, flagRaised: false, flagPath };
-  const { config } = loadHandoffConfig(input.cwd);
-  const evaluation = evaluateWatchdog({
-    usedTokens: contextTokens(usage),
-    contextWindowTokens: config.watchdog.contextWindowTokens,
-    thresholdPercent: config.watchdog.thresholdPercent
-  });
-  if (!evaluation.overThreshold || fs2.existsSync(flagPath)) {
-    return { acted: true, flagRaised: false, flagPath, evaluation };
-  }
-  const flag = {
-    raisedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    usedTokens: evaluation.usedTokens,
-    contextWindowTokens: evaluation.contextWindowTokens,
-    thresholdPercent: evaluation.thresholdPercent,
-    usagePercent: evaluation.usagePercent
-  };
-  try {
-    fs2.mkdirSync(path3.dirname(flagPath), { recursive: true });
-    fs2.writeFileSync(flagPath, JSON.stringify(flag, null, 2));
-  } catch {
-    return { acted: true, flagRaised: false, flagPath, evaluation };
-  }
-  return { acted: true, flagRaised: true, flagPath, evaluation };
-}
 
 // src/hooks/context-watchdog-cli.ts
 function readStdin() {
@@ -4361,7 +4439,7 @@ async function main() {
   try {
     const event = raw ? JSON.parse(raw) : {};
     const cwd = typeof event.cwd === "string" ? event.cwd : process.cwd();
-    const sessionId = typeof event.session_id === "string" ? event.session_id : void 0;
+    const sessionId = typeof event.session_id === "string" && event.session_id.length > 0 ? event.session_id : void 0;
     const runId = findActiveRunForSession(cwd, sessionId);
     if (runId === null) {
       process.exit(0);
@@ -4369,13 +4447,19 @@ async function main() {
     const result = runWatchdog({
       transcriptPath: typeof event.transcript_path === "string" ? event.transcript_path : void 0,
       cwd,
-      runId
+      runId,
+      toolName: typeof event.tool_name === "string" ? event.tool_name : void 0,
+      // The same `session_id` that discovery matched on — here it charges the
+      // spawn to the session whose budget it actually spends, so a successor
+      // session inheriting this run's spawn log starts from its own budget.
+      sessionId
     });
     if (result.flagRaised && result.evaluation) {
       const e = result.evaluation;
+      const reason = e.trigger === "spawns" ? `${e.spawnCount} of ${e.sessionSpawnBudget} session subagent spawns used (${e.spawnPercent}%, threshold ${e.spawnThresholdPercent}%)` : `context at ${e.usagePercent}% of ${e.contextWindowTokens} tokens (threshold ${e.thresholdPercent}%)`;
       process.stdout.write(
         JSON.stringify({
-          systemMessage: `orchestrate context-watchdog: context at ${e.usagePercent}% of ${e.contextWindowTokens} tokens (threshold ${e.thresholdPercent}%). Handoff flag raised \u2014 the run will hand off to a successor session after the current slice finishes.`
+          systemMessage: `orchestrate context-watchdog: ${reason}. Handoff flag raised \u2014 the run will hand off to a successor session after the current slice finishes.`
         })
       );
     }

@@ -90,7 +90,9 @@ is what `/orchestrate clean` (section 0) runs on demand.
 
 Every run keeps its ephemeral state in a **per-run directory**,
 `.orchestrate/runs/<runId>/`, holding that run's `run-state.json`,
-`context-flag.json`, and rendered HTML artifacts. The committed config files
+`context-flag.json`, `spawn-log.jsonl` (the watchdog's spawn record), one
+`slice-<issue>-progress.json` slice progress record per slice, and rendered HTML
+artifacts. The committed config files
 (`commands.json`, `routing.json`, `handoff.json`) stay flat at the
 `.orchestrate/` top level. `routing.json` carries both per-tier subagent routing
 and run-wide run policy (the optional `intraWaveConcurrency` knob — see section
@@ -180,9 +182,10 @@ prefixes are the only match keys. Then act on the count of matches:
 
 1. Resolve the run context:
    - Repository root: `git rev-parse --show-toplevel`.
-   - **Bootstrap the configuration if this is a first-ever run** with the
-     `bootstrap_config` MCP tool — see `references/prerequisites.md` for the
-     full bootstrap detail.
+   - **Always bootstrap the configuration** with the `bootstrap_config` MCP
+     tool — never gate the call on whether `.orchestrate/` already exists;
+     see `references/prerequisites.md` for the full bootstrap detail and the
+     `falseGreenRisk` stop condition.
    - Fetch so branch operations use current refs: `git fetch origin`.
    - Confirm the integration base: `git rev-parse --verify origin/development`.
    - Generate a `runId` by joining the invocation prefix to the current

@@ -90,6 +90,13 @@ import {
   type RecoverChangedFilesOutput,
 } from "./tools/recover-changed-files.js";
 import {
+  recoverSliceProgress,
+  recoverSliceProgressInputSchema,
+  recoverSliceProgressOutputSchema,
+  type RecoverSliceProgressInput,
+  type RecoverSliceProgressOutput,
+} from "./tools/recover-slice-progress.js";
+import {
   cleanRuns,
   cleanRunsInputSchema,
   cleanRunsOutputSchema,
@@ -507,17 +514,21 @@ registerTool(
     title: "Resolve Complexity Routing",
     description:
       "Resolves which model and subagent variant to spawn for each role — " +
-      "investigator, implementer, reviewer, conflict-resolver — given an " +
-      "issue's assessed complexity tier. Reads the tier-to-role mapping from " +
+      "investigator, implementer, reviewer, conflict-resolver, and " +
+      "slice-executor (ADR-0017) — given an issue's assessed " +
+      "complexity tier. Reads the tier-to-role mapping from " +
       ".orchestrate/routing.json (supports both v1 and v2 schemas; v1 files " +
-      "are transparently upgraded in memory). Accepts optional `labels` — the " +
-      "slice issue's GitHub labels — and applies any configured `route:*` " +
-      "label overrides deterministically. A null investigator means that tier " +
-      "skips the investigation pass. Returns per-role `variant` (not `effort`), " +
-      "the resolved run-wide `continuationBudget`, resolved label fallback " +
-      "specs, and structured label warnings. A same-role label conflict " +
-      "surfaces as a structured `LABEL_CONFLICT` error, never a silent pick. " +
-      "Returns a discriminated `status` of 'ok' or 'error'.",
+      "are transparently upgraded in memory). A routing.json predating " +
+      "`slice-executor` still resolves: the role defaults to the tier's own " +
+      "`implementer` entry, flagged with a structured warning. Accepts " +
+      "optional `labels` — the slice issue's GitHub labels — and applies any " +
+      "configured `route:*` label overrides deterministically. A null " +
+      "investigator means that tier skips the investigation pass. Returns " +
+      "per-role `variant` (not `effort`), the resolved run-wide " +
+      "`continuationBudget`, resolved label fallback specs, and structured " +
+      "label warnings. A same-role label conflict surfaces as a structured " +
+      "`LABEL_CONFLICT` error, never a silent pick. Returns a discriminated " +
+      "`status` of 'ok' or 'error'.",
     inputSchema: resolveRoutingV2InputSchema.shape,
     outputSchema: resolveRoutingV2OutputSchema.shape,
   },
@@ -797,7 +808,11 @@ registerTool(
       "`rootCause` (verified|hypothesis) or it is reported invalid. An " +
       "implementer 'incomplete' envelope must carry a non-empty `remainingWork` " +
       "handoff (the note the orchestrator forwards to the continuation in the " +
-      "same worktree) or it is reported invalid. The " +
+      "same worktree) or it is reported invalid. A `slice-executor` envelope " +
+      "(ADR-0017) describes a WHOLE SLICE's outcome rather than one worker's " +
+      "turn, with a `failureClass` drawn from a closed set — an unrecognized " +
+      "`failureClass` is reported invalid exactly like any other schema " +
+      "mismatch. The " +
       "orchestrator uses this instead of parsing subagent prose for status or " +
       "changed files.",
     inputSchema: validateEnvelopeInputSchema.shape,
@@ -845,6 +860,55 @@ registerTool(
   // Handler is typed against its concrete input/output contract;
   // widen to the flat SDK-boundary `AnyToolHandler` for registration.
   handleRecoverChangedFiles as unknown as AnyToolHandler
+);
+
+// ─── recover_slice_progress ───────────────────────────────────────────────────
+
+const handleRecoverSliceProgress: ToolHandler<
+  RecoverSliceProgressInput,
+  RecoverSliceProgressOutput
+> = async (input) => {
+  const result = await recoverSliceProgress(input);
+  let text: string;
+  if (result.status === "ok") {
+    const stage = result.record!.lastCompletedStage ?? "none";
+    text = `Recovered the progress record for slice #${input.issue} (last completed stage: ${stage}).`;
+  } else {
+    text = `Slice progress recovery failed [${result.errorCode}]: ${result.errorMessage}`;
+  }
+  return {
+    structuredContent: result,
+    content: [{ type: "text" as const, text }],
+  };
+};
+
+registerTool(
+  "recover_slice_progress",
+  {
+    title: "Recover a Slice's Progress Record",
+    description:
+      "Reads and validates one slice's progress record at " +
+      "`.orchestrate/runs/<runId>/slice-<issue>-progress.json` — the resume " +
+      "anchor a slice-executor writes at each completed stage (ADR-0017), " +
+      "carrying the last completed stage, the investigator brief, the " +
+      "continuation count, the worktree fingerprint, and the once-only " +
+      "model-fallback guard. Call it when a slice-executor's result envelope " +
+      "is missing or invalid: the orchestrator recovers the record's contents " +
+      "through this tool INSTEAD of opening the file, so the recovered data is " +
+      "validated and the executor's read boundary stays intact — the same " +
+      "structured-recovery posture as `recover_changed_files`. The path is " +
+      "derived from `runId` and `issue`; no file path is accepted, so the read " +
+      "can never leave this run's own directory. Reads only; writes nothing. " +
+      "Returns a discriminated `status` of 'ok' (with `record`) or 'error' " +
+      "(with `RUN_ID_INVALID`, `ISSUE_INVALID`, `PROGRESS_NOT_FOUND` — no " +
+      "record written yet — or `PROGRESS_INVALID` — the file exists but is " +
+      "malformed JSON, fails the schema, or names a different run or slice).",
+    inputSchema: recoverSliceProgressInputSchema.shape,
+    outputSchema: recoverSliceProgressOutputSchema.shape,
+  },
+  // Handler is typed against its concrete input/output contract;
+  // widen to the flat SDK-boundary `AnyToolHandler` for registration.
+  handleRecoverSliceProgress as unknown as AnyToolHandler
 );
 
 // ─── clean_runs ────────────────────────────────────────────────────────────────
@@ -1037,19 +1101,32 @@ registerTool(
   {
     title: "Bootstrap Orchestrate Configuration",
     description:
-      "Sets up a repository's .orchestrate/ configuration for a first-ever " +
-      "orchestrate run. Detects the project type and writes a project-aware " +
-      "commands.json (with a PM-aware mutating `install` command for " +
-      "npm/cargo/python projects — keyed on the JS lockfile for the npm " +
-      "ecosystem — empty for an unrecognized project), writes routing.json " +
-      "from the shipped defaults, and writes " +
-      "handoff.json with a context-window size derived from the running model " +
-      "— pass the model id (or an explicit contextWindowTokens) as input; the " +
-      "MCP process cannot see the calling LLM's model. An unknown or absent " +
-      "model falls back to 200000. Creates .orchestrate/runs/ and idempotently " +
-      "adds it to the repository's .gitignore. Every step is idempotent: an " +
-      "existing config file is never overwritten and the .gitignore line is " +
-      "never duplicated. Returns a discriminated `status` of 'ok' or 'error'.",
+      "Completes a repository's .orchestrate/ configuration — writes " +
+      "whichever of its three files are missing. Call this unconditionally " +
+      "at the start of every run, never gated on whether .orchestrate/ " +
+      "already exists: a directory that already has some files (e.g. an " +
+      "earlier run's routing.json and handoff.json but no commands.json) is " +
+      "exactly the case this closes, and calling it on an already-complete " +
+      "repository is a safe no-op. Detects the project type and writes a " +
+      "project-aware commands.json (with a PM-aware mutating `install` " +
+      "command for npm/cargo/python projects — keyed on the JS lockfile for " +
+      "the npm ecosystem — empty for an unrecognized project), writes " +
+      "routing.json from the shipped defaults, and writes handoff.json with " +
+      "a context-window size derived from the running model — pass the " +
+      "model id (or an explicit contextWindowTokens) as input; the MCP " +
+      "process cannot see the calling LLM's model. An unknown or absent " +
+      "model falls back to 200000. Creates .orchestrate/runs/ and " +
+      "idempotently adds it to the repository's .gitignore. Every step is " +
+      "idempotent: an existing config file is never overwritten and the " +
+      ".gitignore line is never duplicated. Reports config completeness " +
+      "read from the FINAL commands.json regardless of whether this call " +
+      "wrote it: `capabilities` names which of tests/typecheck/build/lint/" +
+      "install resolve to a command, and `falseGreenRisk` is true exactly " +
+      "when both `tests` and `build` are unconfigured — the conjunction " +
+      "that lets a slice merge green with nothing executed. Treat a true " +
+      "`falseGreenRisk` as a loud, blocking finding: report it and stop " +
+      "before starting the run. Returns a discriminated `status` of 'ok' " +
+      "or 'error'.",
     inputSchema: bootstrapConfigInputSchema.shape,
     outputSchema: bootstrapConfigOutputSchema.shape,
   },
@@ -1291,6 +1368,20 @@ const handleRunWave: ToolHandler<RunWaveInput, RunWaveOutput> = async (
     case "tolerate":
       text = `Integration gate tolerated — no integration suite configured.`;
       break;
+    case "width-planned":
+      text =
+        `Wave width planned — run ${result.waveWidth} slice(s) concurrently, ` +
+        `deferring ${result.deferredCount} to a later turn of this wave.`;
+      break;
+    case "backpressure":
+      text =
+        `Spawn refused by the concurrent-subagent limit — BACKPRESSURE, not a ` +
+        `slice failure. Return the slice to the wave's processable queue with ` +
+        `its state unchanged and re-attempt it when a slot frees.`;
+      break;
+    case "spawn-error":
+      text = `Spawn failed [${result.limitSignal}]: ${result.errorMessage}`;
+      break;
     case "error":
       text = `run_wave failed [${result.errorCode}]: ${result.errorMessage}`;
       break;
@@ -1324,7 +1415,18 @@ registerTool(
       "or `conflict` (the unmerged index is left IN PLACE and only flagged — " +
       "resolution is a downstream concern). 'integration-gate' (§2 step 4a): " +
       "run the per-wave integration suite, mapping `proceed` (passed), `halt` " +
-      "(failed/error), or `tolerate` (not configured). All loop state (umbrella " +
+      "(failed/error), or `tolerate` (not configured). 'plan-wave-width' (§2 " +
+      "step 3): cap how many processable slices may be in flight at once " +
+      "against the session's concurrent-subagent limit (default 20) — each " +
+      "in-flight slice occupies TWO live agent slots (its executor plus one " +
+      "worker), so the width is half the limit floored at 1, and the remainder " +
+      "is `deferredCount`, DEFERRED (state unchanged) rather than skipped. " +
+      "'classify-spawn-outcome' (§2 step 3): classify an observed spawn " +
+      "failure as `backpressure` (the concurrent-subagent limit — `status: " +
+      "'ok'`, no error message, the slice is fine and returns to the queue) or " +
+      "`spawn-error`, keeping a SPENT session spawn budget distinguishable via " +
+      "`limitSignal` and defaulting an unrecognized failure to the " +
+      "conservative class. All loop state (umbrella " +
       "ref, remote, first-merged flag) is PASSED IN, never inferred. Git-only " +
       "via the hardened exec seam, run-scoped (mutates nothing outside the " +
       "passed worktree), and never throws — every failure mode is a structured " +

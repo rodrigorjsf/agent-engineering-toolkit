@@ -10,8 +10,9 @@ import { commandsConfigSchema, type CommandsConfig } from "./run-command.js";
 
 // ─── Overview ─────────────────────────────────────────────────────────────────
 //
-// The config bootstrapper makes a first-ever orchestrate run set up its own
-// `.orchestrate/` configuration. On a fresh repository it:
+// The config bootstrapper makes an orchestrate run complete its own
+// `.orchestrate/` configuration — whichever of its three files are missing,
+// on any repository state, not only a wholly fresh one:
 //   1. Detects the project type and writes a project-appropriate `commands.json`.
 //   2. Writes `handoff.json` with a context-window size derived from the running
 //      model (passed as input — the MCP process cannot see the calling LLM's
@@ -22,6 +23,21 @@ import { commandsConfigSchema, type CommandsConfig } from "./run-command.js";
 // Every step is individually idempotent: an existing config file is never
 // overwritten (a user may have customized it), the runs directory mkdir is
 // recursive, and the `.gitignore` append checks for an existing matching line.
+// Idempotence at the FILE level (not just the directory level) is exactly what
+// makes it safe to call this on every run unconditionally, whether
+// `.orchestrate/` is wholly absent, partially populated (e.g. `routing.json`
+// and `handoff.json` present but `commands.json` missing — the scenario that
+// motivated this), or already complete.
+//
+// The result also reports config COMPLETENESS: `capabilities` names which
+// capability verbs resolve to a command in the FINAL commands.json (freshly
+// written or already present), and `falseGreenRisk` flags the one conjunction
+// that defeats verification silently — both `tests` and `build` unconfigured.
+// This is computed from the final file content every time, so a pre-existing
+// or hand-authored gap is caught exactly like a freshly-written empty file —
+// nothing about this tool's own success depends on which files it happened to
+// write on this call.
+//
 // The core function never throws — every failure mode is a structured result.
 
 // ─── Model → context-window table ─────────────────────────────────────────────
@@ -64,13 +80,21 @@ const MODEL_CONTEXT_WINDOW: Readonly<Record<string, number>> = {
  *
  * Tier matrix (ADR-0015):
  * - trivial: investigator=null; implementer=haiku/standard; reviewer=sonnet/standard;
- *   conflict-resolver=sonnet/standard (deliberate cross-model merge gate).
+ *   conflict-resolver=sonnet/standard (deliberate cross-model merge gate);
+ *   slice-executor=haiku/standard (ADR-0017, #356 — mirrors implementer).
  * - standard: investigator=haiku/standard (NEW — was null); implementer=sonnet/standard;
- *   reviewer=opus/standard; conflict-resolver=opus/standard.
- * - complex: all roles = opus/deep (unchanged).
+ *   reviewer=opus/standard; conflict-resolver=opus/standard;
+ *   slice-executor=sonnet/standard (mirrors implementer).
+ * - complex: all roles = opus/deep (unchanged); slice-executor=opus/deep too.
  * - labels: route:fable → implementer patched to fable/deep with opus fallback.
  * - run: intraWaveConcurrency=parallel; continuationBudget=2 (same values as v1,
  *   now under the run block).
+ *
+ * `slice-executor` (ADR-0017, #356) mirrors each tier's own `implementer`
+ * entry rather than one hardcoded pair — the same documented default
+ * `ensureSliceExecutorDefault` (in `routing.ts`) falls back to for a
+ * pre-#356 routing.json, so a freshly-bootstrapped file already matches what
+ * an old file would resolve to.
  */
 export const DEFAULT_ROUTING_CONFIG = {
   version: 2,
@@ -80,18 +104,21 @@ export const DEFAULT_ROUTING_CONFIG = {
       implementer: { model: "haiku", variant: "standard" },
       reviewer: { model: "sonnet", variant: "standard" },
       "conflict-resolver": { model: "sonnet", variant: "standard" },
+      "slice-executor": { model: "haiku", variant: "standard" },
     },
     standard: {
       investigator: { model: "haiku", variant: "standard" },
       implementer: { model: "sonnet", variant: "standard" },
       reviewer: { model: "opus", variant: "standard" },
       "conflict-resolver": { model: "opus", variant: "standard" },
+      "slice-executor": { model: "sonnet", variant: "standard" },
     },
     complex: {
       investigator: { model: "opus", variant: "deep" },
       implementer: { model: "opus", variant: "deep" },
       reviewer: { model: "opus", variant: "deep" },
       "conflict-resolver": { model: "opus", variant: "deep" },
+      "slice-executor": { model: "opus", variant: "deep" },
     },
   },
   labels: {
@@ -220,12 +247,43 @@ export const bootstrapConfigOutputSchema = z.object({
     .array(z.string())
     .optional()
     .describe(
-      "Advisory warnings about the bootstrapped configuration. Non-empty only " +
-        "when status='ok' and the freshly-written commands.json is empty ({}) — " +
-        "meaning no recognized project type was detected and the capability gates " +
-        "(run_tests, run_build, etc.) will report 'not-configured', allowing a " +
-        "slice to merge green with no verification. Empty array when the written " +
-        "commands map is non-empty. Present when status='ok'."
+      "Advisory warnings about the bootstrapped configuration. Non-empty " +
+        "exactly when `falseGreenRisk` is true — see that field. Present " +
+        "when status='ok'."
+    ),
+  capabilities: z
+    .object({
+      tests: z.boolean(),
+      typecheck: z.boolean(),
+      build: z.boolean(),
+      lint: z.boolean(),
+      install: z.boolean(),
+    })
+    .optional()
+    .describe(
+      "Which capability verbs resolve to a configured command in the FINAL " +
+        "commands.json — read after this call, whether it just wrote the file " +
+        "or the file was already present. `true` = a command is configured " +
+        "for that verb, so the matching capability tool (run_tests, " +
+        "run_typecheck, run_build, run_lint) will execute it; `false` = that " +
+        "tool reports 'not-configured' — either the verb is absent or its " +
+        "argv array is empty, which the capability tools treat identically. " +
+        "`install` is the setup verb (run_install), not a capability gate. " +
+        "Present when status='ok'."
+    ),
+  falseGreenRisk: z
+    .boolean()
+    .optional()
+    .describe(
+      "True exactly when BOTH `capabilities.tests` and `capabilities.build` " +
+        "are false — the specific conjunction that lets a slice merge green " +
+        "with nothing ever executed. An individual missing verb (`lint`, " +
+        "`typecheck`, `install`) is common and NOT flagged here: many " +
+        "projects legitimately skip a linter or need no install step. This " +
+        "reflects the FINAL commands.json regardless of whether it was " +
+        "freshly written this call or was already on disk — a stale or " +
+        "hand-authored partial file is exactly as risky as a fresh empty " +
+        "one. Present when status='ok'."
     ),
 });
 
@@ -357,6 +415,31 @@ function writeIfAbsent(filePath: string, content: string): FileWriteResult {
   }
 }
 
+/**
+ * Reads and validates an already-present `commands.json` for capability
+ * reporting. Never throws: an unreadable file, invalid JSON, or a shape that
+ * fails {@link commandsConfigSchema} all resolve to `{}` — treated as "nothing
+ * configured" for the completeness report, the conservative reading that never
+ * hides a real risk behind a parse failure. The file itself is never touched
+ * here — this is a read for reporting only, never a rewrite.
+ */
+function readExistingCommandsConfig(filePath: string): CommandsConfig {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(filePath, "utf8");
+  } catch {
+    return {};
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  const validated = commandsConfigSchema.safeParse(parsed);
+  return validated.success ? validated.data : {};
+}
+
 /** Outcome of the idempotent `.gitignore` append. */
 type GitignoreResult =
   | { kind: "created-with-line" }
@@ -422,8 +505,9 @@ function ensureGitignoreEntry(repoRoot: string): GitignoreResult {
 // ─── Core ─────────────────────────────────────────────────────────────────────
 
 /**
- * Bootstraps a repository's `.orchestrate/` configuration for a first-ever
- * orchestrate run.
+ * Completes a repository's `.orchestrate/` configuration — writes whichever
+ * of its three files are missing, safe to call unconditionally regardless of
+ * whether `.orchestrate/` is absent, partially populated, or already complete.
  *
  * Writes the three config files (`commands.json`, `routing.json`,
  * `handoff.json`) with project- and model-appropriate values, creates
@@ -431,6 +515,12 @@ function ensureGitignoreEntry(repoRoot: string): GitignoreResult {
  * repository's `.gitignore`. Every step is individually idempotent: an existing
  * config file is never overwritten, the runs directory mkdir is recursive, and
  * the `.gitignore` append never duplicates the line.
+ *
+ * Also reports config completeness read from the FINAL commands.json —
+ * `capabilities` (which verbs resolve to a command) and `falseGreenRisk`
+ * (true when both `tests` and `build` are unconfigured) — regardless of
+ * whether commands.json was written by this call or was already present, so
+ * a stale or hand-authored gap is caught exactly like a fresh empty file.
  *
  * Never throws — every failure mode is returned as a structured result.
  */
@@ -557,22 +647,59 @@ export function bootstrapConfig(
     };
   }
 
-  // Emit a loud warning when the bootstrapper just wrote an empty commands.json
-  // ({}). This happens for unrecognized project types ('none') where no manifest
-  // is detected. An empty map means all capability gates (run_tests, run_build,
-  // etc.) will report 'not-configured' — a slice can merge green with no
-  // verification, which is a common source of false-green merges.
-  const commandsMapEmpty =
-    Object.keys(validatedCommands.data).length === 0;
-  const warnings: string[] =
-    commandsResult.kind === "written" && commandsMapEmpty
-      ? [
-          "commands.json was written empty ({}): no recognized project type detected. " +
+  // Config-completeness report — read from the FINAL commands.json, not just
+  // what this call wrote. When commands.json was written this call, its
+  // content is exactly `validatedCommands.data`; when it was already present
+  // (including a partial `.orchestrate/` from a prior run or a hand-authored
+  // file), read it back so a pre-existing gap is reported too, not silently
+  // skipped the way `writeIfAbsent` alone would leave it.
+  const finalCommands: CommandsConfig =
+    commandsResult.kind === "written"
+      ? validatedCommands.data
+      : readExistingCommandsConfig(path.join(orchestrateDir, "commands.json"));
+
+  // "Configured" must mean exactly what the capability tools mean by it, or
+  // this report predicts something other than the gate's real behaviour.
+  // `run-command.ts` resolves BOTH an absent key and a present-but-empty argv
+  // array to `not-configured` (see its `!argv || argv.length === 0` guards),
+  // so a placeholder `{"tests": [], "build": []}` — which the commands schema
+  // accepts — would otherwise report both verbs configured and no risk while
+  // the gate executes nothing: the same silent start, re-encoded.
+  const configured = (argv: string[] | undefined): boolean =>
+    argv !== undefined && argv.length > 0;
+
+  const capabilities = {
+    tests: configured(finalCommands.tests),
+    typecheck: configured(finalCommands.typecheck),
+    build: configured(finalCommands.build),
+    lint: configured(finalCommands.lint),
+    install: configured(finalCommands.install),
+  };
+
+  // The false-green risk is the specific conjunction of BOTH gate-defining
+  // verbs being absent — not any single missing verb (lint/typecheck/install
+  // are each commonly and legitimately absent on their own). This is computed
+  // from the final state regardless of written-vs-already-present, so a
+  // partial `.orchestrate/` directory (this issue's reported scenario) and a
+  // hand-authored incomplete commands.json are caught exactly like a freshly
+  // written empty one.
+  const falseGreenRisk = !capabilities.tests && !capabilities.build;
+
+  const commandsMapEmpty = Object.keys(finalCommands).length === 0;
+  const warnings: string[] = falseGreenRisk
+    ? [
+        commandsResult.kind === "written" && commandsMapEmpty
+          ? "commands.json was written empty ({}): no recognized project type detected. " +
             "The capability gates run_tests and run_build will report 'not-configured' — " +
             "a slice can merge green with no verification. " +
-            "Edit .orchestrate/commands.json to add your project's test and build commands.",
-        ]
-      : [];
+            "Edit .orchestrate/commands.json to add your project's test and build commands."
+          : "commands.json has neither `tests` nor `build` configured " +
+            `(commandsJson: ${commandsResult.kind}). The capability gates run_tests and ` +
+            "run_build will report 'not-configured' — a slice can merge green with no " +
+            "verification. Edit .orchestrate/commands.json to add your project's test " +
+            "and build commands.",
+      ]
+    : [];
 
   return {
     status: "ok",
@@ -586,6 +713,8 @@ export function bootstrapConfig(
     },
     runsDir: runsDirExisted ? "already-present" : "created",
     gitignore: gitignoreResult.kind,
+    capabilities,
+    falseGreenRisk,
     warnings,
   };
 }

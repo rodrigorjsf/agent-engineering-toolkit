@@ -199,17 +199,216 @@ describe("bootstrapConfig — empty-config warnings", () => {
     expect(r.warnings).toEqual([]);
   });
 
-  it("emits no warnings when commands.json already existed (not freshly written)", () => {
-    // Pre-write an empty commands.json — the bootstrapper skips writing it.
+  it("warns when a pre-existing (not freshly written) commands.json is empty (#364)", () => {
+    // Pre-write an empty commands.json — the bootstrapper skips writing it,
+    // but the false-green risk it carries must still be reported. Before
+    // #364 this file-already-present path never read the file's content at
+    // all, so the exact same risk a fresh empty write already warns about
+    // went completely unreported here — the silent-start bug the issue
+    // describes.
     const dir = repo(); // no manifest → 'none' project type
     fs.mkdirSync(path.join(dir, ".orchestrate"));
     fs.writeFileSync(path.join(dir, ".orchestrate", "commands.json"), "{}\n");
 
     const r = bootstrapConfig({ repoPath: dir });
 
-    // File was already-present, not freshly written → no warning.
+    // File was already-present, not freshly written — but still reported.
     expect(r.files!.commandsJson).toBe("already-present");
+    expect(r.warnings).toBeDefined();
+    expect(r.warnings!.length).toBeGreaterThan(0);
+    expect(r.warnings![0]).toContain("run_tests");
+    expect(r.warnings![0]).toContain("run_build");
+    expect(r.warnings![0]).toContain("not-configured");
+  });
+});
+
+// ─── Capability-completeness reporting (#364) ─────────────────────────────────
+
+describe("bootstrapConfig — capabilities and falseGreenRisk (#364)", () => {
+  it("reports every capability configured and no risk for a fresh npm project", () => {
+    const dir = repo("package.json");
+    const r = bootstrapConfig({ repoPath: dir });
+
+    expect(r.capabilities).toEqual({
+      tests: true,
+      typecheck: true,
+      build: true,
+      lint: true,
+      install: true,
+    });
+    expect(r.falseGreenRisk).toBe(false);
+  });
+
+  it("does not flag falseGreenRisk when only lint/install are absent (maven has tests+build)", () => {
+    const dir = repo("pom.xml"); // maven: tests+build+typecheck present, lint+install absent by design
+    const r = bootstrapConfig({ repoPath: dir });
+
+    expect(r.projectType).toBe("maven");
+    expect(r.capabilities).toEqual({
+      tests: true,
+      typecheck: true,
+      build: true,
+      lint: false,
+      install: false,
+    });
+    // Missing lint/install alone is normal — only tests+build together risk.
+    expect(r.falseGreenRisk).toBe(false);
+  });
+
+  it("flags falseGreenRisk with all capabilities false for a manifest-less project", () => {
+    const dir = repo(); // no manifest → 'none' project type → empty commands map
+    const r = bootstrapConfig({ repoPath: dir });
+
+    expect(r.capabilities).toEqual({
+      tests: false,
+      typecheck: false,
+      build: false,
+      lint: false,
+      install: false,
+    });
+    expect(r.falseGreenRisk).toBe(true);
+  });
+
+  it("completes a partial .orchestrate/ directory missing only commands.json (#364 scenario)", () => {
+    // Exactly the reported scenario: .orchestrate/ already holds routing.json
+    // and handoff.json (e.g. from a prior run or hand-authored setup) but no
+    // commands.json. Before #364 this never triggered the bootstrapper at
+    // all because the trigger was gated on the directory's mere existence.
+    const dir = repo("package.json");
+    fs.mkdirSync(path.join(dir, ".orchestrate"));
+    fs.writeFileSync(
+      path.join(dir, ".orchestrate", "routing.json"),
+      JSON.stringify(DEFAULT_ROUTING_CONFIG, null, 2) + "\n"
+    );
+    fs.writeFileSync(
+      path.join(dir, ".orchestrate", "handoff.json"),
+      "{}\n"
+    );
+
+    const r = bootstrapConfig({ repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    // commands.json is the only file this call needed to write.
+    expect(r.files).toEqual({
+      commandsJson: "written",
+      routingJson: "already-present",
+      handoffJson: "already-present",
+    });
+    expect(
+      fs.existsSync(path.join(dir, ".orchestrate", "commands.json"))
+    ).toBe(true);
+    // The npm project type resolves a full capability set — no risk.
+    expect(r.capabilities).toEqual({
+      tests: true,
+      typecheck: true,
+      build: true,
+      lint: true,
+      install: true,
+    });
+    expect(r.falseGreenRisk).toBe(false);
     expect(r.warnings).toEqual([]);
+  });
+
+  it("flags falseGreenRisk for a pre-existing, hand-authored commands.json missing tests+build", () => {
+    // A committed commands.json that only configures lint — never written by
+    // the bootstrapper (already-present), so before #364 nothing would ever
+    // inspect its content for completeness.
+    const dir = repo("package.json");
+    fs.mkdirSync(path.join(dir, ".orchestrate"));
+    fs.writeFileSync(
+      path.join(dir, ".orchestrate", "commands.json"),
+      '{ "lint": ["npm", "run", "lint"] }\n'
+    );
+
+    const r = bootstrapConfig({ repoPath: dir });
+
+    expect(r.files!.commandsJson).toBe("already-present");
+    expect(r.capabilities).toEqual({
+      tests: false,
+      typecheck: false,
+      build: false,
+      lint: true,
+      install: false,
+    });
+    expect(r.falseGreenRisk).toBe(true);
+    expect(r.warnings!.length).toBeGreaterThan(0);
+    expect(r.warnings![0]).toContain("run_tests");
+    expect(r.warnings![0]).toContain("run_build");
+  });
+
+  it("reports no risk and no warning for an already-complete, pre-existing commands.json", () => {
+    const dir = repo("package.json");
+    fs.mkdirSync(path.join(dir, ".orchestrate"));
+    const complete =
+      '{ "tests": ["npm", "test"], "build": ["npm", "run", "build"] }\n';
+    fs.writeFileSync(path.join(dir, ".orchestrate", "commands.json"), complete);
+
+    const r = bootstrapConfig({ repoPath: dir });
+
+    expect(r.files!.commandsJson).toBe("already-present");
+    // Untouched — never rewritten.
+    expect(
+      fs.readFileSync(path.join(dir, ".orchestrate", "commands.json"), "utf8")
+    ).toBe(complete);
+    expect(r.capabilities).toEqual({
+      tests: true,
+      typecheck: false,
+      build: true,
+      lint: false,
+      install: false,
+    });
+    expect(r.falseGreenRisk).toBe(false);
+    expect(r.warnings).toEqual([]);
+  });
+
+  it("treats an unreadable/malformed pre-existing commands.json as unconfigured, never throws", () => {
+    const dir = repo("package.json");
+    fs.mkdirSync(path.join(dir, ".orchestrate"));
+    fs.writeFileSync(
+      path.join(dir, ".orchestrate", "commands.json"),
+      "{ not valid json"
+    );
+
+    const r = bootstrapConfig({ repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.files!.commandsJson).toBe("already-present");
+    expect(r.capabilities).toEqual({
+      tests: false,
+      typecheck: false,
+      build: false,
+      lint: false,
+      install: false,
+    });
+    expect(r.falseGreenRisk).toBe(true);
+  });
+
+  it("treats a present-but-EMPTY argv array as unconfigured, exactly as the capability tools do", () => {
+    // `commandsConfigSchema` accepts `[]`, and `run-command.ts` resolves both
+    // an absent key and an empty argv to 'not-configured' (`!argv ||
+    // argv.length === 0`). A placeholder config like this must therefore be
+    // reported as unconfigured too — reading it as "configured" would predict
+    // a gate that runs, while the gate actually executes nothing: the same
+    // silent start this issue exists to close, re-encoded.
+    const dir = repo("package.json");
+    fs.mkdirSync(path.join(dir, ".orchestrate"));
+    fs.writeFileSync(
+      path.join(dir, ".orchestrate", "commands.json"),
+      '{ "tests": [], "build": [] }\n'
+    );
+
+    const r = bootstrapConfig({ repoPath: dir });
+
+    expect(r.files!.commandsJson).toBe("already-present");
+    expect(r.capabilities).toEqual({
+      tests: false,
+      typecheck: false,
+      build: false,
+      lint: false,
+      install: false,
+    });
+    expect(r.falseGreenRisk).toBe(true);
+    expect(r.warnings!.length).toBeGreaterThan(0);
   });
 });
 
@@ -631,6 +830,31 @@ describe("bootstrapConfig — native v2 routing defaults (ADR-0015)", () => {
     expect(written.tiers?.complex?.implementer).toEqual(opusDeep);
     expect(written.tiers?.complex?.reviewer).toEqual(opusDeep);
     expect(written.tiers?.complex?.["conflict-resolver"]).toEqual(opusDeep);
+  });
+
+  it("carries a slice-executor entry per tier, mirroring that tier's implementer (#356)", () => {
+    const dir = repo("package.json");
+    bootstrapConfig({ repoPath: dir });
+
+    const written = readConfig(dir, "routing.json") as {
+      tiers?: {
+        trivial?: { "slice-executor"?: { model: string; variant: string } };
+        standard?: { "slice-executor"?: { model: string; variant: string } };
+        complex?: { "slice-executor"?: { model: string; variant: string } };
+      };
+    };
+    expect(written.tiers?.trivial?.["slice-executor"]).toEqual({
+      model: "haiku",
+      variant: "standard",
+    });
+    expect(written.tiers?.standard?.["slice-executor"]).toEqual({
+      model: "sonnet",
+      variant: "standard",
+    });
+    expect(written.tiers?.complex?.["slice-executor"]).toEqual({
+      model: "opus",
+      variant: "deep",
+    });
   });
 
   it("carries route:fable label entry with opus fallback (model=fable, variant=deep)", () => {

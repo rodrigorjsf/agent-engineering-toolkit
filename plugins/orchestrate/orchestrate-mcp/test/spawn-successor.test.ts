@@ -166,6 +166,50 @@ describe("loadHandoffConfig", () => {
   });
 });
 
+// ─── loadHandoffConfig — the spawn-budget threshold ───────────────────────────
+//
+// Both spawn fields carry a `.default()`, so the loader needs no change to
+// serve them: an absent, malformed, or off-schema file resolves to a complete
+// config exactly as it did before, and the `warning` shape is unchanged.
+
+describe("loadHandoffConfig — spawn-budget defaults", () => {
+  it("defaults the spawn budget and threshold when handoff.json is absent", () => {
+    const dir = project();
+    const { config, warning } = loadHandoffConfig(dir);
+    expect(warning).toBeNull();
+    expect(config.watchdog.sessionSpawnBudget).toBe(200);
+    expect(config.watchdog.spawnThresholdPercent).toBe(40);
+  });
+
+  it("keeps the spawn defaults when handoff.json is malformed JSON", () => {
+    const dir = project("{ not valid json");
+    const { config, warning } = loadHandoffConfig(dir);
+    expect(warning).not.toBeNull();
+    expect(typeof warning).toBe("string");
+    expect(config.watchdog.sessionSpawnBudget).toBe(200);
+    expect(config.watchdog.spawnThresholdPercent).toBe(40);
+  });
+
+  it("keeps the spawn defaults when handoff.json is off-schema", () => {
+    const dir = project({ watchdog: { thresholdPercent: "high" } });
+    const { config, warning } = loadHandoffConfig(dir);
+    expect(warning).not.toBeNull();
+    expect(config.watchdog.sessionSpawnBudget).toBe(200);
+    expect(config.watchdog.spawnThresholdPercent).toBe(40);
+    expect(config.watchdog.thresholdPercent).toBe(40);
+  });
+
+  it("merges a partial spawn config over the defaults", () => {
+    const dir = project({ watchdog: { sessionSpawnBudget: 400 } });
+    const { config, warning } = loadHandoffConfig(dir);
+    expect(warning).toBeNull();
+    expect(config.watchdog.sessionSpawnBudget).toBe(400);
+    // Untouched fields — including the other spawn knob — keep their defaults.
+    expect(config.watchdog.spawnThresholdPercent).toBe(40);
+    expect(config.watchdog.contextWindowTokens).toBe(200000);
+  });
+});
+
 // ─── spawnSuccessor ───────────────────────────────────────────────────────────
 
 describe("spawnSuccessor", () => {

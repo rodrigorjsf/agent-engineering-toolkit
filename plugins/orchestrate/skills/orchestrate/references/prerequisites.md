@@ -10,17 +10,32 @@ Check these before starting. If one is missing, report it and stop.
   `orchestrate/slice-*` branches — the auto-merge needs them open.
 
 The target project's `.orchestrate/` configuration — `commands.json`,
-`routing.json`, and the optional `handoff.json` — may be **bootstrapped on the
-first run** by the `bootstrap_config` MCP tool (section 1, Fresh run, step 1),
-or committed ahead of time from the plugin's `templates/`. Without
+`routing.json`, and the optional `handoff.json` — is **completed on every run**
+by the `bootstrap_config` MCP tool (section 1, Fresh run, step 1; see
+"Fresh-run config bootstrap" below for exactly when and how it is called), or
+may be committed ahead of time from the plugin's `templates/`. Without
 `commands.json` the capability tools return `not-configured`, which is
-tolerated. **When the bootstrapper writes an empty `commands.json` (`{}`)** —
-because no recognized project type was detected — it emits a `warnings[]` field
-in its result and surfaces the warning in its human-readable output. This means
-`run_tests` and `run_build` will report `not-configured`, and a slice can merge
-green with no verification. If you see this warning, edit
-`.orchestrate/commands.json` to add your project's test and build commands
-before starting the run. When the project's capability commands need installed dependencies,
+tolerated **per verb** — a project that skips `lint` or needs no `install`
+step is normal.
+
+**`tests` and `build` being unconfigured together is different.** It is the
+specific conjunction that lets a slice merge green with nothing ever executed,
+so `bootstrap_config` reports it structurally on every call: `capabilities`
+names which of `tests`, `typecheck`, `build`, `lint`, `install` resolve to a
+command in the FINAL `commands.json` — whether this call just wrote it or it
+was already on disk — and `falseGreenRisk` is `true` exactly when both `tests`
+and `build` are unconfigured. A verb counts as unconfigured when its key is
+absent *or* its argv array is empty — exactly what the capability tools
+themselves treat as `not-configured`, so this report always predicts the real
+gate. **When `falseGreenRisk` is `true`, report it and
+stop** — the same "check before starting" posture as the prerequisites above —
+and have the operator add test and build commands to
+`.orchestrate/commands.json` before the run proceeds. This is not limited to a
+freshly-written empty file: a `.orchestrate/` directory left over from a
+partial setup (e.g. `routing.json` and `handoff.json` present but no
+`commands.json`), or a hand-authored `commands.json` that never got
+`tests`/`build` filled in, carries the exact same risk and is reported the
+exact same way. When the project's capability commands need installed dependencies,
 `commands.json` must also set an `install` command — `create_worktree` runs it
 in every fresh worktree, which checks out only tracked files and so has no
 dependency directory of its own, and the implementer/conflict-resolver
@@ -70,6 +85,11 @@ spine). The orchestrator may **suggest** a `route:*` label in its report but
   slice would only burn the spawn and fall through to the `opus` fallback. Do
   **not** apply (or suggest) `route:fable` on a security/cyber slice; route it
   through the ordinary complexity tiers instead.
+- **`slice-executor` back-compat (ADR-0017, #356)** — a `routing.json` written
+  before this role existed simply omits `slice-executor` per tier; it still
+  loads. `resolve_routing` fills the gap from that tier's own `implementer`
+  entry and surfaces a warning naming the tier, the same shape as the v1
+  deprecation warning above.
 
 An optional `.orchestrate/handoff.json` tunes the context-watchdog threshold
 and the successor launcher; without it, built-in defaults apply (see
@@ -77,21 +97,43 @@ and the successor launcher; without it, built-in defaults apply (see
 it enables the investigator and reviewer subagents' structural code search,
 which otherwise falls back to text search.
 
+**Configured is not the same as working.** `bootstrap_config` reports which
+verbs *resolve to a command*; it never executes one. A command can be present
+and still fail in a slice worktree — which checks out tracked files only and has
+no installed dependencies — because it targets a package that is not at the
+repository root, or because its binary only exists after the install step. That
+gap is what the pre-flight capability probe closes, by running the install step
+and each configured verb once in a throwaway dependency-free checkout and
+reporting each verb's **outcome** (passed / failed / broken configuration / not
+configured) alongside `bootstrap_config`'s configuredness. See
+`references/preflight-mode.md` step 3.
+
 To run the one-time setup and inspect the partition and wave plan before
 committing the full execution, use the pre-flight mode: `/orchestrate preflight
-<PRD#>` runs Fresh-run steps 1–6 (including this bootstrap), then stops before
-the wave loop; `/orchestrate <PRD#>` in a fresh session resumes it.
+<PRD#>` runs Fresh-run steps 1–6 (including this bootstrap), probes the
+capability gate, then stops before the wave loop; `/orchestrate <PRD#>` in a
+fresh session resumes it.
 
 ## Fresh-run config bootstrap (`bootstrap_config`)
 
-On a fresh run (section 1, Fresh run, step 1), bootstrap the configuration if
-this is a first-ever run. If the repository has no `.orchestrate/` directory,
-call the `bootstrap_config` MCP tool with the repository root as `repoPath` and
-this session's model id as `model` (or an explicit `contextWindowTokens`). It
-detects the project type, writes a project-appropriate `commands.json`,
-`routing.json` (per-tier routing plus the run-wide `intraWaveConcurrency`
-policy, defaulting to `parallel`), and `handoff.json`, creates
-`.orchestrate/runs/`, and adds `.orchestrate/runs/` to the repository's
-`.gitignore`. Every step is
-idempotent — an existing committed config is never overwritten — so this
-is also a safe no-op on a repository already configured by hand.
+On a fresh run (section 1, Fresh run, step 1), **always** call the
+`bootstrap_config` MCP tool with the repository root as `repoPath` and this
+session's model id as `model` (or an explicit `contextWindowTokens`) — **never
+gate the call on whether `.orchestrate/` already exists.** A repository may
+have the directory (from an earlier run, or a hand-authored partial setup) yet
+be missing one of its three files — `commands.json` in particular — and every
+write inside the tool is individually idempotent at the FILE level, so calling
+it unconditionally is a safe no-op wherever a file is already present and a
+completing action wherever one is missing. It detects the project type, writes
+whichever of `commands.json`, `routing.json` (per-tier routing plus the
+run-wide `intraWaveConcurrency` policy, defaulting to `parallel`), and
+`handoff.json` are absent, creates `.orchestrate/runs/`, and adds
+`.orchestrate/runs/` to the repository's `.gitignore`. Every step is
+idempotent — an existing committed config file is never overwritten — so this
+is also a safe no-op on a repository already fully configured by hand.
+
+**Check its result before proceeding — never start the run on its silence.**
+Read `capabilities` and `falseGreenRisk` from the result (see above). When
+`falseGreenRisk` is `true`, report it and stop before planning the backlog —
+regardless of whether `commands.json` was freshly written this call or was
+already on disk.

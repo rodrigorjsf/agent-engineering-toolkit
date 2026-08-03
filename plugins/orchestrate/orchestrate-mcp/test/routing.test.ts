@@ -12,6 +12,9 @@ import {
   loadRoutingConfig,
   applyLabels,
   resolveRoutingV2FromConfig,
+  ROUTING_ROLES,
+  tierRoutingSchemaV2,
+  ensureSliceExecutorDefault,
   type RoutingConfig,
   type RoutingConfigV2,
   type TierRoutingV2,
@@ -577,7 +580,14 @@ const V1_CONFIG_FOR_V2_HANDLER: RoutingConfig = {
   continuationBudget: 2,
 };
 
-/** A v2 on-disk config with a labels block for testing label overrides. */
+/**
+ * A v2 on-disk config with a labels block for testing label overrides.
+ * Carries an explicit `slice-executor` entry per tier (mirroring that tier's
+ * `implementer`) so it is a COMPLETE, current-schema fixture — the
+ * "no warnings" assertions elsewhere in this suite stay true. The dedicated
+ * `V2_CONFIG_PREDATING_SLICE_EXECUTOR` fixture below is the one that omits it,
+ * for testing the back-compat default-fill path.
+ */
 const V2_CONFIG_WITH_LABELS: RoutingConfigV2 = {
   version: 2,
   tiers: {
@@ -586,18 +596,21 @@ const V2_CONFIG_WITH_LABELS: RoutingConfigV2 = {
       implementer: { model: "haiku", variant: "standard" },
       reviewer: { model: "sonnet", variant: "standard" },
       "conflict-resolver": { model: "sonnet", variant: "standard" },
+      "slice-executor": { model: "haiku", variant: "standard" },
     },
     standard: {
       investigator: { model: "haiku", variant: "standard" },
       implementer: { model: "sonnet", variant: "standard" },
       reviewer: { model: "opus", variant: "standard" },
       "conflict-resolver": { model: "opus", variant: "standard" },
+      "slice-executor": { model: "sonnet", variant: "standard" },
     },
     complex: {
       investigator: { model: "opus", variant: "deep" },
       implementer: { model: "opus", variant: "deep" },
       reviewer: { model: "opus", variant: "deep" },
       "conflict-resolver": { model: "opus", variant: "deep" },
+      "slice-executor": { model: "opus", variant: "deep" },
     },
   },
   labels: {
@@ -617,6 +630,28 @@ const V2_CONFIG_WITH_LABELS: RoutingConfigV2 = {
     },
   },
   run: { intraWaveConcurrency: "parallel", continuationBudget: 3 },
+};
+
+/** Drops a tier's `slice-executor` entry, keeping every other field intact. */
+function omitSliceExecutor(tier: TierRoutingV2): TierRoutingV2 {
+  const { "slice-executor": _dropped, ...rest } = tier;
+  return rest;
+}
+
+/**
+ * `V2_CONFIG_WITH_LABELS`, but with the `slice-executor` entry stripped from
+ * every tier — the shape a routing.json written before #356 has on disk. Used
+ * only to test the back-compat default-fill path
+ * ({@link ensureSliceExecutorDefault}); every other test uses the complete
+ * fixture above.
+ */
+const V2_CONFIG_PREDATING_SLICE_EXECUTOR: RoutingConfigV2 = {
+  ...V2_CONFIG_WITH_LABELS,
+  tiers: {
+    trivial: omitSliceExecutor(V2_CONFIG_WITH_LABELS.tiers.trivial),
+    standard: omitSliceExecutor(V2_CONFIG_WITH_LABELS.tiers.standard),
+    complex: omitSliceExecutor(V2_CONFIG_WITH_LABELS.tiers.complex),
+  },
 };
 
 describe("resolveRoutingV2FromConfig", () => {
@@ -769,5 +804,297 @@ describe("resolveRoutingV2FromConfig", () => {
 
     expect(r.status).toBe("ok");
     expect(r.continuationBudget).toBe(3);
+  });
+});
+
+// ─── slice-executor role (ADR-0017, #356) ─────────────────────────────────────
+
+describe("ROUTING_ROLES", () => {
+  it("includes slice-executor alongside the original four pipeline roles", () => {
+    expect(ROUTING_ROLES).toEqual([
+      "investigator",
+      "implementer",
+      "reviewer",
+      "conflict-resolver",
+      "slice-executor",
+    ]);
+  });
+});
+
+describe("tierRoutingSchemaV2 slice-executor field", () => {
+  const tier = VALID_CONFIG_V2.tiers.standard;
+
+  it("still validates when slice-executor is absent (back-compat)", () => {
+    expect(tierRoutingSchemaV2.safeParse(tier).success).toBe(true);
+  });
+
+  it("accepts an explicit slice-executor entry", () => {
+    const withExecutor = {
+      ...tier,
+      "slice-executor": { model: "opus", variant: "deep" },
+    };
+    const parsed = tierRoutingSchemaV2.safeParse(withExecutor);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data["slice-executor"]).toEqual({
+        model: "opus",
+        variant: "deep",
+      });
+    }
+  });
+
+  it("rejects an explicit null for slice-executor — it is never skippable, unlike investigator", () => {
+    const withNull = { ...tier, "slice-executor": null };
+    expect(tierRoutingSchemaV2.safeParse(withNull).success).toBe(false);
+  });
+});
+
+describe("ensureSliceExecutorDefault", () => {
+  it("returns the tier unchanged, no warning, when slice-executor is already present", () => {
+    const tier = {
+      ...VALID_CONFIG_V2.tiers.complex,
+      "slice-executor": { model: "opus", variant: "deep" as const },
+    };
+    const r = ensureSliceExecutorDefault(tier, "complex");
+
+    expect(r.warning).toBeUndefined();
+    expect(r.routing["slice-executor"]).toEqual({
+      model: "opus",
+      variant: "deep",
+    });
+  });
+
+  it("defaults slice-executor to the tier's own implementer entry when absent", () => {
+    const tier = VALID_CONFIG_V2.tiers.standard; // implementer: sonnet/standard
+    const r = ensureSliceExecutorDefault(tier, "standard");
+
+    expect(r.routing["slice-executor"]).toEqual(tier.implementer);
+    expect(r.warning).toBeDefined();
+    expect(r.warning).toContain("slice-executor");
+    // The warning must name the tier so an aggregated run report is attributable.
+    expect(r.warning).toContain("standard");
+  });
+
+  it("defaults differ per tier, mirroring each tier's own implementer", () => {
+    const trivial = ensureSliceExecutorDefault(
+      VALID_CONFIG_V2.tiers.trivial,
+      "trivial"
+    );
+    const complex = ensureSliceExecutorDefault(
+      VALID_CONFIG_V2.tiers.complex,
+      "complex"
+    );
+
+    expect(trivial.routing["slice-executor"]).toEqual(
+      VALID_CONFIG_V2.tiers.trivial.implementer
+    );
+    expect(complex.routing["slice-executor"]).toEqual(
+      VALID_CONFIG_V2.tiers.complex.implementer
+    );
+    expect(trivial.routing["slice-executor"]).not.toEqual(
+      complex.routing["slice-executor"]
+    );
+  });
+
+  it("does not mutate the input tier", () => {
+    const tier = VALID_CONFIG_V2.tiers.trivial;
+    const before = JSON.parse(JSON.stringify(tier));
+    ensureSliceExecutorDefault(tier, "trivial");
+    expect(tier).toEqual(before);
+  });
+});
+
+describe("applyLabels carries slice-executor through untouched when not targeted", () => {
+  it("leaves a pre-filled slice-executor entry unchanged when no label targets it", () => {
+    const tier: TierRoutingV2 = {
+      ...VALID_CONFIG_V2.tiers.standard,
+      "slice-executor": { model: "sonnet", variant: "standard" },
+    };
+    const r = applyLabels(tier, ["route:fable"], {
+      "route:fable": {
+        roles: ["implementer"],
+        set: { model: "fable", variant: "deep" },
+      },
+    });
+
+    expect(r.error).toBeUndefined();
+    expect(r.routing["slice-executor"]).toEqual(tier["slice-executor"]);
+  });
+});
+
+describe("resolveRoutingV2FromConfig — slice-executor (#356)", () => {
+  it("resolves slice-executor for all three tiers from a config that declares it explicitly", () => {
+    const withExecutor: RoutingConfigV2 = {
+      ...V2_CONFIG_WITH_LABELS,
+      tiers: {
+        trivial: {
+          ...V2_CONFIG_WITH_LABELS.tiers.trivial,
+          "slice-executor": { model: "haiku", variant: "standard" },
+        },
+        standard: {
+          ...V2_CONFIG_WITH_LABELS.tiers.standard,
+          "slice-executor": { model: "sonnet", variant: "standard" },
+        },
+        complex: {
+          ...V2_CONFIG_WITH_LABELS.tiers.complex,
+          "slice-executor": { model: "opus", variant: "deep" },
+        },
+      },
+    };
+    const dir = project(withExecutor);
+
+    const trivial = resolveRoutingV2FromConfig({ tier: "trivial", repoPath: dir });
+    const standard = resolveRoutingV2FromConfig({ tier: "standard", repoPath: dir });
+    const complex = resolveRoutingV2FromConfig({ tier: "complex", repoPath: dir });
+
+    expect(trivial.status).toBe("ok");
+    expect(standard.status).toBe("ok");
+    expect(complex.status).toBe("ok");
+    expect(trivial.routing!["slice-executor"]).toEqual({
+      model: "haiku",
+      variant: "standard",
+    });
+    expect(standard.routing!["slice-executor"]).toEqual({
+      model: "sonnet",
+      variant: "standard",
+    });
+    expect(complex.routing!["slice-executor"]).toEqual({
+      model: "opus",
+      variant: "deep",
+    });
+    // No slice-executor warning when the config already declares it.
+    expect(
+      trivial.warnings!.some((w) => w.includes("slice-executor"))
+    ).toBe(false);
+  });
+
+  it("defaults slice-executor to the implementer entry with a warning when the config predates the role", () => {
+    const dir = project(V2_CONFIG_PREDATING_SLICE_EXECUTOR);
+    const r = resolveRoutingV2FromConfig({ tier: "standard", repoPath: dir });
+
+    expect(r.status).toBe("ok");
+    expect(r.routing!["slice-executor"]).toEqual(
+      V2_CONFIG_PREDATING_SLICE_EXECUTOR.tiers.standard.implementer
+    );
+    expect(r.warnings!.some((w) => w.includes("slice-executor"))).toBe(true);
+  });
+
+  it("a route:* label naming slice-executor patches it, overriding the tier's explicit entry", () => {
+    const withLabel: RoutingConfigV2 = {
+      ...V2_CONFIG_WITH_LABELS,
+      labels: {
+        ...V2_CONFIG_WITH_LABELS.labels,
+        "route:strong-exec": {
+          roles: ["slice-executor"],
+          set: { model: "opus", variant: "deep" },
+        },
+      },
+    };
+    const dir = project(withLabel);
+    const r = resolveRoutingV2FromConfig({
+      tier: "trivial",
+      repoPath: dir,
+      labels: ["route:strong-exec"],
+    });
+
+    expect(r.status).toBe("ok");
+    expect(r.routing!["slice-executor"]).toEqual({
+      model: "opus",
+      variant: "deep",
+    });
+  });
+
+  // The two tests below pin the ORDER of ensureSliceExecutorDefault vs
+  // applyLabels. Both use the fixture that omits the role, so the default-fill
+  // path actually runs — the test above uses a config that declares it
+  // explicitly, so no default is derived there.
+  it("a route:* label naming slice-executor beats the implementer-derived default", () => {
+    const withLabel: RoutingConfigV2 = {
+      ...V2_CONFIG_PREDATING_SLICE_EXECUTOR,
+      labels: {
+        ...V2_CONFIG_PREDATING_SLICE_EXECUTOR.labels,
+        "route:strong-exec": {
+          roles: ["slice-executor"],
+          set: { model: "opus", variant: "deep" },
+        },
+      },
+    };
+    const dir = project(withLabel);
+    const r = resolveRoutingV2FromConfig({
+      tier: "trivial",
+      repoPath: dir,
+      labels: ["route:strong-exec"],
+    });
+
+    expect(r.status).toBe("ok");
+    expect(r.routing!["slice-executor"]).toEqual({
+      model: "opus",
+      variant: "deep",
+    });
+    // Not the passive default the fill would otherwise have produced.
+    expect(r.routing!["slice-executor"]).not.toEqual(
+      V2_CONFIG_PREDATING_SLICE_EXECUTOR.tiers.trivial.implementer
+    );
+  });
+
+  it("a label patching only implementer does not drag the defaulted slice-executor with it", () => {
+    const dir = project(V2_CONFIG_PREDATING_SLICE_EXECUTOR);
+    const r = resolveRoutingV2FromConfig({
+      tier: "standard",
+      repoPath: dir,
+      labels: ["route:fable"],
+    });
+
+    expect(r.status).toBe("ok");
+    expect(r.routing!.implementer).toEqual({ model: "fable", variant: "deep" });
+    // The default is seeded from the CONFIGURED implementer, before the label
+    // patched it — route:fable names only `implementer`. Reversing the order of
+    // the default-fill and the label pass would make this fable/deep instead.
+    expect(r.routing!["slice-executor"]).toEqual(
+      V2_CONFIG_PREDATING_SLICE_EXECUTOR.tiers.standard.implementer
+    );
+  });
+
+  it("two labels both patching slice-executor is a structured LABEL_CONFLICT error, no precedence rule", () => {
+    const withConflict: RoutingConfigV2 = {
+      ...V2_CONFIG_WITH_LABELS,
+      labels: {
+        ...V2_CONFIG_WITH_LABELS.labels,
+        "route:exec-a": {
+          roles: ["slice-executor"],
+          set: { model: "opus", variant: "deep" },
+        },
+        "route:exec-b": {
+          roles: ["slice-executor"],
+          set: { model: "sonnet", variant: "standard" },
+        },
+      },
+    };
+    const dir = project(withConflict);
+    const r = resolveRoutingV2FromConfig({
+      tier: "trivial",
+      repoPath: dir,
+      labels: ["route:exec-a", "route:exec-b"],
+    });
+
+    expect(r.status).toBe("error");
+    expect(r.errorCode).toBe("LABEL_CONFLICT");
+    expect(r.errorMessage).toContain("slice-executor");
+    expect(r.errorMessage).toContain("route:exec-a");
+    expect(r.errorMessage).toContain("route:exec-b");
+  });
+
+  it("an unconfigured route:* label naming slice-executor still produces the generic structured warning", () => {
+    const dir = project(V2_CONFIG_WITH_LABELS);
+    const r = resolveRoutingV2FromConfig({
+      tier: "trivial",
+      repoPath: dir,
+      labels: ["route:no-such-executor-label"],
+    });
+
+    expect(r.status).toBe("ok");
+    expect(
+      r.warnings!.some((w) => w.includes("route:no-such-executor-label"))
+    ).toBe(true);
   });
 });

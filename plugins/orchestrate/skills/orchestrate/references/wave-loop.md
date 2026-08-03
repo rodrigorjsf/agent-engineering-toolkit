@@ -70,12 +70,53 @@ Process waves in order, starting at index `completedWaves`. For each wave:
 3. **Process the slices.** Branch on the `intraWaveConcurrency` policy read at
    the top of section 2 (see the wave-concurrency policy retained in the spine):
 
-   - **`parallel` (the default).** Run section 3 for every processable slice.
-     Slices in a wave are independent, so parallelize: when several slices are
-     at the same subagent stage (investigation, implementation, review), spawn
-     those subagents by issuing all the Agent tool calls **in a single
-     message**. Each slice has its own worktree, so they never collide. Then
-     integrate them sequentially — step 4 below.
+   - **`parallel` (the default).** Run section 3 for the processable slices,
+     **up to the wave's planned width** (below). Slices in a wave are
+     independent, so parallelize: spawn **one slice executor per slice** —
+     issuing all the Agent tool calls **in a single message** — and let each
+     executor run its own stages inside its own worktree. You have no
+     visibility into those stages and no stage-level batching to do; the
+     executors are the only subagents you spawn. Each slice has its own
+     worktree, so they never collide. Then integrate them sequentially —
+     step 4 below.
+
+     **Plan the wave's width first.** A parallel wave holds roughly **twice** as
+     many live agents as it has slices — each in-flight slice occupies its slice
+     executor **plus** the one worker that executor currently has running — so
+     spawning every processable slice at once can walk the session into the
+     platform's concurrent-subagent limit. Call the `run_wave` MCP tool with
+     `operation: "plan-wave-width"` and `processableCount` (how many slices
+     passed step 2), plus `concurrencyLimit` **only** if
+     `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` is set to something other than its
+     default of 20 — the MCP process cannot read the session's environment, and
+     the plugin works **within** the limit rather than raising it:
+
+     - `width-planned` — run at most `waveWidth` slices concurrently. The
+       `deferredCount` remainder is **deferred, not skipped**: each deferred
+       slice keeps its `pending` state and stays in this wave's processable
+       queue. As each in-flight slice finishes integrating (step 4), pull the
+       next deferred slice from the queue.
+
+     **A concurrency-limit refusal is backpressure, not a slice failure.** If a
+     spawn is refused anyway, pass the verbatim refusal text to the `run_wave`
+     MCP tool as `operation: "classify-spawn-outcome"`, `spawnFailureText:
+     "<the text>"`:
+
+     - `backpressure` (`limitSignal: "concurrent-subagent-limit"`) — the
+       platform was at its concurrent limit. **Nothing is wrong with the
+       slice.** Return it to this wave's processable queue with **its state
+       unchanged** (`pending`) — exactly where a width-deferred slice sits — and
+       re-attempt it when a slot frees. Never mark it `failed`, never write a
+       `failureReason`, never apply a triage label, and never count it against
+       the run's failures: doing any of those produces a structural false
+       negative that would be blamed on the slice's own work. The vendor
+       documents this refusal as one Claude is told **not to retry**, which is
+       consistent — the requeue is a *later attempt after a slot frees*, not an
+       immediate retry of the refused call.
+     - `spawn-error` — a genuine spawn failure, handled as a failure. When
+       `limitSignal` is `session-spawn-limit` the session's **total** spawn
+       budget is spent: re-attempting in this session cannot succeed, so hand
+       the run off (section 4) rather than requeueing, which would loop forever.
 
    - **`sequential`.** Process the wave's processable slices **one at a time, in
      issue-id ascending order** — steps 3 and 4 below fuse into a per-slice
@@ -139,8 +180,10 @@ Process waves in order, starting at index `completedWaves`. For each wave:
 
    After each slice finishes integrating, check for
    `.orchestrate/runs/<runId>/context-flag.json`: if it
-   exists, the context-watchdog has signalled that this session's context is
-   filling. Do not start the next slice — finish writing `run-state.json` for
+   exists, the context-watchdog has signalled that one of this session's two
+   budgets — its context window or its total subagent-spawn budget — is running
+   out (the flag's `trigger` field says which). Do not start the next slice, and
+   do not pull the next deferred one — finish writing `run-state.json` for
    the slice just integrated, then go to section 4 (Context handoff).
 4a. **Run the per-wave integration suite.** After every processable slice in
    this wave has integrated and passed its post-merge unit re-verify, run the
@@ -220,8 +263,9 @@ pull request.
 **Narrate the routing notes in the per-slice summary.** For each slice whose
 `resolvedRouting.fallbackTaken` is `true`, note the **model-fallback swap** in
 its summary line — e.g. "slice #N: fable declined → served by opus" — so the
-premium-lane fallover is visible in the report (the swap itself runs in
-`references/slice-pipeline.md` step 4). Surface any routing-label
+premium-lane fallover is visible in the report (the swap itself runs inside the
+slice executor and is reported in its envelope's `fallbackTaken`). Surface any
+routing-label
 **WARNING** (an unconfigured `route:*` label) or **ERROR** (a same-role
 `LABEL_CONFLICT`) from `resolve_routing` in the same summary, and — where the
 orchestrator judges a slice would have benefited from a premium lane — it may

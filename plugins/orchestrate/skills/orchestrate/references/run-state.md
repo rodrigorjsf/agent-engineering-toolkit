@@ -11,10 +11,16 @@ Every run keeps its ephemeral state in a **per-run directory**,
 `prd<N>-<timestamp>` for a **partitioned run** scoped to one parent PRD's
 children (`/orchestrate <PRD#>`), and `backlog-<timestamp>` for a **whole-backlog
 run** (`/orchestrate` with no argument). That directory holds the run's
-`run-state.json`, its `context-flag.json` (the context-handoff signal), and the
-rendered HTML artifacts (`dashboard.html`, `graph.html`, `report.html`). Two
-distinct runs never share a directory, so their ephemeral state never collides —
-the per-run layout is the structural foundation for concurrent runs.
+`run-state.json`, its `context-flag.json` (the context-handoff signal), its
+`spawn-log.jsonl` (the watchdog's append-only spawn record, one line per
+observed subagent spawn, each tagged with the session that made it — stored per
+run but counted per session, since the platform's spawn cap resets in a new
+session while the log survives a handoff), the
+rendered HTML artifacts (`dashboard.html`, `graph.html`, `report.html`), and one
+**slice progress record** per slice — `slice-<issue>-progress.json` (see *Slice
+progress record* below). Two distinct runs never share a directory, so their
+ephemeral state never collides — the per-run layout is the structural foundation
+for concurrent runs.
 
 The committed config files — `commands.json`, `routing.json`, and
 `handoff.json` — stay flat at the `.orchestrate/` top level; they are
@@ -35,6 +41,9 @@ metadata, not source — the target project should gitignore
     ├── prd195-20260521-015143/         # a partitioned run (PRD #195's children)
     │   ├── run-state.json              # the run checkpoint
     │   ├── context-flag.json           # the context-handoff signal (when raised)
+    │   ├── spawn-log.jsonl             # one line per subagent spawn (spawn budget)
+    │   ├── slice-157-progress.json     # one slice progress record PER SLICE
+    │   ├── slice-158-progress.json     # siblings of one wave never collide
     │   └── dashboard.html, graph.html, report.html   # rendered artifacts
     └── backlog-20260521-022540/        # a concurrent whole-backlog run
         └── run-state.json
@@ -119,14 +128,20 @@ metadata, not source — the target project should gitignore
 - `blockedBy` — issue-id strings this slice depends on (drives the graph view).
 - `state` — see *Slice states* below.
 - `subState` — fine-grained position **within** §3 processing of an
-  `in-progress` slice, one of
-  `implemented|verified|reviewed|pushed|pr-open|merged`, written at every §3
-  transition; the key is **absent before §3 step 4 completes — omit the key
+  `in-progress` slice. The schema accepts
+  `implemented|verified|reviewed|pushed|pr-open|merged`, but a **delegating**
+  orchestrator (ADR-0017) only ever *writes* the last three —
+  `pushed`, `pr-open` and `merged`. The first three, `implemented`,
+  `verified` and `reviewed`, marked intra-slice stages it no longer performs or
+  observes, and are retained in the enum solely so a checkpoint written before
+  the delegation layer still validates. The key is **absent for the whole span
+  between spawning the slice executor and its envelope validating — omit it
   entirely; an explicit `null` is rejected** (the schema
   `subState: subStateEnum.optional()` accepts an absent key but rejects a
-  literal `null`, so `"subState": null` fails `validate_run_state`). It is
-  the **resume anchor** for an interrupted in-progress slice
-  (see *Resume*). `pushed` is
+  literal `null`, so `"subState": null` fails `validate_run_state`). Across that
+  span the resume anchor is not this field but the slice's **progress record**
+  (below), reached through `recover_slice_progress`; from `pushed` onward
+  `subState` is the resume anchor again (see *Resume*). `pushed` is
   recorded **only after** `git ls-remote` confirms the branch landed; `merged`
   (slice PR squash-merged into the umbrella, step 8) precedes the slice reaching
   coarse `state: passed` (step 9).
@@ -140,6 +155,9 @@ metadata, not source — the target project should gitignore
   field was introduced (backward-compatible). When present, it captures the
   routing that was frozen at slice creation so a resumed run routes the slice
   from the checkpoint rather than from live GitHub labels. Shape:
+  - `slice-executor` — `{model, variant}` for the slice executor, the role the
+    orchestrator actually spawns per slice (ADR-0017). A resumed run re-spawns
+    the executor from this entry rather than re-resolving routing.
   - `investigator` — `{model, variant}` for the investigator role, or `null`
     when this tier skips the investigation pass.
   - `implementer` — `{model, variant}` for the implementer role.
@@ -169,9 +187,99 @@ An implementer `incomplete` envelope drives an **in-session continuation loop**
 the `remainingWork` handoff until it returns `completed` or the continuation
 budget is exhausted) and does **not** introduce a new slice `state` — the enum
 stays `pending` / `in-progress` / `passed` / `failed` / `skipped`. The loop's
-continuation counter and worktree fingerprint are within-session loop state,
-never persisted to `run-state.json`; a mid-continuation handoff/resume rebuilds
-the worktree and restarts the slice clean.
+continuation counter and worktree fingerprint are **never persisted to
+`run-state.json`** — but what follows from that differs by path. On the
+**orchestrator-driven** implementer loop they are within-session loop state only,
+so a mid-continuation handoff/resume rebuilds the worktree and restarts the slice
+clean. On the **slice-executor** path (ADR-0017) that consequence no longer
+holds: the executor persists both to its own *slice progress record*, so a fresh
+executor resumes the slice from its last completed stage instead of restarting
+it. `run-state.json` itself is untouched either way — the record is a separate,
+executor-owned file.
+
+## Slice progress record
+
+Each slice a **slice executor** runs gets its own progress record at
+`.orchestrate/runs/<runId>/slice-<issue>-progress.json` (ADR-0017). It is the
+resume anchor for the delegation layer: one executor spawn spans investigation,
+implementation, and review, so without the record a session that died
+mid-executor would throw away a finished investigation and a finished review.
+The executor writes it at each completed stage.
+
+The filename carries the **issue number** because a parallel wave processes
+several slices concurrently inside one run directory — a single shared
+`progress.json` would have siblings clobber each other. Combined with the per-run
+directory, two runs × two slices resolve to four distinct paths, so records never
+collide (ADR-0012). Like everything else under `.orchestrate/runs/`, the record
+is gitignored by the single `.orchestrate/runs/` line and never reaches version
+control.
+
+Fields:
+
+- `runId` / `issue` — the record self-identifies, so one read from the wrong
+  path is **detected** rather than silently trusted; a mismatch is rejected.
+- `lastCompletedStage` — **optional**; the last inner stage that FINISHED, one of
+  `investigator|implementer|capability-gate|reviewer`. This is not the envelope's
+  `failedStage`, which names the stage that was RUNNING when a failure occurred —
+  the value set is shared, the meaning is not. The set carries **no ordering**:
+  which stages run, in what sequence, and which are skipped are the executor's
+  decisions. The key is **absent before any stage completes — omit it entirely;
+  an explicit `null` is rejected** (the same `.optional()`-not-`.nullable()`
+  precedent as `subState`).
+- `investigatorBrief` — **optional**; the investigator's brief carried forward so
+  a resumed executor does not re-run a finished investigation. Absent when the
+  slice's tier skips investigation (`resolvedRouting.investigator` is `null`).
+- `continuationsUsed` — how many continuations the executor's continue-in-place
+  loop has spent. Persisted because two continuation loops now nest and ADR-0017
+  caps the **product** of their budgets at 6; a counter that reset on every
+  handoff could not enforce that bound across sessions.
+- `worktreeFingerprint` — **optional**; the opaque content-level fingerprint of
+  the worktree's uncommitted state, used by the no-progress guard. The record
+  fixes how it is carried, never how it is computed — that stays the executor's.
+- `fallbackTaken` — the once-only **model fallback** guard; `true` when the
+  premium-lane retry has already been spent on this slice. **Required, with no
+  default**: an absent key must never read as `false`, which would re-arm a
+  fallback already used. This deliberately duplicates
+  `resolvedRouting.fallbackTaken` above, and the duplication is ADR-sanctioned —
+  the run-state field is orchestrator-owned and drives the non-executor path,
+  while this copy is executor-owned, because the executor cannot write the
+  orchestrator's checkpoint. Neither is redundant; do not unify them.
+- `updatedAt` — ISO-8601 UTC timestamp of the last write.
+
+**The orchestrator never opens this file.** It passes the path forward, and a
+fresh executor reads its own record to resume itself. When an executor's result
+envelope comes back missing or invalid, the orchestrator obtains the record's
+contents through the `recover_slice_progress` MCP tool, which derives the path
+from `(runId, issue)` — it accepts no file path, so it can never read outside
+the run's own directory — and returns validated, structured data. It reports a
+**missing** record (`PROGRESS_NOT_FOUND`: no stage recorded yet) distinctly from
+a **malformed** one (`PROGRESS_INVALID`: bad JSON, a schema mismatch, or a record
+naming a different run or slice), and never throws. This is the same
+structured-recovery posture as `recover_changed_files`, where the worktree is
+ground truth recovered through a tool rather than by reading prose. The slice
+**report** the executor writes beside this record falls under the same boundary:
+the orchestrator passes its path forward and never opens it.
+
+**A hook enforces this too — as defence in depth, not as a replacement.** The
+plugin ships a `PreToolUse` read guard that denies the orchestrator a `Read` (or
+an obvious shell read) of `slice-<issue>-progress.json` and
+`slice-<issue>-report.md`, and returns a reason naming this behaviour instead.
+**The rule above stays load-bearing regardless**, for four reasons, and a later
+refactor must not delete it on the grounds that the hook covers it:
+
+- An enterprise administrator can set `allowManagedHooksOnly`, which blocks
+  user, project, and plugin hooks alike — only plugins force-enabled in managed
+  settings are exempt.
+- Any user can set `disableAllHooks: true`. There is **no way to disable one
+  hook while keeping the others**, so opting out of this guard also gives up the
+  `context-watchdog` hook, and with it automatic context handoff.
+- The plugin itself can simply be disabled.
+- Even fully enabled, the hook **cannot see every read**. A file referenced with
+  `@` in a prompt is inserted while the prompt is built, with no tool call, so no
+  `PreToolUse` hook fires for it — including hooks matching `Read`. The
+  documented closure is a permission deny rule, which ADR-0017 rejected: it
+  would apply to the whole session and restrict the executor too, and it carries
+  no corrective message back to the model.
 
 ## Resume
 

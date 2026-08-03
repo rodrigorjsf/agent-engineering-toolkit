@@ -5,11 +5,19 @@ import { z } from "zod";
 // ─── Schemas — z.object is the single source of truth; TS types via z.infer ───
 //
 // `.orchestrate/handoff.json` configures the context-handoff feature: the
-// context-watchdog hook's threshold and the successor-session launcher. Every
+// context-watchdog hook's thresholds and the successor-session launcher. Every
 // field carries a `.default()`, so the file may be absent entirely, present but
-// empty (`{}`), or partial — it always resolves to a complete config.
+// empty (`{}`), or partial — it always resolves to a complete config. That is
+// also why the watchdog's SECOND threshold (the session spawn budget) needed no
+// loader change: a config written before those keys existed still resolves.
 
-/** Context-watchdog tuning — when to raise the handoff flag. */
+/**
+ * Context-watchdog tuning — when to raise the handoff flag. The watchdog
+ * watches TWO budgets, and the two field pairs are deliberately symmetric:
+ * `contextWindowTokens` + `thresholdPercent` for the session's context window,
+ * `sessionSpawnBudget` + `spawnThresholdPercent` for the platform's per-session
+ * subagent budget. Whichever threshold is reached first raises the flag.
+ */
 export const watchdogConfigSchema = z.object({
   thresholdPercent: z
     .number()
@@ -29,6 +37,31 @@ export const watchdogConfigSchema = z.object({
     .describe(
       "Total context window the percentage is measured against. Default " +
         "200000 — raise to 1000000 for a 1M-context session."
+    ),
+  spawnThresholdPercent: z
+    .number()
+    .min(1)
+    .max(100)
+    .default(40)
+    .describe(
+      "Raise the handoff flag once the run's recorded subagent spawns reach " +
+        "this percentage of `sessionSpawnBudget`. Default 40, matching " +
+        "`thresholdPercent` — at roughly five spawns per slice a long run can " +
+        "spend its spawn budget well before it fills its context window, so " +
+        "this threshold must be as conservative as the token one."
+    ),
+  sessionSpawnBudget: z
+    .number()
+    .int()
+    .positive()
+    .default(200)
+    .describe(
+      "Total subagent spawns the session may make, the figure " +
+        "`spawnThresholdPercent` is measured against. Default 200 — the " +
+        "platform's own per-session default, which " +
+        "`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` changes. Nested and " +
+        "background subagents count toward it, and a finished subagent still " +
+        "counts, so the budget is cumulative and never decreases."
     ),
 });
 
