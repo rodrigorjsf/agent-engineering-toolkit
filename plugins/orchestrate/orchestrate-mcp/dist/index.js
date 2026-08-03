@@ -21980,7 +21980,7 @@ var routingConfigSchema = external_exports.object({
     "Run-wide policy: how to process the independent slices within one wave. 'parallel' (default) spawns all processable slices at once and integrates them sequentially. 'sequential' processes slices one at a time in issue-id ascending order, refreshing the umbrella base between each so slice N branches from base+slice1..N-1 \u2014 guaranteed conflict-free, at the cost of serializing the wave. Optional; the three tier blocks remain required."
   ),
   continuationBudget: external_exports.number().int().min(0).default(2).describe(
-    "How many times the orchestrator may re-spawn the implementer in the same worktree after an 'incomplete' envelope (re-spawns BEYOND the initial run). 0 disables continuation (incomplete FAILs immediately, the legacy behavior). Defaults to 2."
+    "How many times the slice executor may re-spawn the implementer in the same worktree after an 'incomplete' envelope (re-spawns BEYOND the initial run). 0 disables continuation (incomplete FAILs immediately, the legacy behavior). Defaults to 2."
   )
 });
 var routingConfigSchemaV1 = routingConfigSchema;
@@ -22048,7 +22048,7 @@ var runConfigSchema = external_exports.object({
     "Run-wide policy: how to process the independent slices within one wave. 'parallel' (default) or 'sequential'. Lifted from the v1 top-level key."
   ),
   continuationBudget: external_exports.number().int().min(0).optional().default(2).describe(
-    "How many times the orchestrator may re-spawn the implementer in the same worktree after an 'incomplete' envelope. 0 disables continuation. Defaults to 2. Lifted from the v1 top-level key."
+    "How many times the slice executor may re-spawn the implementer in the same worktree after an 'incomplete' envelope. 0 disables continuation. Defaults to 2. Lifted from the v1 top-level key."
   )
 });
 var routingConfigSchemaV2 = external_exports.object({
@@ -23573,7 +23573,7 @@ var sliceExecutorEnvelopeSchema = external_exports.object({
     "Prose description of what happened, in the executor's own words. Complements `failureClass` (the closed-set machine label) with the specific detail a human or the next executor needs. Absent for a 'completed' envelope."
   ),
   reportPath: external_exports.string().describe(
-    "Path, relative to the worktree root, of the slice's report \u2014 the human-readable artifact the executor wrote describing its own run."
+    "Path, relative to the run directory (`.orchestrate/runs/<runId>/`), of the slice's report \u2014 the human-readable artifact the executor wrote describing its own run. It is written beside the executor's progress record, NEVER into the worktree, where the Changeset scope check would see it as an undeclared change."
   ),
   nextTaskBriefing: external_exports.string().describe(
     "Advice carried forward to whoever picks up the next slice. This is advice only, never a selection of WHICH slice runs next \u2014 wave ordering and loop termination stay computed by `plan_waves` and wave exhaustion, not declared here (see the module-level note above)."

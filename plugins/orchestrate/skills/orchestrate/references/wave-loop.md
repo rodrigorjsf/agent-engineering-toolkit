@@ -261,8 +261,9 @@ pull request.
 **Narrate the routing notes in the per-slice summary.** For each slice whose
 `resolvedRouting.fallbackTaken` is `true`, note the **model-fallback swap** in
 its summary line — e.g. "slice #N: fable declined → served by opus" — so the
-premium-lane fallover is visible in the report (the swap itself runs in
-`references/slice-pipeline.md` step 4). Surface any routing-label
+premium-lane fallover is visible in the report (the swap itself runs inside the
+slice executor and is reported in its envelope's `fallbackTaken`). Surface any
+routing-label
 **WARNING** (an unconfigured `route:*` label) or **ERROR** (a same-role
 `LABEL_CONFLICT`) from `resolve_routing` in the same summary, and — where the
 orchestrator judges a slice would have benefited from a premium lane — it may
