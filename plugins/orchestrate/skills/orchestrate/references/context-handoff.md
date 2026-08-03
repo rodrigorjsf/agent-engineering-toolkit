@@ -13,7 +13,8 @@ checkpoint, and the predecessor exits. This file documents the three pieces.
 
 The hook event carries the session `cwd`, `transcript_path`, and `session_id`
 — never a runId. The watchdog therefore first **discovers the run this session
-drives**:
+drives**, via a shared run-discovery module any hook can import (not
+watchdog-specific internals):
 
 - It scans `.orchestrate/runs/*/run-state.json` and considers **only** runs
   whose `status` is `in-progress` — a completed run is never selected.

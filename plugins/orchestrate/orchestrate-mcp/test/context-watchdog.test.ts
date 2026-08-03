@@ -7,9 +7,11 @@ import {
   contextTokens,
   evaluateWatchdog,
   runWatchdog,
+} from "../src/hooks/context-watchdog.js";
+import {
   discoverActiveRunId,
   findActiveRunForSession,
-} from "../src/hooks/context-watchdog.js";
+} from "../src/hooks/run-discovery.js";
 
 // ─── Transcript fixtures ──────────────────────────────────────────────────────
 
