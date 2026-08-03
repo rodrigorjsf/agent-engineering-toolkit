@@ -70,6 +70,11 @@ spine). The orchestrator may **suggest** a `route:*` label in its report but
   slice would only burn the spawn and fall through to the `opus` fallback. Do
   **not** apply (or suggest) `route:fable` on a security/cyber slice; route it
   through the ordinary complexity tiers instead.
+- **`slice-executor` back-compat (ADR-0017, #356)** — a `routing.json` written
+  before this role existed simply omits `slice-executor` per tier; it still
+  loads. `resolve_routing` fills the gap from that tier's own `implementer`
+  entry and surfaces a warning naming the tier, the same shape as the v1
+  deprecation warning above.
 
 An optional `.orchestrate/handoff.json` tunes the context-watchdog threshold
 and the successor launcher; without it, built-in defaults apply (see

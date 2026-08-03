@@ -27,6 +27,17 @@
  * version-dispatch loader ({@link loadRoutingConfig}) routes by the `version`
  * field. Label overrides merge through pure functions ({@link applyLabels}) that
  * return structured data — they never throw.
+ *
+ * A third, orthogonal back-compat axis is per-ROLE rather than per-generation:
+ * `tiers.*.slice-executor` (ADR-0017, #356) is OPTIONAL in
+ * {@link tierRoutingSchemaV2} so a v2 file written before the role existed keeps
+ * parsing. {@link ensureSliceExecutorDefault} fills the gap at resolve time —
+ * defaulting to the tier's OWN `implementer` entry (never a hardcoded pair, so a
+ * trivial-tier slice keeps a cheap default and a complex-tier slice keeps
+ * opus/deep) — and returns a structured warning, the same shape as the v1→v2
+ * deprecation warning above. This runs uniformly for both a native v2 file and a
+ * v1 file just upgraded by {@link upgradeV1ToV2}, since neither generation ever
+ * had this role.
  */
 import * as path from "path";
 import * as fs from "fs";
@@ -42,12 +53,18 @@ export type ComplexityTier = (typeof COMPLEXITY_TIERS)[number];
 export const ROLE_VARIANTS = ["standard", "deep"] as const;
 export type RoleVariant = (typeof ROLE_VARIANTS)[number];
 
-/** The four pipeline roles a label override may patch. */
+/**
+ * The five pipeline roles a label override may patch. `slice-executor`
+ * (ADR-0017, #356) joined the original four — the delegation-layer role that
+ * owns a whole slice end to end. See {@link ensureSliceExecutorDefault} for how
+ * a config written before the role existed still resolves.
+ */
 export const ROUTING_ROLES = [
   "investigator",
   "implementer",
   "reviewer",
   "conflict-resolver",
+  "slice-executor",
 ] as const;
 export type RoutingRole = (typeof ROUTING_ROLES)[number];
 
@@ -292,13 +309,20 @@ export const roleConfigSchemaV2 = z.object({
 
 /**
  * Routing for one complexity tier, v2 shape. `investigator` may be `null` — that
- * tier skips the investigation pass. The other three roles always run.
+ * tier skips the investigation pass. `implementer`, `reviewer`, and
+ * `conflict-resolver` always run. `slice-executor` (ADR-0017, #356) is OPTIONAL
+ * here — deliberately NOT nullable like `investigator`: absence means "this
+ * config predates the role", never "this tier skips it" (the executor is never
+ * skippable). A routing.json written before the role existed keeps parsing;
+ * {@link ensureSliceExecutorDefault} fills it in at resolve time from the
+ * tier's own `implementer` entry, with a warning.
  */
 export const tierRoutingSchemaV2 = z.object({
   investigator: roleConfigSchemaV2.nullable(),
   implementer: roleConfigSchemaV2,
   reviewer: roleConfigSchemaV2,
   "conflict-resolver": roleConfigSchemaV2,
+  "slice-executor": roleConfigSchemaV2.optional(),
 });
 
 /** Per-label model fallback: one re-spawn as `{model}` on a spawn failure. */
@@ -530,6 +554,50 @@ export function loadRoutingConfig(parsed: unknown): LoadRoutingResult {
   };
 }
 
+// ─── slice-executor role default (ADR-0017, #356) ────────────────────────────
+
+/** Result of ensuring a tier's routing carries a `slice-executor` entry. */
+export interface EnsureSliceExecutorDefaultResult {
+  routing: TierRoutingV2;
+  warning?: string;
+}
+
+/**
+ * Fills in a tier's `slice-executor` routing when a loaded config predates the
+ * role (ADR-0017, #356). PURE — never mutates the input; returns a structured
+ * warning instead of throwing, the same shape as the v1→v2 deprecation warning.
+ *
+ * The documented default is the tier's OWN `implementer` entry, not a
+ * hardcoded pair: the slice-executor subsumes the implementer's work (it owns
+ * investigation, implementation, review, and the capability gate for the
+ * whole slice), so inheriting the implementer's `{model, variant}` keeps the
+ * tier's cost profile intact — a trivial-tier slice stays cheap, a
+ * complex-tier slice stays on opus/deep — rather than silently promoting
+ * every tier to one hardcoded, conservative pair.
+ *
+ * Runs uniformly whether `tier` came from a native v2 file or one just
+ * upgraded from v1 by {@link upgradeV1ToV2} — neither generation ever had this
+ * role, so both normalize through this single point. When the entry is already
+ * present, `tier` is returned unchanged and no warning is produced.
+ */
+export function ensureSliceExecutorDefault(
+  tier: TierRoutingV2,
+  tierName: ComplexityTier
+): EnsureSliceExecutorDefaultResult {
+  if (tier["slice-executor"]) {
+    return { routing: tier };
+  }
+  const fallback = { ...tier.implementer };
+  return {
+    routing: { ...tier, "slice-executor": fallback },
+    warning:
+      `routing.json has no \`slice-executor\` entry for the '${tierName}' ` +
+      `tier — defaulting to the implementer routing (${fallback.model}/` +
+      `${fallback.variant}). Add a \`slice-executor\` entry to each tier to ` +
+      "silence this warning.",
+  };
+}
+
 // ─── v2 tool input/output schemas ─────────────────────────────────────────────
 
 /**
@@ -597,7 +665,11 @@ export const resolveRoutingV2OutputSchema = z.object({
     .describe(
       "The resolved per-role routing for the tier (v2: uses `variant`, not " +
         "`effort`). `investigator` is null when this tier skips the " +
-        "investigation pass. Present when status='ok'."
+        "investigation pass. `slice-executor` (ADR-0017, #356) is typed " +
+        "optional here only for input back-compat — in a RESOLVED result it " +
+        "is ALWAYS populated: a routing.json predating the role has it " +
+        "defaulted to the tier's own `implementer` entry, flagged in " +
+        "`warnings`. Present when status='ok'."
     ),
   continuationBudget: z
     .number()
@@ -700,8 +772,16 @@ export function resolveRoutingV2FromConfig(
   }
 
   const { config, warnings: loaderWarnings } = loadResult;
-  const tierRouting = config.tiers[input.tier];
   const labelsConfig = config.labels ?? {};
+
+  // Fill a missing `slice-executor` entry from the tier's own `implementer`
+  // BEFORE applying labels, so the default is seeded from the CONFIGURED
+  // implementer rather than a label-patched one: a label naming only
+  // `implementer` (e.g. route:fable) must not silently retarget the executor
+  // too. An explicit route:* override of `slice-executor` still wins either
+  // way — applyLabels assigns the role outright below.
+  const { routing: tierRouting, warning: sliceExecutorWarning } =
+    ensureSliceExecutorDefault(config.tiers[input.tier], input.tier);
 
   // Filter the raw label list to those that are configured OR have the route:
   // prefix. This prevents ordinary GitHub labels from producing spurious
@@ -725,7 +805,11 @@ export function resolveRoutingV2FromConfig(
     routing: labelResult.routing,
     continuationBudget: config.run.continuationBudget,
     fallbacks: labelResult.fallbacks,
-    warnings: [...loaderWarnings, ...labelResult.warnings],
+    warnings: [
+      ...loaderWarnings,
+      ...(sliceExecutorWarning ? [sliceExecutorWarning] : []),
+      ...labelResult.warnings,
+    ],
   };
 }
 
@@ -775,6 +859,9 @@ export function applyLabels(
     implementer: { ...tierRouting.implementer },
     reviewer: { ...tierRouting.reviewer },
     "conflict-resolver": { ...tierRouting["conflict-resolver"] },
+    "slice-executor": tierRouting["slice-executor"]
+      ? { ...tierRouting["slice-executor"] }
+      : undefined,
   };
 
   // Track which label first patched each role to detect same-role conflicts.

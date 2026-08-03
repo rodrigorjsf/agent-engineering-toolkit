@@ -633,6 +633,31 @@ describe("bootstrapConfig — native v2 routing defaults (ADR-0015)", () => {
     expect(written.tiers?.complex?.["conflict-resolver"]).toEqual(opusDeep);
   });
 
+  it("carries a slice-executor entry per tier, mirroring that tier's implementer (#356)", () => {
+    const dir = repo("package.json");
+    bootstrapConfig({ repoPath: dir });
+
+    const written = readConfig(dir, "routing.json") as {
+      tiers?: {
+        trivial?: { "slice-executor"?: { model: string; variant: string } };
+        standard?: { "slice-executor"?: { model: string; variant: string } };
+        complex?: { "slice-executor"?: { model: string; variant: string } };
+      };
+    };
+    expect(written.tiers?.trivial?.["slice-executor"]).toEqual({
+      model: "haiku",
+      variant: "standard",
+    });
+    expect(written.tiers?.standard?.["slice-executor"]).toEqual({
+      model: "sonnet",
+      variant: "standard",
+    });
+    expect(written.tiers?.complex?.["slice-executor"]).toEqual({
+      model: "opus",
+      variant: "deep",
+    });
+  });
+
   it("carries route:fable label entry with opus fallback (model=fable, variant=deep)", () => {
     const dir = repo("package.json");
     bootstrapConfig({ repoPath: dir });

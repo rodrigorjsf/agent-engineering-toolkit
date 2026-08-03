@@ -21957,7 +21957,8 @@ var ROUTING_ROLES = [
   "investigator",
   "implementer",
   "reviewer",
-  "conflict-resolver"
+  "conflict-resolver",
+  "slice-executor"
 ];
 var roleConfigSchema = external_exports.object({
   model: external_exports.string().min(1).describe("Model id to spawn the role's subagent with (e.g. 'sonnet', 'opus')."),
@@ -22023,7 +22024,8 @@ var tierRoutingSchemaV2 = external_exports.object({
   investigator: roleConfigSchemaV2.nullable(),
   implementer: roleConfigSchemaV2,
   reviewer: roleConfigSchemaV2,
-  "conflict-resolver": roleConfigSchemaV2
+  "conflict-resolver": roleConfigSchemaV2,
+  "slice-executor": roleConfigSchemaV2.optional()
 });
 var labelFallbackSchema = external_exports.object({
   model: external_exports.string().min(1).describe("Model id to re-spawn with when the label's primary model fails."),
@@ -22132,6 +22134,16 @@ function loadRoutingConfig(parsed) {
     )}. Supported versions: 1 (no \`version\` field) and 2.`
   };
 }
+function ensureSliceExecutorDefault(tier, tierName) {
+  if (tier["slice-executor"]) {
+    return { routing: tier };
+  }
+  const fallback = { ...tier.implementer };
+  return {
+    routing: { ...tier, "slice-executor": fallback },
+    warning: `routing.json has no \`slice-executor\` entry for the '${tierName}' tier \u2014 defaulting to the implementer routing (${fallback.model}/${fallback.variant}). Add a \`slice-executor\` entry to each tier to silence this warning.`
+  };
+}
 var resolveRoutingV2InputSchema = external_exports.object({
   tier: external_exports.enum(COMPLEXITY_TIERS).describe(
     "The complexity tier the orchestrator assessed the issue into. 'trivial' = a small, localized change; 'standard' = an ordinary feature or fix; 'complex' = broad, cross-cutting, or high-risk work."
@@ -22156,7 +22168,7 @@ var resolveRoutingV2OutputSchema = external_exports.object({
   ),
   tier: external_exports.enum(COMPLEXITY_TIERS).optional().describe("The tier that was resolved. Present when status='ok'."),
   routing: tierRoutingSchemaV2.optional().describe(
-    "The resolved per-role routing for the tier (v2: uses `variant`, not `effort`). `investigator` is null when this tier skips the investigation pass. Present when status='ok'."
+    "The resolved per-role routing for the tier (v2: uses `variant`, not `effort`). `investigator` is null when this tier skips the investigation pass. `slice-executor` (ADR-0017, #356) is typed optional here only for input back-compat \u2014 in a RESOLVED result it is ALWAYS populated: a routing.json predating the role has it defaulted to the tier's own `implementer` entry, flagged in `warnings`. Present when status='ok'."
   ),
   continuationBudget: external_exports.number().int().min(0).optional().describe(
     "The resolved continuation budget for this run \u2014 how many implementer re-spawns are allowed after an 'incomplete' envelope. Present when status='ok'."
@@ -22208,8 +22220,8 @@ function resolveRoutingV2FromConfig(input) {
     };
   }
   const { config: config2, warnings: loaderWarnings } = loadResult;
-  const tierRouting = config2.tiers[input.tier];
   const labelsConfig = config2.labels ?? {};
+  const { routing: tierRouting, warning: sliceExecutorWarning } = ensureSliceExecutorDefault(config2.tiers[input.tier], input.tier);
   const relevantLabels = (input.labels ?? []).filter(
     (name) => name.startsWith("route:") || name in labelsConfig
   );
@@ -22227,7 +22239,11 @@ function resolveRoutingV2FromConfig(input) {
     routing: labelResult.routing,
     continuationBudget: config2.run.continuationBudget,
     fallbacks: labelResult.fallbacks,
-    warnings: [...loaderWarnings, ...labelResult.warnings]
+    warnings: [
+      ...loaderWarnings,
+      ...sliceExecutorWarning ? [sliceExecutorWarning] : [],
+      ...labelResult.warnings
+    ]
   };
 }
 function applyLabels(tierRouting, labelNames, labelsConfig) {
@@ -22237,7 +22253,8 @@ function applyLabels(tierRouting, labelNames, labelsConfig) {
     investigator: tierRouting.investigator ? { ...tierRouting.investigator } : null,
     implementer: { ...tierRouting.implementer },
     reviewer: { ...tierRouting.reviewer },
-    "conflict-resolver": { ...tierRouting["conflict-resolver"] }
+    "conflict-resolver": { ...tierRouting["conflict-resolver"] },
+    "slice-executor": tierRouting["slice-executor"] ? { ...tierRouting["slice-executor"] } : void 0
   };
   const patchedBy = /* @__PURE__ */ new Map();
   for (const labelName of labelNames) {
@@ -24560,19 +24577,22 @@ var DEFAULT_ROUTING_CONFIG = {
       investigator: null,
       implementer: { model: "haiku", variant: "standard" },
       reviewer: { model: "sonnet", variant: "standard" },
-      "conflict-resolver": { model: "sonnet", variant: "standard" }
+      "conflict-resolver": { model: "sonnet", variant: "standard" },
+      "slice-executor": { model: "haiku", variant: "standard" }
     },
     standard: {
       investigator: { model: "haiku", variant: "standard" },
       implementer: { model: "sonnet", variant: "standard" },
       reviewer: { model: "opus", variant: "standard" },
-      "conflict-resolver": { model: "opus", variant: "standard" }
+      "conflict-resolver": { model: "opus", variant: "standard" },
+      "slice-executor": { model: "sonnet", variant: "standard" }
     },
     complex: {
       investigator: { model: "opus", variant: "deep" },
       implementer: { model: "opus", variant: "deep" },
       reviewer: { model: "opus", variant: "deep" },
-      "conflict-resolver": { model: "opus", variant: "deep" }
+      "conflict-resolver": { model: "opus", variant: "deep" },
+      "slice-executor": { model: "opus", variant: "deep" }
     }
   },
   labels: {
@@ -26230,7 +26250,7 @@ registerTool(
   "resolve_routing",
   {
     title: "Resolve Complexity Routing",
-    description: "Resolves which model and subagent variant to spawn for each role \u2014 investigator, implementer, reviewer, conflict-resolver \u2014 given an issue's assessed complexity tier. Reads the tier-to-role mapping from .orchestrate/routing.json (supports both v1 and v2 schemas; v1 files are transparently upgraded in memory). Accepts optional `labels` \u2014 the slice issue's GitHub labels \u2014 and applies any configured `route:*` label overrides deterministically. A null investigator means that tier skips the investigation pass. Returns per-role `variant` (not `effort`), the resolved run-wide `continuationBudget`, resolved label fallback specs, and structured label warnings. A same-role label conflict surfaces as a structured `LABEL_CONFLICT` error, never a silent pick. Returns a discriminated `status` of 'ok' or 'error'.",
+    description: "Resolves which model and subagent variant to spawn for each role \u2014 investigator, implementer, reviewer, conflict-resolver, and slice-executor (ADR-0017, #356; schema groundwork only \u2014 no `slice-executor` subagent is spawned yet) \u2014 given an issue's assessed complexity tier. Reads the tier-to-role mapping from .orchestrate/routing.json (supports both v1 and v2 schemas; v1 files are transparently upgraded in memory). A routing.json predating `slice-executor` still resolves: the role defaults to the tier's own `implementer` entry, flagged with a structured warning. Accepts optional `labels` \u2014 the slice issue's GitHub labels \u2014 and applies any configured `route:*` label overrides deterministically. A null investigator means that tier skips the investigation pass. Returns per-role `variant` (not `effort`), the resolved run-wide `continuationBudget`, resolved label fallback specs, and structured label warnings. A same-role label conflict surfaces as a structured `LABEL_CONFLICT` error, never a silent pick. Returns a discriminated `status` of 'ok' or 'error'.",
     inputSchema: resolveRoutingV2InputSchema.shape,
     outputSchema: resolveRoutingV2OutputSchema.shape
   },

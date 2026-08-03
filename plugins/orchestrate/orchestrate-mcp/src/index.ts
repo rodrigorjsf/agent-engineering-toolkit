@@ -514,17 +514,22 @@ registerTool(
     title: "Resolve Complexity Routing",
     description:
       "Resolves which model and subagent variant to spawn for each role — " +
-      "investigator, implementer, reviewer, conflict-resolver — given an " +
-      "issue's assessed complexity tier. Reads the tier-to-role mapping from " +
+      "investigator, implementer, reviewer, conflict-resolver, and " +
+      "slice-executor (ADR-0017, #356; schema groundwork only — no " +
+      "`slice-executor` subagent is spawned yet) — given an issue's assessed " +
+      "complexity tier. Reads the tier-to-role mapping from " +
       ".orchestrate/routing.json (supports both v1 and v2 schemas; v1 files " +
-      "are transparently upgraded in memory). Accepts optional `labels` — the " +
-      "slice issue's GitHub labels — and applies any configured `route:*` " +
-      "label overrides deterministically. A null investigator means that tier " +
-      "skips the investigation pass. Returns per-role `variant` (not `effort`), " +
-      "the resolved run-wide `continuationBudget`, resolved label fallback " +
-      "specs, and structured label warnings. A same-role label conflict " +
-      "surfaces as a structured `LABEL_CONFLICT` error, never a silent pick. " +
-      "Returns a discriminated `status` of 'ok' or 'error'.",
+      "are transparently upgraded in memory). A routing.json predating " +
+      "`slice-executor` still resolves: the role defaults to the tier's own " +
+      "`implementer` entry, flagged with a structured warning. Accepts " +
+      "optional `labels` — the slice issue's GitHub labels — and applies any " +
+      "configured `route:*` label overrides deterministically. A null " +
+      "investigator means that tier skips the investigation pass. Returns " +
+      "per-role `variant` (not `effort`), the resolved run-wide " +
+      "`continuationBudget`, resolved label fallback specs, and structured " +
+      "label warnings. A same-role label conflict surfaces as a structured " +
+      "`LABEL_CONFLICT` error, never a silent pick. Returns a discriminated " +
+      "`status` of 'ok' or 'error'.",
     inputSchema: resolveRoutingV2InputSchema.shape,
     outputSchema: resolveRoutingV2OutputSchema.shape,
   },
