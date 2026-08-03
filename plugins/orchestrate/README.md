@@ -58,7 +58,7 @@ The plugin bundles `orchestrate-mcp`, a Model Context Protocol server providing 
 | `run_wave` | A family of bracketed deterministic wave-loop operations behind one tool, selected by the `operation` discriminant — so only the higher-level policy that decides how a wave processes its slices stays the orchestrator's concern. `refresh-base` (fast-forward the local umbrella ref to its remote tip via a `git merge-base` ancestor proof, or report `diverged` and leave the ref untouched), `select-processable` (gate one slice on its in-partition and out-of-partition blocker states — consumed from state passed in, never read with `gh`), `reverify-slice` (no-op for the first merged slice; else fetch + merge the umbrella into the worktree and run the tests + build verbs, returning `passed`/`failed{which}`/`conflict` — a conflict is flagged in place, never resolved), and `integration-gate` (run the per-wave integration suite → `proceed`/`halt`/`tolerate`). Git-only, run-scoped, never throws |
 | `resolve_merge_conflict` | The two deterministic git operations around the conflict-resolver spawn, behind one tool selected by the `operation` discriminant — the resolver spawn, envelope validation, clean-path re-verify, and attempt-once policy stay in the spine. `prepare` (re-entrant recovery first — abort a stale in-progress merge before the fresh fetch + merge of the umbrella into the worktree, returning `clean` (auto-committed, nothing to resolve) or `conflicted{conflictedFiles}`, a rename-conflict emitting both paths) and `finalize` (stage the resolved set, scan the staged diff for residual conflict markers, complete the merge commit → `completed`, or `markers_remain` with the merge aborted leaving the worktree clean). Git-only, run-scoped, never shells `gh`, never throws |
 | `plan_waves` | Topologically sort issues into dependency waves; detects cycles |
-| `resolve_routing` | Resolve the model and routing variant for each role from a complexity tier |
+| `resolve_routing` | Resolve the model and routing variant for each role — investigator, implementer, reviewer, conflict-resolver, and slice-executor (ADR-0017, #356; schema groundwork only — no `slice-executor` subagent is spawned yet) — from a complexity tier. A routing.json predating the role still resolves: `slice-executor` defaults to the tier's own `implementer` entry, flagged with a warning |
 | `validate_envelope` | Validate a subagent's result envelope against its role schema — distinguishes a valid, a truncated/invalid, and a missing envelope. The implementer status carries `completed`, `incomplete` (a graceful turn-budget self-report), and `blocked`. The schema also defines a `slice-executor` envelope shape (ADR-0017) describing a whole slice's outcome, with a `failureClass` drawn from a closed set — schema groundwork only; no `slice-executor` subagent is spawned yet |
 | `recover_changed_files` | Recover a worktree's changed-file set by inspecting it directly — the orchestrator's fallback when an envelope is missing or invalid |
 | `recover_slice_progress` | Read and validate one slice's progress record at `.orchestrate/runs/<runId>/slice-<issue>-progress.json` — the resume anchor a slice executor writes at each completed stage (ADR-0017), carrying the last completed stage, the investigator brief, the continuation count, the worktree fingerprint, and the once-only model-fallback guard. The orchestrator's structured recovery when a slice-executor envelope is missing or invalid: it obtains the record's contents through this tool instead of opening the file, so the data is validated and the read boundary holds. The path is derived from `runId` + `issue` — no file path is accepted — so a read can never leave the run's own directory; reports a missing record distinctly from a malformed one, and never throws. Reads only |
@@ -279,6 +279,8 @@ Maps each complexity tier to the model and routing variant for each role, and co
 
 **v1 deprecation:** a file without a top-level `version` field (the old format) still loads via an explicit v1→v2 mapper and emits a deprecation warning. Run-policy keys in the v1 flat object (`intraWaveConcurrency`, `continuationBudget`) are preserved during migration. Upgrade by adding `"version": 2` and nesting tiers under `"tiers"`, run policy under `"run"`.
 
+**`slice-executor` back-compat (ADR-0017, #356):** a file written before this role existed simply omits the `slice-executor` key per tier — it still loads. `resolve_routing` fills the gap from that tier's own `implementer` entry (never a hardcoded pair, so the tier's cost profile is preserved) and surfaces a warning naming the tier. Add an explicit `slice-executor` entry to each tier to silence it.
+
 ```json
 {
   "version": 2,
@@ -287,19 +289,22 @@ Maps each complexity tier to the model and routing variant for each role, and co
       "investigator": null,
       "implementer": { "model": "haiku", "variant": "standard" },
       "reviewer": { "model": "sonnet", "variant": "standard" },
-      "conflict-resolver": { "model": "sonnet", "variant": "standard" }
+      "conflict-resolver": { "model": "sonnet", "variant": "standard" },
+      "slice-executor": { "model": "haiku", "variant": "standard" }
     },
     "standard": {
       "investigator": { "model": "haiku", "variant": "standard" },
       "implementer": { "model": "sonnet", "variant": "standard" },
       "reviewer": { "model": "opus", "variant": "standard" },
-      "conflict-resolver": { "model": "opus", "variant": "standard" }
+      "conflict-resolver": { "model": "opus", "variant": "standard" },
+      "slice-executor": { "model": "sonnet", "variant": "standard" }
     },
     "complex": {
       "investigator": { "model": "opus", "variant": "deep" },
       "implementer": { "model": "opus", "variant": "deep" },
       "reviewer": { "model": "opus", "variant": "deep" },
-      "conflict-resolver": { "model": "opus", "variant": "deep" }
+      "conflict-resolver": { "model": "opus", "variant": "deep" },
+      "slice-executor": { "model": "opus", "variant": "deep" }
     }
   },
   "labels": {
@@ -316,7 +321,7 @@ Maps each complexity tier to the model and routing variant for each role, and co
 }
 ```
 
-**Tier matrix defaults.** The trivial tier applies a deliberate cross-model gate: haiku implements, sonnet reviews — a cost-effective quality check. The standard tier adds an investigator (haiku/standard) that was absent in v1. The complex tier routes all roles to opus/deep unchanged.
+**Tier matrix defaults.** The trivial tier applies a deliberate cross-model gate: haiku implements, sonnet reviews — a cost-effective quality check. The standard tier adds an investigator (haiku/standard) that was absent in v1. The complex tier routes all roles to opus/deep unchanged. `slice-executor` mirrors its tier's `implementer` at every tier (ADR-0017, #356) — the same value the back-compat default resolves to for a file that omits the key.
 
 **`route:fable` label lane.** When a GitHub issue carries the `route:fable` label, the implementer role is patched to `fable/deep`, overriding the tier's default model. A one-shot opus fallback (`maxRetries: 1`) re-spawns the implementer on the fallback model if the premium spawn fails. The reviewer and conflict-resolver retain their tier defaults. **Security exclusion:** Fable's safety classifiers refuse benign security and cyber-research work — do NOT apply `route:fable` to issues involving vulnerability research, penetration testing, or security tooling. Those issues should remain on the standard tier-routed model.
 

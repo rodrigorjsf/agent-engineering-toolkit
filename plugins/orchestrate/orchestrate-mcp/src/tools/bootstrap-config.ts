@@ -64,13 +64,21 @@ const MODEL_CONTEXT_WINDOW: Readonly<Record<string, number>> = {
  *
  * Tier matrix (ADR-0015):
  * - trivial: investigator=null; implementer=haiku/standard; reviewer=sonnet/standard;
- *   conflict-resolver=sonnet/standard (deliberate cross-model merge gate).
+ *   conflict-resolver=sonnet/standard (deliberate cross-model merge gate);
+ *   slice-executor=haiku/standard (ADR-0017, #356 — mirrors implementer).
  * - standard: investigator=haiku/standard (NEW — was null); implementer=sonnet/standard;
- *   reviewer=opus/standard; conflict-resolver=opus/standard.
- * - complex: all roles = opus/deep (unchanged).
+ *   reviewer=opus/standard; conflict-resolver=opus/standard;
+ *   slice-executor=sonnet/standard (mirrors implementer).
+ * - complex: all roles = opus/deep (unchanged); slice-executor=opus/deep too.
  * - labels: route:fable → implementer patched to fable/deep with opus fallback.
  * - run: intraWaveConcurrency=parallel; continuationBudget=2 (same values as v1,
  *   now under the run block).
+ *
+ * `slice-executor` (ADR-0017, #356) mirrors each tier's own `implementer`
+ * entry rather than one hardcoded pair — the same documented default
+ * `ensureSliceExecutorDefault` (in `routing.ts`) falls back to for a
+ * pre-#356 routing.json, so a freshly-bootstrapped file already matches what
+ * an old file would resolve to.
  */
 export const DEFAULT_ROUTING_CONFIG = {
   version: 2,
@@ -80,18 +88,21 @@ export const DEFAULT_ROUTING_CONFIG = {
       implementer: { model: "haiku", variant: "standard" },
       reviewer: { model: "sonnet", variant: "standard" },
       "conflict-resolver": { model: "sonnet", variant: "standard" },
+      "slice-executor": { model: "haiku", variant: "standard" },
     },
     standard: {
       investigator: { model: "haiku", variant: "standard" },
       implementer: { model: "sonnet", variant: "standard" },
       reviewer: { model: "opus", variant: "standard" },
       "conflict-resolver": { model: "opus", variant: "standard" },
+      "slice-executor": { model: "sonnet", variant: "standard" },
     },
     complex: {
       investigator: { model: "opus", variant: "deep" },
       implementer: { model: "opus", variant: "deep" },
       reviewer: { model: "opus", variant: "deep" },
       "conflict-resolver": { model: "opus", variant: "deep" },
+      "slice-executor": { model: "opus", variant: "deep" },
     },
   },
   labels: {

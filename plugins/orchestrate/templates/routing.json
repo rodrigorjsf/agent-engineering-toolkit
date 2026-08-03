@@ -5,19 +5,22 @@
       "investigator": null,
       "implementer": { "model": "haiku", "variant": "standard" },
       "reviewer": { "model": "sonnet", "variant": "standard" },
-      "conflict-resolver": { "model": "sonnet", "variant": "standard" }
+      "conflict-resolver": { "model": "sonnet", "variant": "standard" },
+      "slice-executor": { "model": "haiku", "variant": "standard" }
     },
     "standard": {
       "investigator": { "model": "haiku", "variant": "standard" },
       "implementer": { "model": "sonnet", "variant": "standard" },
       "reviewer": { "model": "opus", "variant": "standard" },
-      "conflict-resolver": { "model": "opus", "variant": "standard" }
+      "conflict-resolver": { "model": "opus", "variant": "standard" },
+      "slice-executor": { "model": "sonnet", "variant": "standard" }
     },
     "complex": {
       "investigator": { "model": "opus", "variant": "deep" },
       "implementer": { "model": "opus", "variant": "deep" },
       "reviewer": { "model": "opus", "variant": "deep" },
-      "conflict-resolver": { "model": "opus", "variant": "deep" }
+      "conflict-resolver": { "model": "opus", "variant": "deep" },
+      "slice-executor": { "model": "opus", "variant": "deep" }
     }
   },
   "labels": {
