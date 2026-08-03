@@ -82,5 +82,8 @@ When something fails repeatedly, when User has to re-explain, or when a workarou
 - Before creating a new project artifact, check if an existing one can be extended or merged.
 - npm broken in non-interactive bash (mise inactive); prepend real node bin dir before npm.
 - Parallel doc subagents self-edit shared wiki log.md/index.md — assign one writer.
+- WebFetch truncates long doc pages; verify tail before overwriting a mirror.
+- Verify harness capability claims empirically; vendor doc mirrors go stale.
+- orchestrate refresh-base syncs umbrella↔its own remote only; land base docs before minting umbrella.
 
 
