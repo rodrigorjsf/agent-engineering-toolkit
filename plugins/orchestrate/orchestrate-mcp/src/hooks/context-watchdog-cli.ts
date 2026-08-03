@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { runWatchdog, findActiveRunForSession } from "./context-watchdog.js";
+import { runWatchdog } from "./context-watchdog.js";
+import { findActiveRunForSession } from "./run-discovery.js";
 
 // Entry point for the `context-watchdog` PostToolUse hook. Claude Code pipes
 // the hook event JSON on stdin; this script estimates the session's context

@@ -513,8 +513,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path4, errorMaps, issueData } = params;
-  const fullPath = [...path4, ...issueData.path || []];
+  const { data, path: path5, errorMaps, issueData } = params;
+  const fullPath = [...path5, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -630,11 +630,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path4, key) {
+  constructor(parent, value, path5, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path4;
+    this._path = path5;
     this._key = key;
   }
   get path() {
@@ -4251,45 +4251,6 @@ function readTranscriptText(transcriptPath) {
     fs2.closeSync(fd);
   }
 }
-function scanInProgressRuns(cwd) {
-  const runsDir = path3.join(cwd, ".orchestrate", "runs");
-  let entries;
-  try {
-    entries = fs2.readdirSync(runsDir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  const runs = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const statePath = path3.join(runsDir, entry.name, "run-state.json");
-    let runState;
-    try {
-      runState = JSON.parse(fs2.readFileSync(statePath, "utf8"));
-    } catch {
-      continue;
-    }
-    if (typeof runState !== "object" || runState === null || runState.status !== "in-progress") {
-      continue;
-    }
-    const rawId = runState.driverSessionId;
-    runs.push({
-      runId: entry.name,
-      driverSessionId: typeof rawId === "string" ? rawId : null
-    });
-  }
-  return runs;
-}
-function findActiveRunForSession(cwd, sessionId) {
-  const runs = scanInProgressRuns(cwd);
-  if (runs.length === 0) return null;
-  if (typeof sessionId === "string" && sessionId.length > 0) {
-    const matches = runs.filter((r) => r.driverSessionId === sessionId);
-    if (matches.length === 1) return matches[0].runId;
-  }
-  if (runs.length === 1) return runs[0].runId;
-  return null;
-}
 function runWatchdog(input) {
   const resolved = resolveRunDir(input.cwd, input.runId);
   if (!resolved.ok) {
@@ -4337,6 +4298,49 @@ function runWatchdog(input) {
     return { acted: true, flagRaised: false, flagPath, evaluation };
   }
   return { acted: true, flagRaised: true, flagPath, evaluation };
+}
+
+// src/hooks/run-discovery.ts
+var path4 = __toESM(require("path"));
+var fs3 = __toESM(require("fs"));
+function scanInProgressRuns(cwd) {
+  const runsDir = path4.join(cwd, ".orchestrate", "runs");
+  let entries;
+  try {
+    entries = fs3.readdirSync(runsDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const runs = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const statePath = path4.join(runsDir, entry.name, "run-state.json");
+    let runState;
+    try {
+      runState = JSON.parse(fs3.readFileSync(statePath, "utf8"));
+    } catch {
+      continue;
+    }
+    if (typeof runState !== "object" || runState === null || runState.status !== "in-progress") {
+      continue;
+    }
+    const rawId = runState.driverSessionId;
+    runs.push({
+      runId: entry.name,
+      driverSessionId: typeof rawId === "string" ? rawId : null
+    });
+  }
+  return runs;
+}
+function findActiveRunForSession(cwd, sessionId) {
+  const runs = scanInProgressRuns(cwd);
+  if (runs.length === 0) return null;
+  if (typeof sessionId === "string" && sessionId.length > 0) {
+    const matches = runs.filter((r) => r.driverSessionId === sessionId);
+    if (matches.length === 1) return matches[0].runId;
+  }
+  if (runs.length === 1) return runs[0].runId;
+  return null;
 }
 
 // src/hooks/context-watchdog-cli.ts
