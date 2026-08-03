@@ -39,8 +39,9 @@ Every other role is a **subagent**, spawned with the standard Agent tool by its 
 | `implementer` | standard, deep | Edits code inside one worktree; verifies via the capability tools. No Bash, no git. |
 | `reviewer` | standard, deep | Reviews the slice in the worktree, fixes issues inline, re-runs the capability tools, gates the merge. No Bash, no git. |
 | `conflict-resolver` | standard, deep | Edits conflicted files to a correct merged state. No Bash, no git. |
+| `slice-executor` | standard, deep | Owns one slice end to end — spawns the investigator, implementer, and reviewer, validates each result envelope, and runs the Capability gate. Its operating procedure is the preloaded `slice-pipeline` skill. No Bash, no git. Definitions only (ADR-0017); the orchestrator does not spawn it yet. |
 
-This is the **no-Bash safety model**: the subagents have no shell and no git access. They are sandboxed to a single worktree, and the investigator cannot write at all. Only the orchestrator runs commands, touches branches and remotes, and writes to the issue tracker. A subagent cannot push, cannot merge, cannot edit an issue, and cannot reach outside its worktree — so the blast radius of any one subagent is one directory.
+This is the **no-Bash safety model**: the subagents have no shell and no git access. They are sandboxed to a single worktree, and the investigator cannot write at all. Only the orchestrator runs commands, touches branches and remotes, and writes to the issue tracker. A subagent cannot push, cannot merge, cannot edit an issue, and cannot reach outside its worktree — so the blast radius of any one subagent is one directory. The `slice-executor` is the one subagent granted the `Agent` tool, so that it can spawn the workers its slice needs; the four worker roles are granted no `Agent` tool at all, which is what keeps them leaves of the agent tree.
 
 Every subagent ends its turn with a machine-checkable **result envelope** — a fenced ` ```orchestrate-envelope ` JSON block conforming to a per-role schema. The orchestrator reads a subagent's status and changed-file set only from this validated envelope (via the `validate_envelope` tool), never from its prose — so a turn that was truncated or cut short is detected, never silently accepted. When an envelope is missing or invalid, the orchestrator recovers the worktree's changed-file set by inspecting it directly with `recover_changed_files`, treating the worktree as the source of truth.
 
@@ -431,8 +432,9 @@ plugins/orchestrate/
 │   └── slice-pipeline/
 │       └── SKILL.md             # The per-slice procedure the slice-executor
 │                                #   subagent loads
-├── agents/                      # 8 subagents — {investigator,implementer,
-│                                #   reviewer,conflict-resolver}-{standard,deep}
+├── agents/                      # 10 subagents — {investigator,implementer,
+│                                #   reviewer,conflict-resolver,
+│                                #   slice-executor}-{standard,deep}
 ├── templates/                   # commands.json, routing.json, handoff.json
 └── orchestrate-mcp/             # The MCP server (TypeScript)
     ├── src/                     # Tool implementations
